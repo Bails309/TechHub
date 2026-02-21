@@ -13,14 +13,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
   }
 
-  const body = await request.json();
-  const payload = payloadSchema.parse(body);
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  const payload = payloadSchema.safeParse(body);
+  if (!payload.success) {
+    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+  }
 
   const validIds = await prisma.appLink.findMany({
     select: { id: true }
   });
   const validSet = new Set(validIds.map((item) => item.id));
-  const filteredOrder = payload.order.filter((id) => validSet.has(id));
+  const filteredOrder = payload.data.order.filter((id) => validSet.has(id));
 
   await prisma.userAppOrder.upsert({
     where: { userId: session.user.id },

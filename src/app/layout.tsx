@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
+import { headers } from 'next/headers';
 import './globals.css';
 import TopNav from '@/components/TopNav';
 import Providers from '@/components/Providers';
@@ -13,23 +15,13 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const headerList = await headers();
+  const nonce = headerList.get('x-nonce') ?? undefined;
+
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html:
-              "(() => {" +
-              "try {" +
-              "const stored = localStorage.getItem('techhub-theme');" +
-              "const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;" +
-              "const theme = stored === 'light' || stored === 'dark' ? stored : (prefersLight ? 'light' : 'dark');" +
-              "document.documentElement.dataset.theme = theme;" +
-              "document.documentElement.style.colorScheme = theme;" +
-              "} catch (_) {}" +
-              "})();"
-          }}
-        />
+        <Script src="/theme-init.js" strategy="beforeInteractive" nonce={nonce} />
       </head>
       <body>
         <Providers>
