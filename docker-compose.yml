@@ -1,0 +1,29 @@
+name: techhub
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: techhub
+      POSTGRES_PASSWORD: techhub
+      POSTGRES_DB: techhub
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      - db
+    command: >
+      sh -c "npm run prisma:push && npm run prisma:seed && npm run start"
+    volumes:
+      - uploads:/app/uploads
+
+volumes:
+  pgdata:
+  uploads:

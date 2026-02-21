@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AppAudience {
+  PUBLIC
+  AUTHENTICATED
+  ROLE
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  accounts      Account[]
+  sessions      Session[]
+  roles         UserRole[]
+  appOrder      UserAppOrder?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Role {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  users     UserRole[]
+  apps      AppLink[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model UserRole {
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId String
+
+  @@id([userId, roleId])
+}
+
+model AppLink {
+  id          String      @id @default(cuid())
+  name        String
+  url         String
+  icon        String?
+  category    String?
+  description String?
+  audience    AppAudience @default(AUTHENTICATED)
+  role        Role?       @relation(fields: [roleId], references: [id])
+  roleId      String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model UserAppOrder {
+  userId    String   @id
+  order     Json
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}

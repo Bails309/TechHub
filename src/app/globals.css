@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --capita-navy: #02083c;
+  --capita-cyan: #00ffff;
+  --capita-white: #ffffff;
+  --capita-coral: #ff5051;
+  --capita-turmeric: #ffb11d;
+  --capita-purple: #9b62c3;
+  --capita-green: #c5d201;
+  --capita-teal: #10d6a6;
+  --capita-yellow: #f3e444;
+  --dark-navy: #000f2e;
+  --light-gray: #f5f5f5;
+  --text-dark: #1a1a1a;
+  --text-light: #666666;
+  --page-fg: var(--capita-white);
+  --page-bg: var(--dark-navy);
+  --page-bg-image:
+    radial-gradient(circle at 18% 18%, rgba(0, 255, 255, 0.16), transparent 50%),
+    radial-gradient(circle at 78% 8%, rgba(255, 177, 29, 0.2), transparent 48%),
+    linear-gradient(140deg, rgba(2, 8, 60, 0.95), rgba(0, 15, 46, 0.98));
+  --glass-bg: linear-gradient(135deg, rgba(2, 8, 60, 0.7), rgba(0, 15, 46, 0.55));
+  --glass-border: rgba(0, 255, 255, 0.2);
+  --input-bg: linear-gradient(135deg, rgba(2, 8, 60, 0.65), rgba(0, 15, 46, 0.7));
+  --input-bg-solid: #030a36;
+  --input-border: rgba(0, 255, 255, 0.18);
+  --select-hover-bg: rgba(0, 255, 255, 0.18);
+  --select-selected-bg: rgba(255, 80, 81, 0.2);
+  --launch-bg: rgba(197, 210, 1, 0.2);
+  --launch-border: rgba(197, 210, 1, 0.45);
+  --launch-text: #f5fff3;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+  --page-fg: var(--text-dark);
+  --page-bg: var(--light-gray);
+  --page-bg-image:
+    radial-gradient(circle at 16% 18%, rgba(0, 255, 255, 0.14), transparent 50%),
+    radial-gradient(circle at 82% 6%, rgba(255, 80, 81, 0.18), transparent 48%),
+    linear-gradient(140deg, rgba(245, 245, 245, 0.96), rgba(229, 231, 235, 0.96));
+  --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(245, 245, 245, 0.8));
+  --glass-border: rgba(2, 8, 60, 0.12);
+  --input-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(245, 245, 245, 0.9));
+  --input-bg-solid: #ffffff;
+  --input-border: rgba(2, 8, 60, 0.15);
+  --select-hover-bg: rgba(2, 8, 60, 0.08);
+  --select-selected-bg: rgba(0, 255, 255, 0.2);
+  --launch-bg: rgba(16, 214, 166, 0.18);
+  --launch-border: rgba(16, 214, 166, 0.55);
+  --launch-text: #0b2f25;
+}
+
+body {
+  @apply antialiased;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  color: var(--page-fg);
+  background-color: var(--page-bg);
+  background-image: var(--page-bg-image);
+  min-height: 100vh;
+}
+
+main {
+  @apply min-h-screen;
+}
+
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(22px);
+}
+
+.hero-grid {
+  background-image: var(--tw-gradient-stops), theme('backgroundImage.hero-grid');
+  background-size: 32px 32px;
+  mask-image: radial-gradient(circle at top, rgba(0, 0, 0, 1), transparent 70%);
+}
+
+.input-surface {
+  background: var(--input-bg);
+  background-color: var(--input-bg-solid);
+  border: 1px solid var(--input-border);
+}
+
+select.input-surface {
+  color: var(--page-fg);
+  background-color: var(--input-bg-solid);
+}
+
+select.input-surface option {
+  background-color: var(--input-bg-solid);
+  color: var(--page-fg);
+}
+
+.select-panel {
+  background-color: var(--input-bg-solid);
+  border: 1px solid var(--input-border);
+}
+
+.select-option {
+  color: var(--page-fg);
+}
+
+.select-option:hover {
+  background-color: var(--select-hover-bg);
+}
+
+.select-option.is-selected {
+  background-color: var(--select-selected-bg);
+  color: var(--page-fg);
+}
+
+.modal-surface {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--page-fg);
+}
+
+.modal-backdrop {
+  background-color: rgba(15, 23, 42, 0.7);
+}
+
+html[data-theme='light'] .modal-backdrop {
+  background-color: rgba(226, 232, 240, 0.8);
+}
+
+.launch-button {
+  border: 1px solid var(--launch-border);
+  background: var(--launch-bg);
+  color: var(--launch-text);
+}
+
+.launch-button:hover {
+  border-color: var(--capita-green);
+  box-shadow: 0 12px 24px -18px rgba(16, 214, 166, 0.6);
+}
+
+html[data-theme='light'] .text-ink-50,
+html[data-theme='light'] .text-ink-100 {
+  color: var(--text-dark);
+}
+
+html[data-theme='light'] .text-ink-200 {
+  color: var(--text-light);
+}
+
+html[data-theme='light'] .text-ink-300 {
+  color: #3f3f46;
+}
+
+html[data-theme='light'] .text-ink-400 {
+  color: #52525b;
+}
+
+html[data-theme='light'] .border-ink-600,
+html[data-theme='light'] .border-ink-700,
+html[data-theme='light'] .border-ink-800 {
+  border-color: rgba(2, 8, 60, 0.2);
+}
