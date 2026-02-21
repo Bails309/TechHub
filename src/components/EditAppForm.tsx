@@ -87,7 +87,7 @@ export default function EditAppForm({
         <input
           type="file"
           name="icon"
-          accept="image/*"
+          accept="image/png,image/jpeg"
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (!file) {

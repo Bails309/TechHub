@@ -4,7 +4,6 @@ import { z } from 'zod';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { writeFile, mkdir } from 'fs/promises';
-import sanitizeHtml from 'sanitize-html';
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { getServerAuthSession } from '@/lib/auth';
@@ -40,17 +39,11 @@ const MAX_ICON_BYTES = 2 * 1024 * 1024;
 const ALLOWED_ICON_EXTENSIONS = new Set([
   '.png',
   '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.svg'
+  '.jpeg'
 ]);
 const ALLOWED_ICON_MIME_TYPES = new Set([
   'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml'
+  'image/jpeg'
 ]);
 
 const uploadSchema = z
@@ -71,76 +64,11 @@ async function saveIcon(file: File) {
     return undefined;
   }
 
-  const extension =
-    path.extname(file.name) || `.${file.type.split('/')[1] ?? 'png'}`;
-  const isSvg = extension.toLowerCase() === '.svg' || file.type === 'image/svg+xml';
-  const filename = `${randomUUID()}${isSvg ? '.svg' : extension}`;
+  const extension = path.extname(file.name) || '.png';
+  const filename = `${randomUUID()}${extension}`;
   const uploadDir = path.join(process.cwd(), 'uploads');
   await mkdir(uploadDir, { recursive: true });
   const buffer = Buffer.from(await file.arrayBuffer());
-  if (isSvg) {
-    const sanitized = sanitizeHtml(buffer.toString('utf-8'), {
-      allowedTags: [
-        'svg',
-        'g',
-        'path',
-        'circle',
-        'rect',
-        'line',
-        'polyline',
-        'polygon',
-        'ellipse',
-        'defs',
-        'linearGradient',
-        'radialGradient',
-        'stop',
-        'clipPath',
-        'mask',
-        'title',
-        'desc'
-      ],
-      allowedAttributes: {
-        svg: [
-          'xmlns',
-          'width',
-          'height',
-          'viewBox',
-          'fill',
-          'stroke',
-          'stroke-width',
-          'stroke-linecap',
-          'stroke-linejoin',
-          'preserveAspectRatio',
-          'aria-hidden',
-          'role'
-        ],
-        g: ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'opacity'],
-        path: ['d', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'opacity'],
-        circle: ['cx', 'cy', 'r', 'fill', 'stroke', 'stroke-width', 'opacity'],
-        rect: ['x', 'y', 'width', 'height', 'rx', 'ry', 'fill', 'stroke', 'stroke-width', 'opacity'],
-        line: ['x1', 'y1', 'x2', 'y2', 'stroke', 'stroke-width', 'opacity'],
-        polyline: ['points', 'fill', 'stroke', 'stroke-width', 'opacity'],
-        polygon: ['points', 'fill', 'stroke', 'stroke-width', 'opacity'],
-        ellipse: ['cx', 'cy', 'rx', 'ry', 'fill', 'stroke', 'stroke-width', 'opacity'],
-        linearGradient: ['id', 'x1', 'y1', 'x2', 'y2', 'gradientUnits'],
-        radialGradient: ['id', 'cx', 'cy', 'r', 'fx', 'fy', 'gradientUnits'],
-        stop: ['offset', 'stop-color', 'stop-opacity'],
-        defs: ['id'],
-        clipPath: ['id'],
-        mask: ['id']
-      },
-      allowedSchemes: [],
-      allowProtocolRelative: false
-    });
-
-    if (!sanitized.trim().startsWith('<svg')) {
-      return undefined;
-    }
-
-    await writeFile(path.join(uploadDir, filename), sanitized, 'utf-8');
-    return `/uploads/${filename}`;
-  }
-
   await writeFile(path.join(uploadDir, filename), buffer);
   return `/uploads/${filename}`;
 }

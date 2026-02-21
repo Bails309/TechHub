@@ -5,10 +5,7 @@ import { readFile } from 'fs/promises';
 const MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml'
+  '.jpeg': 'image/jpeg'
 };
 
 export async function GET(
@@ -38,11 +35,6 @@ export async function GET(
       'Cache-Control': 'public, max-age=31536000, immutable',
       'X-Content-Type-Options': 'nosniff'
     };
-
-    if (extension === '.svg') {
-      headers['Content-Security-Policy'] =
-        "default-src 'none'; style-src 'none'; script-src 'none'; sandbox";
-    }
 
     return new NextResponse(data, {
       status: 200,

@@ -64,7 +64,7 @@ The compose entrypoint runs `prisma db push` and `prisma db seed` before `npm st
 
 ## Uploads
 - Icon uploads are stored in `uploads/` and served via `/uploads/*`.
-- SVG icons are allowed but sanitized on upload and served with a restrictive CSP.
+- Icons are limited to PNG and JPEG only.
 - Max icon upload size is 2 MB.
 - Docker compose mounts a named volume at `/app/uploads` to persist icons.
 
