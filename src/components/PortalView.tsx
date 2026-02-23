@@ -55,11 +55,7 @@ function moveInOrder(order: string[], fromId: string, toId: string) {
   return next;
 }
 
-function reorderSubset(order: string[], subset: string[], nextSubset: string[]) {
-  const subsetSet = new Set(subset);
-  let idx = 0;
-  return order.map((id) => (subsetSet.has(id) ? nextSubset[idx++] : id));
-}
+// `reorderSubset` removed — logic replaced by safer reordering in `handleReorder`.
 
 export default function PortalView({ apps, isAuthenticated, initialOrder }: PortalViewProps) {
   const [order, setOrder] = useState(() => normaliseOrder(initialOrder, apps));

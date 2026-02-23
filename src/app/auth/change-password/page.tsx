@@ -70,9 +70,10 @@ export default function ChangePasswordPage() {
           </div>
           <button
             type="submit"
-            className="w-full rounded-full bg-bronze-500 px-5 py-3 text-sm font-semibold text-white hover:bg-bronze-400 transition"
+            disabled={state.pending}
+            className="w-full rounded-full bg-bronze-500 px-5 py-3 text-sm font-semibold text-white hover:bg-bronze-400 transition disabled:opacity-60"
           >
-            Update password
+            {state.pending ? 'Updating…' : 'Update password'}
           </button>
           {state.status !== 'idle' ? (
             <p className={state.status === 'success' ? 'text-emerald-300 text-xs' : 'text-rose-300 text-xs'}>
