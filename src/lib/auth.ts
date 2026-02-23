@@ -134,8 +134,11 @@ export function getClientIp(headers: HeaderSource, remoteAddr?: string) {
     return remoteNormalized ?? undefined;
   }
 
-  // Not trusting proxy headers: prefer immediate remote address, then x-real-ip
-  return remoteNormalized ?? normalizeIp(readHeader(headers, 'x-real-ip')) ?? undefined;
+  // Not trusting proxy headers: prefer immediate remote address only.
+  // Do NOT fall back to proxy-supplied headers (x-real-ip) when TRUST_PROXY is false,
+  // as these headers can be spoofed by clients. If the immediate remote address
+  // cannot be determined, return undefined so callers do not rely on unverified headers.
+  return remoteNormalized ?? undefined;
 }
 
 export function getRateLimitKey(headers: HeaderSource, fallbackKey?: string, remoteAddr?: string) {
