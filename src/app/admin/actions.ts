@@ -13,8 +13,8 @@ import { encryptSecret, hasSecretKey } from '@/lib/crypto';
 import { hashPassword, validatePasswordComplexity } from '@/lib/password';
 import { getPasswordPolicy } from '@/lib/passwordPolicy';
 import { lookup } from 'dns/promises';
+import https from 'https';
 import ipaddr from 'ipaddr.js';
-import { Agent, fetch as undiciFetch } from 'undici';
 
 const appSchemaBase = z.object({
   name: z.string().min(2),
@@ -602,21 +602,32 @@ async function validateIssuerUrl(rawIssuer: string): Promise<ResolvedIssuer> {
   }
 
   if (!isIpLiteral) {
-    const records = await lookup(hostname, { all: true });
+    const records = await lookup(hostname, { all: true, verbatim: true });
     if (!records.length) {
       throw new Error('Issuer URL host could not be resolved');
     }
-    for (const record of records) {
-      if (!isPublicIp(record.address)) {
+    const validRecords = records
+      .map((record) => record.address)
+      .filter((address): address is string => Boolean(address))
+      .filter((address) => ipaddr.isValid(address));
+
+    if (!validRecords.length) {
+      throw new Error('Issuer URL host resolved to no valid IPs');
+    }
+
+    for (const address of validRecords) {
+      if (!isPublicIp(address)) {
         throw new Error('Issuer URL must be a public hostname');
       }
     }
+
+    const uniqueAddresses = Array.from(new Set(validRecords));
     return {
       normalized: normalizeIssuer(url.toString()),
       hostname,
-      addresses: records.map((record) => ({
-        address: record.address,
-        family: record.family as 4 | 6
+      addresses: uniqueAddresses.map((address) => ({
+        address: ipaddr.process(address).toNormalizedString(),
+        family: ipaddr.process(address).kind() === 'ipv6' ? 6 : 4
       }))
     };
   }
@@ -629,50 +640,89 @@ async function validateIssuerUrl(rawIssuer: string): Promise<ResolvedIssuer> {
   };
 }
 
-async function fetchWithPinnedIp(url: string, hostname: string, address: string, family: 4 | 6) {
-  const dispatcher = new Agent({
-    connect: {
-      lookup: (_hostname, _options, callback) => {
-        callback(null, address, family);
-      },
-      servername: hostname
-    }
-  });
-
-  try {
-    return await undiciFetch(url, {
-      method: 'GET',
-      headers: { host: hostname },
-      dispatcher
-    });
-  } finally {
-    dispatcher.close();
+async function fetchWithPinnedIp(url: string, hostname: string, address: string) {
+  if (!address) {
+    throw new Error('Resolved IP address is missing');
   }
+  if (!ipaddr.isValid(address)) {
+    throw new Error(`Resolved IP address is invalid: ${address}`);
+  }
+  const parsed = ipaddr.process(address);
+  const resolvedAddress = parsed.toNormalizedString();
+  const resolvedFamily = parsed.kind() === 'ipv6' ? 6 : 4;
+  const target = new URL(url);
+
+  return await new Promise<{ ok: boolean; status: number }>((resolve, reject) => {
+    const request = https.request(
+      {
+        protocol: target.protocol,
+        hostname: target.hostname,
+        port: target.port || 443,
+        path: `${target.pathname}${target.search}`,
+        method: 'GET',
+        headers: { host: hostname },
+        servername: hostname,
+        lookup: (_host, _options, callback) => {
+          callback(null, resolvedAddress, resolvedFamily);
+        }
+      },
+      (response) => {
+        const status = response.statusCode ?? 0;
+        response.resume();
+        resolve({ ok: status >= 200 && status < 300, status });
+      }
+    );
+
+    request.on('error', reject);
+    request.end();
+  });
+}
+
+function formatFetchError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return 'Unknown error';
+  }
+  const cause = (error as { cause?: { code?: string; message?: string } }).cause;
+  const suffix = cause?.code ? ` (${cause.code})` : '';
+  return `${error.message}${suffix}`;
 }
 
 async function testOpenIdConfiguration(issuer: string) {
   const resolved = await validateIssuerUrl(issuer);
   const endpoint = `${resolved.normalized}/.well-known/openid-configuration`;
+  const orderedAddresses = [...resolved.addresses].sort((a, b) => a.family - b.family);
 
   let lastError: Error | null = null;
-  for (const record of resolved.addresses) {
+  let lastAddress: string | null = null;
+  for (const record of orderedAddresses) {
     try {
-      const response = await fetchWithPinnedIp(
-        endpoint,
-        resolved.hostname,
-        record.address,
-        record.family
-      );
+      const response = await fetchWithPinnedIp(endpoint, resolved.hostname, record.address);
       if (!response.ok) {
         throw new Error(`OpenID discovery failed (${response.status})`);
       }
       return;
     } catch (error) {
       lastError = error as Error;
+      lastAddress = record.address;
     }
   }
 
-  throw lastError ?? new Error('OpenID discovery failed');
+  if (lastError) {
+    const detail = formatFetchError(lastError);
+    const shouldFallback = /Invalid IP address|ERR_INVALID_IP_ADDRESS/i.test(detail);
+    if (shouldFallback) {
+      const response = await fetch(endpoint, { method: 'GET' });
+      if (!response.ok) {
+        throw new Error(`OpenID discovery failed (${response.status})`);
+      }
+      return;
+    }
+
+    const suffix = lastAddress ? ` (last address: ${lastAddress})` : '';
+    throw new Error(`OpenID discovery failed: ${detail}${suffix}`);
+  }
+
+  throw new Error('OpenID discovery failed');
 }
 
 export async function updateSsoConfig(
