@@ -15,7 +15,7 @@ export default function ChangePasswordPage() {
 
   useEffect(() => {
     if (state.status === 'success') {
-      void update();
+      void update({ user: { mustChangePassword: false } as { mustChangePassword: boolean } });
       router.replace('/');
     }
   }, [state.status, update, router]);

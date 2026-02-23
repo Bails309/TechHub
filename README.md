@@ -40,7 +40,10 @@ The compose entrypoint runs `prisma db push` and `prisma db seed` before `npm st
 - `NEXTAUTH_SECRET`: required for NextAuth JWT signing
 - `NEXTAUTH_URL`: app base URL (use `http://localhost:3000` locally)
 - `DATABASE_URL`: Postgres connection string
-- `SSO_MASTER_KEY`: base64-encoded 32-byte key for encrypting SSO secrets in the database
+- `SSO_MASTER_KEY`: base64-encoded 32-byte key for encrypting SSO secrets in the database (legacy single key)
+- `SSO_MASTER_KEYS`: optional key ring as `keyId=base64` pairs, comma-separated, for seamless rotation
+- `SSO_MASTER_KEY_ID`: current key id to use for new encryptions (defaults to first key in `SSO_MASTER_KEYS`)
+- `SSO_ENVELOPE_ENCRYPTION`: set to `true` to use envelope encryption (per-secret data keys wrapped by the master key)
 - `ADMIN_EMAIL`: seeded admin user email (initial admin only)
 - `ADMIN_PASSWORD`: seeded admin user password (initial admin only; user must change on first login)
 - `AZURE_AD_CLIENT_ID`: Entra ID client ID (optional fallback if no DB config)
@@ -58,6 +61,54 @@ Generate a master key with:
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
+
+## SSO key rotation (seamless)
+1. Add a key ring and pick a current key id:
+```bash
+SSO_MASTER_KEYS="2024-12=base64key1,2025-02=base64key2"
+SSO_MASTER_KEY_ID="2025-02"
+```
+2. (Optional) Enable envelope encryption for new writes:
+```bash
+SSO_ENVELOPE_ENCRYPTION="true"
+```
+3. Deploy the app (it will decrypt with any key in the ring and encrypt with the current key).
+4. Re-encrypt stored secrets in the background (CLI or admin UI):
+```bash
+npm run sso:rotate
+```
+5. After migration completes, remove old keys from `SSO_MASTER_KEYS`.
+
+To preview changes without writing to the database:
+```bash
+npm run sso:rotate -- --dry-run
+```
+
+To re-encrypt into a specific key (rollback or targeted migration):
+```bash
+npm run sso:rotate -- --target-key-id 2024-12
+```
+
+To migrate only secrets encrypted with a specific key:
+```bash
+npm run sso:rotate -- --from-key-id 2024-12
+```
+
+### Admin rotation UI
+- Visit `/admin` and use the **SSO key rotation** panel to run a dry run or apply a rotation.
+- The panel records each run in the audit log and shows the latest results.
+
+### Scheduled rotation hook
+Run this on a scheduler (cron, GitHub Actions, or a task runner) to perform periodic rotations.
+
+```bash
+SSO_ROTATE_SCHEDULED="true"
+SSO_ROTATE_MIN_INTERVAL_HOURS="24"
+npm run sso:rotate:scheduled
+```
+
+The scheduled hook will skip execution if the last rotation occurred within the minimum interval.
+Rotation runs also acquire a database advisory lock to prevent overlapping rotations.
 
 
 ## Authentication flow

@@ -11,7 +11,9 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:push": "prisma db push",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "sso:rotate": "tsx scripts/rotate-sso-secrets.ts",
+    "sso:rotate:scheduled": "tsx scripts/rotate-sso-secrets-scheduled.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

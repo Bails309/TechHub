@@ -241,7 +241,15 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
         return true;
       },
-      async jwt({ token, user, account }) {
+      async jwt({ token, user, account, trigger, session }) {
+        if (trigger === 'update') {
+          const updatedMustChange = (session as { user?: { mustChangePassword?: boolean } } | null | undefined)
+            ?.user?.mustChangePassword;
+          if (typeof updatedMustChange === 'boolean') {
+            token.mustChangePassword = updatedMustChange;
+          }
+        }
+
         if (user?.id) {
           token.id = user.id;
         }

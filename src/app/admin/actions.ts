@@ -10,6 +10,7 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { getServerAuthSession } from '@/lib/auth';
 import { encryptSecret, hasSecretKey } from '@/lib/crypto';
+import { rotateSsoSecrets, withRotationLock } from '@/lib/ssoRotation';
 import { hashPassword, validatePasswordComplexity } from '@/lib/password';
 import { getPasswordPolicy } from '@/lib/passwordPolicy';
 import { lookup } from 'dns/promises';
@@ -18,7 +19,12 @@ import ipaddr from 'ipaddr.js';
 
 const appSchemaBase = z.object({
   name: z.string().min(2),
-  url: z.string().url(),
+  url: z
+    .string()
+    .url()
+    .refine((value) => value.startsWith('http://') || value.startsWith('https://'), {
+      message: 'URL must use http or https'
+    }),
   categorySelect: z.string().optional(),
   categoryNew: z.string().optional(),
   description: z.string().optional(),
@@ -966,4 +972,95 @@ export async function updateSsoConfig(
   revalidateTag('sso-config');
   revalidatePath('/admin');
   return { status: 'success', message: 'Keycloak settings saved' };
+}
+
+export type SsoRotationState = {
+  status: 'idle' | 'success' | 'error';
+  message: string;
+  details?: {
+    updated: number;
+    skipped: number;
+    failed: number;
+    targetKeyId: string;
+    fromKeyId: string | null;
+  };
+};
+
+export async function rotateSsoSecretsAction(
+  _prevState: SsoRotationState,
+  formData: FormData
+): Promise<SsoRotationState> {
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
+
+  const dryRun = formData.get('dryRun') === 'on';
+  const confirmApply = formData.get('confirmApply') === 'on';
+  if (!dryRun && !confirmApply) {
+    return {
+      status: 'error',
+      message: 'Confirm applying changes before running a live rotation.'
+    };
+  }
+
+  const targetKeyId = String(formData.get('targetKeyId') ?? '').trim() || null;
+  const fromKeyId = String(formData.get('fromKeyId') ?? '').trim() || null;
+
+  try {
+    const lock = await withRotationLock(() =>
+      rotateSsoSecrets({
+        dryRun,
+        targetKeyId,
+        fromKeyId
+      })
+    );
+
+    if (!lock.acquired || !lock.result) {
+      return {
+        status: 'error',
+        message: 'Another rotation is already in progress. Try again shortly.'
+      };
+    }
+
+    const result = lock.result;
+
+    await prisma.ssoAudit.create({
+      data: {
+        provider: 'system',
+        action: 'rotate',
+        actorId: session.user.id,
+        changes: {
+          trigger: 'admin',
+          dryRun,
+          updated: result.updated,
+          skipped: result.skipped,
+          failed: result.failed,
+          targetKeyId: result.targetKeyId,
+          fromKeyId: result.fromKeyId,
+          sourceKeyDistribution: result.sourceKeyDistribution
+        }
+      }
+    });
+
+    revalidateTag('sso-config');
+    revalidatePath('/admin');
+
+    return {
+      status: 'success',
+      message: dryRun
+        ? `Dry run completed: updated=${result.updated}, skipped=${result.skipped}, failed=${result.failed}`
+        : `Rotation completed: updated=${result.updated}, skipped=${result.skipped}, failed=${result.failed}`,
+      details: {
+        updated: result.updated,
+        skipped: result.skipped,
+        failed: result.failed,
+        targetKeyId: result.targetKeyId,
+        fromKeyId: result.fromKeyId
+      }
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Rotation failed';
+    return { status: 'error', message };
+  }
 }
