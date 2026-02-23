@@ -10,6 +10,7 @@ import CreateLocalUserForm from '@/components/CreateLocalUserForm';
 import LinkSsoAccountForm from '@/components/LinkSsoAccountForm';
 import UsersList from '@/components/UsersList';
 import AdminActionForm from '@/components/AdminActionForm';
+import DeleteUserForm from '@/components/DeleteUserForm';
 import {
   createApp,
   deleteApp,
@@ -19,7 +20,8 @@ import {
   deleteRole,
   createLocalUser,
   linkSsoAccount,
-  updatePasswordPolicy
+  updatePasswordPolicy,
+  deleteUser
 } from './actions';
 
 
@@ -46,7 +48,11 @@ export default async function AdminPage({
       ? 'Confirm the admin grant checkbox before saving admin role changes.'
       : resolvedParams?.error === 'self-admin'
         ? 'You cannot remove your own admin role.'
-        : null;
+        : resolvedParams?.error === 'self-delete'
+          ? 'You cannot delete your own account from the admin UI.'
+          : resolvedParams?.error === 'last-admin'
+            ? 'Cannot delete the last remaining admin user.'
+            : null;
 
   if (!session || !roles.includes('admin')) {
     return (
@@ -419,49 +425,52 @@ export default async function AdminPage({
           {users.map((user) => {
             const currentRoles = new Set(user.roles.map((item) => item.roleId));
             return (
-              <AdminActionForm
-                key={user.id}
-                action={updateUserRoles}
-                successMessage="Roles saved."
-                className="rounded-2xl border border-ink-800 px-5 py-4 space-y-4"
-              >
-                <input type="hidden" name="userId" value={user.id} />
-                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="font-semibold">
-                      {user.name ?? user.email ?? 'Unnamed user'}
-                    </p>
-                    <p className="text-xs text-ink-400">{user.email ?? 'No email'}</p>
-                    <p className="text-xs text-ink-300">
-                      Current roles: {user.roles.length ? user.roles.map((item) => item.role.name).join(', ') : 'None'}
-                    </p>
+              <div key={user.id} className="space-y-3">
+                <AdminActionForm
+                  action={updateUserRoles}
+                  successMessage="Roles saved."
+                  className="rounded-2xl border border-ink-800 px-5 py-4 space-y-4"
+                >
+                  <input type="hidden" name="userId" value={user.id} />
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="font-semibold">{user.name ?? user.email ?? 'Unnamed user'}</p>
+                      <p className="text-xs text-ink-400">{user.email ?? 'No email'}</p>
+                      <p className="text-xs text-ink-300">
+                        Current roles: {user.roles.length ? user.roles.map((item) => item.role.name).join(', ') : 'None'}
+                      </p>
+                    </div>
+                    <button
+                      type="submit"
+                      className="rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
+                    >
+                      Save roles
+                    </button>
                   </div>
-                  <button
-                    type="submit"
-                    className="rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
-                  >
-                    Save roles
-                  </button>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {rolesList.map((role) => (
+                      <label key={role.id} className="flex items-center gap-2 text-sm text-ink-200">
+                        <input
+                          type="checkbox"
+                          name="roles"
+                          value={role.id}
+                          defaultChecked={currentRoles.has(role.id)}
+                          className="h-4 w-4"
+                        />
+                        {role.name}
+                      </label>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-ink-300">
+                    <input type="checkbox" name="confirmAdminGrant" className="h-4 w-4" />
+                    Confirm granting admin role (required when adding admin)
+                  </label>
+                </AdminActionForm>
+
+                <div className="flex justify-end">
+                  <DeleteUserForm action={deleteUser} userId={user.id} userEmail={user.email} />
                 </div>
-                <div className="grid gap-3 md:grid-cols-3">
-                  {rolesList.map((role) => (
-                    <label key={role.id} className="flex items-center gap-2 text-sm text-ink-200">
-                      <input
-                        type="checkbox"
-                        name="roles"
-                        value={role.id}
-                        defaultChecked={currentRoles.has(role.id)}
-                        className="h-4 w-4"
-                      />
-                      {role.name}
-                    </label>
-                  ))}
-                </div>
-                <label className="flex items-center gap-2 text-xs text-ink-300">
-                  <input type="checkbox" name="confirmAdminGrant" className="h-4 w-4" />
-                  Confirm granting admin role (required when adding admin)
-                </label>
-              </AdminActionForm>
+              </div>
             );
           })}
         </div>

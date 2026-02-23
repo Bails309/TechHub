@@ -297,6 +297,47 @@ export async function updateUserRoles(formData: FormData) {
   revalidatePath('/admin');
 }
 
+export async function deleteUser(formData: FormData) {
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    throw new Error('Unauthorized');
+  }
+
+  const userId = String(formData.get('userId') ?? '').trim();
+  if (!userId) return;
+
+  const confirmEmail = String(formData.get('confirmEmail') ?? '').trim().toLowerCase();
+
+  // Validate confirmation matches target user's email
+  const target = await prisma.user.findUnique({ where: { id: userId } });
+  if (!target) return;
+  const targetEmail = (target.email ?? '').toLowerCase();
+  if (!confirmEmail || confirmEmail !== targetEmail) {
+    // treat as unauthorized/missing confirmation
+    redirect('/admin?error=confirm-delete');
+  }
+
+  // Prevent deleting your own account from the admin dashboard
+  if (userId === session.user.id) {
+    redirect('/admin?error=self-delete');
+  }
+
+  // Prevent deleting the last admin
+  const adminRole = await prisma.role.findUnique({ where: { name: 'admin' } });
+  if (adminRole) {
+    const adminCount = await prisma.userRole.count({ where: { roleId: adminRole.id } });
+    const targetIsAdmin = await prisma.userRole.findFirst({ where: { userId, roleId: adminRole.id } });
+    if (targetIsAdmin && adminCount <= 1) {
+      redirect('/admin?error=last-admin');
+    }
+  }
+
+  await prisma.user.delete({ where: { id: userId } });
+
+  revalidatePath('/admin');
+  revalidatePath('/');
+}
+
 const roleSchema = z.object({
   name: z.string().min(2).max(48)
 });
@@ -681,7 +722,6 @@ async function fetchWithPinnedIp(url: string, hostname: string, address: string)
   }
   const parsed = ipaddr.process(address);
   const resolvedAddress = parsed.toNormalizedString();
-  const resolvedFamily = parsed.kind() === 'ipv6' ? 6 : 4;
   const target = new URL(url);
 
   return await new Promise<{ ok: boolean; status: number }>((resolve, reject) => {
