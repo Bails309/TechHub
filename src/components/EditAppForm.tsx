@@ -43,6 +43,15 @@ export default function EditAppForm({
 
   const existingIcon = app.icon ?? null;
   const displayIcon = useMemo(() => previewUrl ?? existingIcon, [existingIcon, previewUrl]);
+  const safeDisplayIcon = useMemo(() => {
+    if (!displayIcon) {
+      return null;
+    }
+    if (displayIcon.startsWith('blob:') || displayIcon.startsWith('/uploads/')) {
+      return displayIcon;
+    }
+    return null;
+  }, [displayIcon]);
 
   useEffect(() => {
     return () => {
@@ -138,10 +147,10 @@ export default function EditAppForm({
           }}
           className="input-surface mt-2 w-full rounded-full px-4 py-2 text-xs text-ink-100"
         />
-        {displayIcon ? (
+        {safeDisplayIcon ? (
           <div className="mt-3 flex items-center gap-3">
             <div className="h-10 w-10 rounded-2xl bg-white/10 flex items-center justify-center">
-              <img src={displayIcon} alt="" className="h-8 w-8 object-contain" />
+              <img src={safeDisplayIcon} alt="" className="h-8 w-8 object-contain" />
             </div>
             <p className="text-xs text-ink-300">Icon preview</p>
           </div>

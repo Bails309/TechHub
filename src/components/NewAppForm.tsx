@@ -21,6 +21,7 @@ export default function NewAppForm({
   const [isPending, startTransition] = useTransition();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [audience, setAudience] = useState('AUTHENTICATED');
+  const safePreviewUrl = previewUrl?.startsWith('blob:') ? previewUrl : null;
 
   const handleAudienceChange = (value: string) => {
     if (value === 'PUBLIC' || value === 'AUTHENTICATED' || value === 'ROLE' || value === 'USER') {
@@ -124,10 +125,10 @@ export default function NewAppForm({
           }}
           className="input-surface mt-2 w-full rounded-full px-4 py-2 text-xs text-ink-100"
         />
-        {previewUrl ? (
+        {safePreviewUrl ? (
           <div className="mt-3 flex items-center gap-3">
             <div className="h-10 w-10 rounded-2xl bg-white/10 flex items-center justify-center">
-              <img src={previewUrl} alt="" className="h-8 w-8 object-contain" />
+              <img src={safePreviewUrl} alt="" className="h-8 w-8 object-contain" />
             </div>
             <p className="text-xs text-ink-300">Icon preview</p>
           </div>
