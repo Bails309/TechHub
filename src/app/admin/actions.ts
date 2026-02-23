@@ -13,7 +13,7 @@ import { encryptSecret, hasSecretKey } from '@/lib/crypto';
 import { hashPassword, validatePasswordComplexity } from '@/lib/password';
 import { getPasswordPolicy } from '@/lib/passwordPolicy';
 import { lookup } from 'dns/promises';
-import { isIP } from 'net';
+import ipaddr from 'ipaddr.js';
 import { Agent, fetch as undiciFetch } from 'undici';
 
 const appSchemaBase = z.object({
@@ -564,26 +564,13 @@ function normalizeIssuer(value: string) {
   return value.replace(/\/+$/, '');
 }
 
-function isPrivateIpv4(ip: string) {
-  const parts = ip.split('.').map((part) => Number(part));
-  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
+function isPublicIp(address: string) {
+  try {
+    const parsed = ipaddr.process(address);
+    return parsed.range() === 'unicast';
+  } catch {
     return false;
   }
-  const [a, b] = parts;
-  if (a === 10) return true;
-  if (a === 127) return true;
-  if (a === 169 && b === 254) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  return false;
-}
-
-function isPrivateIpv6(ip: string) {
-  const normalized = ip.toLowerCase();
-  if (normalized === '::1') return true;
-  if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
-  if (normalized.startsWith('fe80')) return true;
-  return false;
 }
 
 type ResolvedIssuer = {
@@ -609,24 +596,18 @@ async function validateIssuerUrl(rawIssuer: string): Promise<ResolvedIssuer> {
     throw new Error('Issuer URL must be a public hostname');
   }
 
-  const ipType = isIP(hostname);
-  if (ipType === 4 && isPrivateIpv4(hostname)) {
-    throw new Error('Issuer URL must be a public hostname');
-  }
-  if (ipType === 6 && isPrivateIpv6(hostname)) {
+  const isIpLiteral = ipaddr.isValid(hostname);
+  if (isIpLiteral && !isPublicIp(hostname)) {
     throw new Error('Issuer URL must be a public hostname');
   }
 
-  if (ipType === 0) {
+  if (!isIpLiteral) {
     const records = await lookup(hostname, { all: true });
     if (!records.length) {
       throw new Error('Issuer URL host could not be resolved');
     }
     for (const record of records) {
-      if (record.family === 4 && isPrivateIpv4(record.address)) {
-        throw new Error('Issuer URL must be a public hostname');
-      }
-      if (record.family === 6 && isPrivateIpv6(record.address)) {
+      if (!isPublicIp(record.address)) {
         throw new Error('Issuer URL must be a public hostname');
       }
     }
@@ -640,10 +621,11 @@ async function validateIssuerUrl(rawIssuer: string): Promise<ResolvedIssuer> {
     };
   }
 
+  const literal = ipaddr.process(hostname);
   return {
     normalized: normalizeIssuer(url.toString()),
     hostname,
-    addresses: [{ address: hostname, family: ipType as 4 | 6 }]
+    addresses: [{ address: hostname, family: literal.kind() === 'ipv6' ? 6 : 4 }]
   };
 }
 
@@ -763,43 +745,6 @@ export async function updateSsoConfig(
         }
         const issuerUrl = `https://login.microsoftonline.com/${resolvedTenantId}/v2.0`;
         await testOpenIdConfiguration(issuerUrl);
-
-        const existingConfig = existing?.config as Record<string, unknown> | null;
-        const config = {
-          clientId: payload.clientId || (existingConfig?.clientId as string | undefined) || null,
-          tenantId: payload.tenantId || (existingConfig?.tenantId as string | undefined) || null
-        };
-
-        if (payload.clientSecret && !hasSecretKey()) {
-          return { status: 'error', message: 'SSO_MASTER_KEY is required to store secrets' };
-        }
-
-        const updateData: {
-          enabled: boolean;
-          config: Prisma.InputJsonValue | Prisma.NullTypes.JsonNull;
-          clientSecretEnc?: string | null;
-        } = {
-          enabled: existing?.enabled ?? false,
-          config: config.clientId || config.tenantId ? config : Prisma.JsonNull
-        };
-
-        if (payload.clearSecret) {
-          updateData.clientSecretEnc = null;
-        }
-        if (payload.clientSecret) {
-          updateData.clientSecretEnc = encryptSecret(payload.clientSecret);
-        }
-
-        await prisma.ssoConfig.upsert({
-          where: { provider: 'azure-ad' },
-          update: updateData,
-          create: {
-            provider: 'azure-ad',
-            enabled: updateData.enabled,
-            config: updateData.config,
-            clientSecretEnc: updateData.clientSecretEnc ?? null
-          }
-        });
       } else {
         const payload = ssoKeycloakSchema.parse({
           provider: 'keycloak',
@@ -815,43 +760,6 @@ export async function updateSsoConfig(
           return { status: 'error', message: 'Issuer URL is required to test' };
         }
         await testOpenIdConfiguration(resolvedIssuer);
-
-        const existingConfig = existing?.config as Record<string, unknown> | null;
-        const config = {
-          clientId: payload.clientId || (existingConfig?.clientId as string | undefined) || null,
-          issuer: payload.issuer || (existingConfig?.issuer as string | undefined) || null
-        };
-
-        if (payload.clientSecret && !hasSecretKey()) {
-          return { status: 'error', message: 'SSO_MASTER_KEY is required to store secrets' };
-        }
-
-        const updateData: {
-          enabled: boolean;
-          config: Prisma.InputJsonValue | Prisma.NullTypes.JsonNull;
-          clientSecretEnc?: string | null;
-        } = {
-          enabled: existing?.enabled ?? false,
-          config: config.clientId || config.issuer ? config : Prisma.JsonNull
-        };
-
-        if (payload.clearSecret) {
-          updateData.clientSecretEnc = null;
-        }
-        if (payload.clientSecret) {
-          updateData.clientSecretEnc = encryptSecret(payload.clientSecret);
-        }
-
-        await prisma.ssoConfig.upsert({
-          where: { provider: 'keycloak' },
-          update: updateData,
-          create: {
-            provider: 'keycloak',
-            enabled: updateData.enabled,
-            config: updateData.config,
-            clientSecretEnc: updateData.clientSecretEnc ?? null
-          }
-        });
       }
     } catch (error) {
       return { status: 'error', message: error instanceof Error ? error.message : 'Test failed' };

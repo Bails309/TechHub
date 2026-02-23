@@ -465,7 +465,7 @@ export default async function AdminPage({
           <div className="flex items-center gap-2">
             {prevPage ? (
               <a
-                href={`/admin?page=${prevPage}`}
+                href={`/admin?page=${prevPage}&appPage=${appPage}`}
                 className="rounded-full border border-ink-700 px-3 py-1 text-xs text-ink-200 hover:border-ink-400 transition"
               >
                 Previous
@@ -480,7 +480,7 @@ export default async function AdminPage({
             </span>
             {nextPage ? (
               <a
-                href={`/admin?page=${nextPage}`}
+                href={`/admin?page=${nextPage}&appPage=${appPage}`}
                 className="rounded-full border border-ink-700 px-3 py-1 text-xs text-ink-200 hover:border-ink-400 transition"
               >
                 Next

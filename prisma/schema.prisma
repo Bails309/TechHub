@@ -48,6 +48,7 @@ model UserRole {
   roleId String
 
   @@id([userId, roleId])
+  @@index([roleId])
 }
 
 model AppLink {
@@ -63,6 +64,8 @@ model AppLink {
   userAccesses UserAppAccess[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+
+  @@index([roleId])
 }
 
 model UserAppAccess {

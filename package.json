@@ -21,6 +21,7 @@
     "@prisma/client": "^5.18.0",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
+    "ipaddr.js": "^2.2.0",
     "lucide-react": "^0.453.0",
     "next": "^15.1.0",
     "next-auth": "^4.24.7",

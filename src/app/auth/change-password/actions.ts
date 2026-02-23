@@ -66,6 +66,7 @@ export async function changePassword(
   const recentHistory = await prisma.passwordHistory.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: 'desc' },
+    skip: 1,
     take: historyDepth
   });
 
@@ -79,7 +80,7 @@ export async function changePassword(
   const nextHash = await hashPassword(parsed.data.newPassword);
   await prisma.$transaction(async (tx) => {
     await tx.passwordHistory.create({
-      data: { userId: user.id, hash: user.passwordHash! }
+      data: { userId: user.id, hash: nextHash }
     });
     await tx.user.update({
       where: { id: user.id },
@@ -88,7 +89,7 @@ export async function changePassword(
     const excess = await tx.passwordHistory.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
-      skip: historyDepth,
+      skip: policy.historyCount,
       select: { id: true }
     });
     if (excess.length) {

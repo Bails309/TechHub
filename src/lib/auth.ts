@@ -53,23 +53,17 @@ function parseForwarded(forwarded: string | undefined) {
 }
 
 function getRateLimitKey(headers: HeaderSource, fallbackKey?: string) {
-  const forwardedFor = readHeader(headers, 'x-forwarded-for');
-  const realIp = readHeader(headers, 'x-real-ip');
-  const clientIp = readHeader(headers, 'x-client-ip');
-  const cfIp = readHeader(headers, 'cf-connecting-ip');
-  const trueClientIp = readHeader(headers, 'true-client-ip');
-  const forwarded = parseForwarded(readHeader(headers, 'forwarded'));
-
   if (trustProxy) {
+    const forwardedFor = readHeader(headers, 'x-forwarded-for');
+    const realIp = readHeader(headers, 'x-real-ip');
+    const clientIp = readHeader(headers, 'x-client-ip');
+    const cfIp = readHeader(headers, 'cf-connecting-ip');
+    const trueClientIp = readHeader(headers, 'true-client-ip');
+    const forwarded = parseForwarded(readHeader(headers, 'forwarded'));
     const raw = forwardedFor ?? realIp ?? clientIp ?? cfIp ?? trueClientIp ?? forwarded;
     if (raw) {
       return raw.split(',')[0]?.trim() ?? 'unknown';
     }
-  }
-
-  const raw = realIp ?? clientIp ?? cfIp ?? trueClientIp ?? forwardedFor ?? forwarded;
-  if (raw) {
-    return raw.split(',')[0]?.trim() ?? 'unknown';
   }
 
   return fallbackKey ? `user:${fallbackKey.toLowerCase()}` : 'unknown';
