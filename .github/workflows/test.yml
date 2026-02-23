@@ -27,7 +27,14 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            echo "Found lockfile — running npm ci"
+            npm ci
+          else
+            echo "No lockfile found — running npm install (will generate package-lock.json)"
+            npm install
+          fi
 
       - name: Wait for Postgres
         run: |
