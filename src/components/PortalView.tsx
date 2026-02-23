@@ -185,11 +185,36 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
     const normalised = normaliseOrder(order, apps);
     const next = moveInOrder(normalised, fromId, toId);
     if (contextIds) {
-      const subset = contextIds;
-      const nextSubset = subset.filter((id) => id !== fromId);
+      // Create a base order with the dragged id removed to avoid duplication
+      const base = normaliseOrder(order, apps);
+      const baseWithoutFrom = base.filter((id) => id !== fromId);
+
+      // Determine the current items in the target subset that are present in the base
+      const subset = contextIds.filter((id) => baseWithoutFrom.includes(id));
       const targetIndex = subset.indexOf(toId);
+
+      // If we can't find the target in the subset, fall back to the simple move
+      if (targetIndex === -1) {
+        return persistOrder(next);
+      }
+
+      const nextSubset = [...subset];
       nextSubset.splice(targetIndex, 0, fromId);
-      return persistOrder(reorderSubset(normalised, subset, nextSubset));
+
+      // Find where the subset appears in the base order (assumes contiguous block)
+      const subsetSet = new Set(subset);
+      const firstIndex = baseWithoutFrom.findIndex((id) => subsetSet.has(id));
+      if (firstIndex === -1) {
+        return persistOrder(next);
+      }
+
+      const rebuilt = [
+        ...baseWithoutFrom.slice(0, firstIndex),
+        ...nextSubset,
+        ...baseWithoutFrom.slice(firstIndex + subset.length)
+      ];
+
+      return persistOrder(rebuilt);
     }
     return persistOrder(next);
   };
