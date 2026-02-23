@@ -5,41 +5,66 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 export type Theme = 'light' | 'dark';
 
 interface ThemeContextValue {
-  theme: Theme;
+  theme: Theme | undefined;
   toggleTheme: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') {
-    return 'dark';
-  }
-
-  const stored = window.localStorage.getItem('techhub-theme');
-  if (stored === 'light' || stored === 'dark') {
-    return stored;
-  }
-
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-}
-
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
+  // Start uninitialized to avoid reading browser APIs during SSR and causing
+  // hydration mismatches. We resolve the theme on mount and then render children.
+  const [theme, setTheme] = useState<Theme | undefined>(undefined);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.style.colorScheme = theme;
-    window.localStorage.setItem('techhub-theme', theme);
-  }, [theme]);
+    // Prefer the attribute set by theme-init.js which runs before React hydrates.
+    const attr = document.documentElement.getAttribute('data-theme');
+    if (attr === 'light' || attr === 'dark') {
+      setTheme(attr);
+      // Keep localStorage in sync
+      try {
+        window.localStorage.setItem('techhub-theme', attr);
+      } catch {}
+      document.documentElement.style.colorScheme = attr;
+      return;
+    }
+
+    const stored = window.localStorage.getItem('techhub-theme');
+    if (stored === 'light' || stored === 'dark') {
+      setTheme(stored);
+      document.documentElement.dataset.theme = stored;
+      document.documentElement.style.colorScheme = stored;
+      return;
+    }
+
+    const system = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    setTheme(system);
+    document.documentElement.dataset.theme = system;
+    document.documentElement.style.colorScheme = system;
+  }, []);
 
   const value = useMemo(
     () => ({
       theme,
-      toggleTheme: () => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
+      toggleTheme: () => {
+        setTheme((current) => {
+          const next = current === 'dark' ? 'light' : 'dark';
+          try {
+            document.documentElement.dataset.theme = next;
+            document.documentElement.style.colorScheme = next;
+            window.localStorage.setItem('techhub-theme', next);
+          } catch {}
+          return next;
+        });
+      }
     }),
     [theme]
   );
+
+  // Avoid rendering children until theme is resolved to prevent hydration mismatch
+  if (theme === undefined) {
+    return null;
+  }
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
