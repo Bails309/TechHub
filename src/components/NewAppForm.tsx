@@ -19,6 +19,8 @@ export default function NewAppForm({
   action
 }: NewAppFormProps) {
   const [isPending, startTransition] = useTransition();
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusTone, setStatusTone] = useState<'success' | 'error' | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [audience, setAudience] = useState('AUTHENTICATED');
   const safePreviewUrl = useMemo(() => {
@@ -59,8 +61,19 @@ export default function NewAppForm({
   return (
     <form
       action={(formData) => {
+        setStatusMessage(null);
+        setStatusTone(null);
         startTransition(() => {
-          void action(formData);
+          void (async () => {
+            try {
+              await action(formData);
+              setStatusMessage('App created.');
+              setStatusTone('success');
+            } catch {
+              setStatusMessage('Unable to create app.');
+              setStatusTone('error');
+            }
+          })();
         });
       }}
       encType="multipart/form-data"
@@ -161,6 +174,17 @@ export default function NewAppForm({
       >
         {isPending ? 'Creating…' : 'Create app'}
       </button>
+      {statusMessage ? (
+        <p
+          className={
+            statusTone === 'success'
+              ? 'text-emerald-300 text-xs md:col-span-2'
+              : 'text-rose-300 text-xs md:col-span-2'
+          }
+        >
+          {statusMessage}
+        </p>
+      ) : null}
     </form>
   );
 }

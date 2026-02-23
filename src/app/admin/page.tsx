@@ -9,6 +9,7 @@ import SsoConfigForm from '@/components/SsoConfigForm';
 import CreateLocalUserForm from '@/components/CreateLocalUserForm';
 import LinkSsoAccountForm from '@/components/LinkSsoAccountForm';
 import UsersList from '@/components/UsersList';
+import AdminActionForm from '@/components/AdminActionForm';
 import {
   createApp,
   deleteApp,
@@ -27,13 +28,17 @@ export const dynamic = 'force-dynamic';
 export default async function AdminPage({
   searchParams
 }: {
-  searchParams?: Promise<{ error?: string; page?: string }>;
+  searchParams?: Promise<{ error?: string; page?: string; appPage?: string }>;
 }) {
   const resolvedParams = await searchParams;
   const pageSize = 50;
   const requestedPage = Number(resolvedParams?.page ?? '1');
   const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const usersSkip = (page - 1) * pageSize;
+  const requestedAppPage = Number(resolvedParams?.appPage ?? '1');
+  const appPage =
+    Number.isFinite(requestedAppPage) && requestedAppPage > 0 ? requestedAppPage : 1;
+  const appsSkip = (appPage - 1) * pageSize;
   const session = await getServerAuthSession();
   const roles = session?.user?.roles ?? [];
   const errorMessage =
@@ -56,11 +61,14 @@ export default async function AdminPage({
     );
   }
 
-  const [apps, rolesList, categories, ssoConfigs, users, passwordPolicy, totalUsers] = await Promise.all([
-    prisma.appLink.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: { userAccesses: true }
-    }),
+  const [apps, rolesList, categories, ssoConfigs, users, passwordPolicy, totalUsers, totalApps] =
+    await Promise.all([
+      prisma.appLink.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: { userAccesses: true },
+        skip: appsSkip,
+        take: pageSize
+      }),
     prisma.role.findMany({ orderBy: { name: 'asc' } }),
     prisma.appLink.findMany({
       distinct: ['category'],
@@ -76,8 +84,9 @@ export default async function AdminPage({
       take: pageSize
     }),
     prisma.passwordPolicy.findFirst(),
-    prisma.user.count()
-  ]);
+      prisma.user.count(),
+      prisma.appLink.count()
+    ]);
 
   const ssoMap = new Map(ssoConfigs.map((item) => [item.provider, item]));
 
@@ -198,6 +207,9 @@ export default async function AdminPage({
   const totalPages = Math.max(1, Math.ceil(totalUsers / pageSize));
   const prevPage = page > 1 ? page - 1 : null;
   const nextPage = page < totalPages ? page + 1 : null;
+  const appTotalPages = Math.max(1, Math.ceil(totalApps / pageSize));
+  const prevAppPage = appPage > 1 ? appPage - 1 : null;
+  const nextAppPage = appPage < appTotalPages ? appPage + 1 : null;
 
   return (
     <div className="px-6 md:px-12 py-12 space-y-8">
@@ -238,7 +250,11 @@ export default async function AdminPage({
       <section className="glass rounded-[36px] p-8">
         <h2 className="font-serif text-2xl mb-6">Roles</h2>
         <div className="grid gap-6 md:grid-cols-2">
-          <form action={createRole} className="space-y-3">
+          <AdminActionForm
+            action={createRole}
+            successMessage="Role saved."
+            className="space-y-3"
+          >
             <label className="text-xs uppercase tracking-[0.2em] text-ink-400">
               Add role
             </label>
@@ -253,12 +269,17 @@ export default async function AdminPage({
             >
               Create role
             </button>
-          </form>
+          </AdminActionForm>
           <div className="space-y-3">
             <p className="text-xs uppercase tracking-[0.2em] text-ink-400">Remove role</p>
             <div className="space-y-2">
               {rolesList.map((role) => (
-                <form key={role.id} action={deleteRole} className="flex items-center gap-3">
+                <AdminActionForm
+                  key={role.id}
+                  action={deleteRole}
+                  successMessage="Role deleted."
+                  className="flex items-center gap-3"
+                >
                   <input type="hidden" name="roleId" value={role.id} />
                   <span className="text-sm text-ink-200">{role.name}</span>
                   <button
@@ -268,7 +289,7 @@ export default async function AdminPage({
                   >
                     Delete
                   </button>
-                </form>
+                </AdminActionForm>
               ))}
             </div>
             <p className="text-xs text-ink-400">
@@ -297,7 +318,11 @@ export default async function AdminPage({
 
       <section className="glass rounded-[36px] p-8">
         <h2 className="font-serif text-2xl mb-6">Password policy</h2>
-        <form action={updatePasswordPolicy} className="space-y-4">
+        <AdminActionForm
+          action={updatePasswordPolicy}
+          successMessage="Password policy saved."
+          className="space-y-4"
+        >
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-2">
               <label className="text-xs uppercase tracking-[0.2em] text-ink-400">
@@ -370,7 +395,7 @@ export default async function AdminPage({
           >
             Save policy
           </button>
-        </form>
+        </AdminActionForm>
       </section>
 
       <section className="glass rounded-[36px] p-8">
@@ -383,9 +408,10 @@ export default async function AdminPage({
           {users.map((user) => {
             const currentRoles = new Set(user.roles.map((item) => item.roleId));
             return (
-              <form
+              <AdminActionForm
                 key={user.id}
                 action={updateUserRoles}
+                successMessage="Roles saved."
                 className="rounded-2xl border border-ink-800 px-5 py-4 space-y-4"
               >
                 <input type="hidden" name="userId" value={user.id} />
@@ -424,7 +450,7 @@ export default async function AdminPage({
                   <input type="checkbox" name="confirmAdminGrant" className="h-4 w-4" />
                   Confirm granting admin role (required when adding admin)
                 </label>
-              </form>
+              </AdminActionForm>
             );
           })}
         </div>
@@ -480,6 +506,40 @@ export default async function AdminPage({
 
       <section className="glass rounded-[36px] p-8">
         <h2 className="font-serif text-2xl mb-6">Current catalogue</h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-xs text-ink-300">
+          <span>
+            Showing {apps.length} of {totalApps} apps
+          </span>
+          <div className="flex items-center gap-2">
+            {prevAppPage ? (
+              <a
+                href={`/admin?appPage=${prevAppPage}&page=${page}`}
+                className="rounded-full border border-ink-700 px-3 py-1 text-xs text-ink-200 hover:border-ink-400 transition"
+              >
+                Previous
+              </a>
+            ) : (
+              <span className="rounded-full border border-ink-800 px-3 py-1 text-xs text-ink-500">
+                Previous
+              </span>
+            )}
+            <span className="text-xs text-ink-400">
+              Page {appPage} of {appTotalPages}
+            </span>
+            {nextAppPage ? (
+              <a
+                href={`/admin?appPage=${nextAppPage}&page=${page}`}
+                className="rounded-full border border-ink-700 px-3 py-1 text-xs text-ink-200 hover:border-ink-400 transition"
+              >
+                Next
+              </a>
+            ) : (
+              <span className="rounded-full border border-ink-800 px-3 py-1 text-xs text-ink-500">
+                Next
+              </span>
+            )}
+          </div>
+        </div>
         <div className="space-y-4">
           {apps.map((app) => (
             <div

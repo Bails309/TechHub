@@ -67,10 +67,7 @@ const uploadSchema = z
   .refine((file) => file.size <= MAX_ICON_BYTES, { message: 'File too large' })
   .refine((file) => {
     const extension = path.extname(file.name).toLowerCase();
-    if (ALLOWED_ICON_EXTENSIONS.has(extension)) {
-      return true;
-    }
-    return ALLOWED_ICON_MIME_TYPES.has(file.type);
+    return ALLOWED_ICON_EXTENSIONS.has(extension) && ALLOWED_ICON_MIME_TYPES.has(file.type);
   }, { message: 'Invalid file type' });
 
 async function saveIcon(file: File) {

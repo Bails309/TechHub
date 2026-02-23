@@ -62,10 +62,11 @@ export async function changePassword(
     return { status: 'error', message: 'New password must be different from current password' };
   }
 
+  const historyDepth = Math.max(policy.historyCount - 1, 0);
   const recentHistory = await prisma.passwordHistory.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: 'desc' },
-    take: policy.historyCount
+    take: historyDepth
   });
 
   for (const entry of recentHistory) {
@@ -87,7 +88,7 @@ export async function changePassword(
     const excess = await tx.passwordHistory.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
-      skip: policy.historyCount,
+      skip: historyDepth,
       select: { id: true }
     });
     if (excess.length) {

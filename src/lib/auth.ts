@@ -264,10 +264,6 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           token.authProvider = (user as { authProvider?: string }).authProvider;
         }
 
-        if (Array.isArray((user as { roles?: string[] } | undefined)?.roles)) {
-          token.roles = (user as { roles: string[] }).roles;
-        }
-
         return token;
       },
       async session({ session, token }) {

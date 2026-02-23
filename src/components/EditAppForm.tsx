@@ -32,6 +32,8 @@ export default function EditAppForm({
   action
 }: EditAppFormProps) {
   const [isPending, startTransition] = useTransition();
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusTone, setStatusTone] = useState<'success' | 'error' | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [audience, setAudience] = useState(app.audience);
 
@@ -75,8 +77,19 @@ export default function EditAppForm({
   return (
     <form
       action={(formData) => {
+        setStatusMessage(null);
+        setStatusTone(null);
         startTransition(() => {
-          void action(formData);
+          void (async () => {
+            try {
+              await action(formData);
+              setStatusMessage('Changes saved.');
+              setStatusTone('success');
+            } catch {
+              setStatusMessage('Unable to save changes.');
+              setStatusTone('error');
+            }
+          })();
         });
       }}
       encType="multipart/form-data"
@@ -179,6 +192,17 @@ export default function EditAppForm({
       >
         {isPending ? 'Saving…' : 'Save changes'}
       </button>
+      {statusMessage ? (
+        <p
+          className={
+            statusTone === 'success'
+              ? 'text-emerald-300 text-xs md:col-span-2'
+              : 'text-rose-300 text-xs md:col-span-2'
+          }
+        >
+          {statusMessage}
+        </p>
+      ) : null}
     </form>
   );
 }

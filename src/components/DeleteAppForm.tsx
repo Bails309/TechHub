@@ -13,6 +13,8 @@ export default function DeleteAppForm({
 }) {
   const [isPending, startTransition] = useTransition();
   const [isOpen, setIsOpen] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusTone, setStatusTone] = useState<'success' | 'error' | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -36,12 +38,21 @@ export default function DeleteAppForm({
     <>
       <button
         type="button"
-        onClick={() => setIsOpen(true)}
+        onClick={() => {
+          setStatusMessage(null);
+          setStatusTone(null);
+          setIsOpen(true);
+        }}
         className="rounded-full bg-red-500/90 px-4 py-2 text-xs font-semibold text-white shadow-glow/20 transition hover:bg-red-400 disabled:opacity-60"
         disabled={isPending}
       >
         Remove
       </button>
+      {statusMessage ? (
+        <p className={statusTone === 'success' ? 'text-emerald-300 text-xs' : 'text-rose-300 text-xs'}>
+          {statusMessage}
+        </p>
+      ) : null}
 
       {isOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
@@ -68,7 +79,16 @@ export default function DeleteAppForm({
               <form
                 action={(formData) => {
                   startTransition(() => {
-                    void action(formData);
+                    void (async () => {
+                      try {
+                        await action(formData);
+                        setStatusMessage('App removed.');
+                        setStatusTone('success');
+                      } catch {
+                        setStatusMessage('Unable to remove app.');
+                        setStatusTone('error');
+                      }
+                    })();
                   });
                   setIsOpen(false);
                 }}
