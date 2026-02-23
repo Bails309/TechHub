@@ -74,7 +74,7 @@ vi.mock('@/lib/prisma', () => ({ prisma: mockPrisma }));
 
 describe('changePassword concurrency', () => {
   it('serializes concurrent password changes and rejects reuse', async () => {
-    const { changePassword } = await import('@/app/auth/change-password/actions');
+    const { changePassword } = await import('../src/app/auth/change-password/actions');
 
     const makeForm = (current: string, next: string) => ({ get: (k: string) => (k === 'currentPassword' ? current : k === 'newPassword' || k === 'confirmPassword' ? next : '') });
 

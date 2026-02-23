@@ -24,6 +24,7 @@ COPY --from=builder /app/src ./src
 RUN mkdir -p /app/uploads
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/test ./test
 COPY --from=builder /app/package.json ./package.json
 EXPOSE 3000
 CMD ["npm", "start"]

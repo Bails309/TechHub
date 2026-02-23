@@ -110,7 +110,7 @@ function normalizeIp(raw: string | undefined) {
   return ipaddr.isValid(trimmed) ? ipaddr.process(trimmed).toString() : undefined;
 }
 
-function getClientIp(headers: HeaderSource, remoteAddr?: string) {
+export function getClientIp(headers: HeaderSource, remoteAddr?: string) {
   // Prefer immediate remote address when available
   const remoteNormalized = normalizeIp(remoteAddr ?? undefined);
 
@@ -138,7 +138,7 @@ function getClientIp(headers: HeaderSource, remoteAddr?: string) {
   return remoteNormalized ?? normalizeIp(readHeader(headers, 'x-real-ip')) ?? undefined;
 }
 
-function getRateLimitKey(headers: HeaderSource, fallbackKey?: string, remoteAddr?: string) {
+export function getRateLimitKey(headers: HeaderSource, fallbackKey?: string, remoteAddr?: string) {
   const ip = getClientIp(headers, remoteAddr);
   const emailKey = fallbackKey ? fallbackKey.toLowerCase() : undefined;
 
