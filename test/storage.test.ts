@@ -39,4 +39,21 @@ describe('storage adapter (local)', () => {
     await storage.deleteIcon(saved);
     expect(fs.existsSync(full)).toBe(false);
   });
+
+  it('prevents path-traversal deletes (does not remove files outside uploads)', async () => {
+    const dangerPath = path.join(process.cwd(), 'danger.txt');
+    try {
+      fs.writeFileSync(dangerPath, 'safe');
+      // attempt to delete using a traversal path that starts with uploads/
+      await storage.deleteIcon('/uploads/../danger.txt');
+      // the file must still exist if traversal was rejected
+      expect(fs.existsSync(dangerPath)).toBe(true);
+    } finally {
+      try {
+        if (fs.existsSync(dangerPath)) fs.unlinkSync(dangerPath);
+      } catch {
+        // ignore
+      }
+    }
+  });
 });
