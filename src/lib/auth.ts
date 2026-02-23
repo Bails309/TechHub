@@ -1,4 +1,5 @@
-import type { NextAuthOptions } from 'next-auth';
+import type { NextAuthOptions, Session, User, Account } from 'next-auth';
+import type { JWT } from 'next-auth/jwt';
 import AzureAD from 'next-auth/providers/azure-ad';
 import Credentials from 'next-auth/providers/credentials';
 import Keycloak from 'next-auth/providers/keycloak';
@@ -360,10 +361,9 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
         return true;
       },
-      async jwt({ token, user, account, trigger, session }) {
+      async jwt({ token, user, account, trigger, session }: { token: JWT; user?: User; account?: Account | null; trigger?: string; session?: Session | null }) {
         if (trigger === 'update') {
-          const updatedMustChange = (session as { user?: { mustChangePassword?: boolean } } | null | undefined)
-            ?.user?.mustChangePassword;
+          const updatedMustChange = session?.user?.mustChangePassword;
           if (typeof updatedMustChange === 'boolean') {
             token.mustChangePassword = updatedMustChange;
           }
@@ -381,17 +381,21 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           token.authProvider = account.provider;
         }
 
-        if (!token.authProvider && (user as { authProvider?: string } | undefined)?.authProvider) {
-          token.authProvider = (user as { authProvider?: string }).authProvider;
+        if (!token.authProvider && user?.authProvider) {
+          token.authProvider = user.authProvider;
+        }
+
+        if (user?.roles) {
+          token.roles = user.roles;
         }
 
         return token;
       },
-      async session({ session, token }) {
+      async session({ session, token }: { session: Session; token: JWT }) {
         if (session.user) {
           const userId = token.sub ?? '';
           session.user.id = userId;
-          session.user.authProvider = token.authProvider as string | undefined;
+          session.user.authProvider = token.authProvider ?? undefined;
 
           if (userId) {
             const userRecord = await prisma.user.findUnique({
@@ -404,9 +408,8 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             session.user.roles = userRecord?.roles.map((item) => item.role.name) ?? [];
             session.user.mustChangePassword = userRecord?.mustChangePassword ?? false;
           } else {
-            session.user.roles = (token.roles as string[] | undefined) ?? [];
-            session.user.mustChangePassword =
-              (token.mustChangePassword as boolean | undefined) ?? false;
+            session.user.roles = token.roles ?? [];
+            session.user.mustChangePassword = token.mustChangePassword ?? false;
           }
         }
         return session;
