@@ -27,6 +27,23 @@ const keycloakConfiguredEnv =
   Boolean(process.env.KEYCLOAK_ISSUER);
 
 const credentialsEnabledEnv = process.env.ENABLE_CREDENTIALS !== 'false';
+const allowEmailLinking = process.env.ALLOW_SSO_EMAIL_LINKING === 'true';
+const trustProxy = process.env.TRUST_PROXY === 'true';
+const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
+
+function getRateLimitKey(headers: Record<string, string | string[] | undefined>) {
+  if (trustProxy) {
+    const forwardedFor = headers['x-forwarded-for'];
+    const raw = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
+    if (raw) {
+      return raw.split(',')[0]?.trim() ?? 'unknown';
+    }
+    const realIp = headers['x-real-ip'];
+    return Array.isArray(realIp) ? realIp[0] ?? 'unknown' : realIp ?? 'unknown';
+  }
+
+  return 'local';
+}
 
 function buildCredentialsProvider() {
   return Credentials({
@@ -41,8 +58,7 @@ function buildCredentialsProvider() {
         return null;
       }
 
-      const forwardedFor = req?.headers?.['x-forwarded-for'];
-      const ip = forwardedFor?.split(',')[0]?.trim() ?? 'local';
+      const ip = getRateLimitKey(req?.headers ?? {});
       await assertRateLimit(ip);
 
       const user = await prisma.user.findUnique({
@@ -99,7 +115,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             clientId,
             clientSecret,
             tenantId,
-            allowDangerousEmailAccountLinking: true
+            allowDangerousEmailAccountLinking: allowEmailLinking
           })
         );
       }
@@ -110,7 +126,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         clientId: process.env.AZURE_AD_CLIENT_ID ?? '',
         clientSecret: process.env.AZURE_AD_CLIENT_SECRET ?? '',
         tenantId: process.env.AZURE_AD_TENANT_ID ?? '',
-        allowDangerousEmailAccountLinking: true
+        allowDangerousEmailAccountLinking: allowEmailLinking
       })
     );
   }
@@ -127,7 +143,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             clientId,
             clientSecret,
             issuer,
-            allowDangerousEmailAccountLinking: true
+            allowDangerousEmailAccountLinking: allowEmailLinking
           })
         );
       }
@@ -138,7 +154,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         clientId: process.env.KEYCLOAK_CLIENT_ID ?? '',
         clientSecret: process.env.KEYCLOAK_CLIENT_SECRET ?? '',
         issuer: process.env.KEYCLOAK_ISSUER ?? '',
-        allowDangerousEmailAccountLinking: true
+        allowDangerousEmailAccountLinking: allowEmailLinking
       })
     );
   }
@@ -159,11 +175,20 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
     providers,
     callbacks: {
       async signIn({ user, account }) {
-        if (account?.provider && account.provider !== 'credentials' && user?.email) {
+        if (account?.provider && account.provider !== 'credentials') {
+          if (!user?.email) {
+            return false;
+          }
+
           const existing = await prisma.user.findUnique({
             where: { email: user.email }
           });
-          if (existing) {
+
+          if (requirePreprovisionedUsers && !existing) {
+            return false;
+          }
+
+          if (allowEmailLinking && existing) {
             await prisma.$transaction([
               prisma.user.update({
                 where: { id: existing.id },
@@ -178,6 +203,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             ]);
           }
         }
+
         return true;
       },
       async jwt({ token, user, account }) {

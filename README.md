@@ -1,9 +1,13 @@
 # TechHub
+
 Modern app-launcher portal for internal teams with SSO, credential fallback, and an admin-managed catalogue.
+
+**Important:** SSO sign-in now requires users to be pre-provisioned with a local account. Admins must explicitly link SSO accounts to local users via the admin UI. Self-registration via SSO is blocked by default for security.
 
 ## Highlights
 - Next.js App Router + TypeScript + Tailwind
 - Microsoft Entra ID and Keycloak SSO, with optional local credentials
+- **SSO sign-in requires pre-provisioned users; SSO accounts must be linked by an admin**
 - Admin-managed catalogue with role-based and user-specific access
 - Configurable password policy and forced first-login reset for local users
 - Per-user app ordering, search, and theme toggle
@@ -31,6 +35,7 @@ Modern app-launcher portal for internal teams with SSO, credential fallback, and
 
 The compose entrypoint runs `prisma db push` and `prisma db seed` before `npm start`.
 
+
 ## Environment variables
 - `NEXTAUTH_SECRET`: required for NextAuth JWT signing
 - `NEXTAUTH_URL`: app base URL (use `http://localhost:3000` locally)
@@ -45,23 +50,33 @@ The compose entrypoint runs `prisma db push` and `prisma db seed` before `npm st
 - `KEYCLOAK_CLIENT_SECRET`: Keycloak client secret (optional fallback if no DB config)
 - `KEYCLOAK_ISSUER`: Keycloak issuer URL (optional fallback if no DB config)
 - `ENABLE_CREDENTIALS`: set to `false` to disable local credentials login when no DB config exists
+- `ALLOW_SSO_EMAIL_LINKING`: set to `true` to auto-link SSO users to existing local accounts by email (default: `false`). When `false`, SSO accounts must be linked by an admin.
+- `TRUST_PROXY`: set to `true` when running behind a trusted reverse proxy to trust `X-Forwarded-For`
+- `REQUIRE_PREPROVISIONED_USERS`: set to `true` (default/recommended) to block SSO sign-in unless a local user exists. Prevents SSO self-registration.
 
 Generate a master key with:
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
+
 ## Authentication flow
 - Local credentials are optional and can be disabled globally or via the admin UI.
 - SSO providers are configured in the admin UI and stored encrypted using `SSO_MASTER_KEY`.
 - First-time local users must change their password at `/auth/change-password`.
-- SSO users are auto-linked to existing local accounts by email and converted to SSO-only on first login.
+- **SSO sign-in is only allowed for users who already exist locally.**
+- **Admins must explicitly link SSO accounts to local users via the admin UI.**
+- If `ALLOW_SSO_EMAIL_LINKING` is `true`, SSO users are auto-linked to existing local accounts by email (not recommended for strict onboarding).
+
 
 ## Admin workflow
 - Visit `/admin` to manage apps, roles, users, and SSO settings.
 - Admin access requires the `admin` role on the user.
 - Configure SSO providers from the "SSO configuration" section (requires `SSO_MASTER_KEY` to save secrets).
 - Create local users, roles, and user-specific app assignments from the admin UI.
+- **Link SSO accounts to local users using the "Link SSO Account" form in the admin UI.**
+	- The form includes a helper to extract the provider account ID (`sub`) from a JWT or raw ID string.
+	- SSO accounts cannot be linked automatically unless `ALLOW_SSO_EMAIL_LINKING` is enabled.
 
 Default password policy:
 - Minimum length: 12
@@ -92,8 +107,11 @@ Default password policy:
 - `npm run prisma:migrate:deploy`: apply migrations
 - `npm run prisma:seed`: seed roles, admin user, and sample apps
 
+
 ## Security notes
-- CSP is applied via middleware with a per-request nonce for scripts and styles.
+- CSP is applied via middleware with a per-request nonce for scripts and styles (tightened to nonce-only for scripts/styles).
+- SSRF protection is enforced for SSO issuer validation (DNS/IP validation).
+- Rate limiting is hardened and respects the `TRUST_PROXY` flag.
 - `/api/app-order` returns 400 for invalid JSON or payloads.
 - SSO secrets are encrypted at rest using AES-256-GCM with `SSO_MASTER_KEY`.
 

@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import { PHASE_PRODUCTION_BUILD } from 'next/constants';
 import { decryptSecret } from './crypto';
+import { unstable_cache } from 'next/cache';
 
 export type SsoProviderId = 'azure-ad' | 'keycloak' | 'credentials';
 
@@ -11,13 +12,19 @@ export interface SsoConfigEntry {
   clientSecret: string | null;
 }
 
+const loadSsoConfigs = unstable_cache(
+  () => prisma.ssoConfig.findMany(),
+  ['sso-config'],
+  { tags: ['sso-config'] }
+);
+
 export async function getSsoConfigMap() {
   if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD) {
     return new Map();
   }
   let rows: Array<{ provider: string; enabled: boolean; config: unknown; clientSecretEnc: string | null }> = [];
   try {
-    rows = await prisma.ssoConfig.findMany();
+    rows = await loadSsoConfigs();
   } catch {
     return new Map();
   }

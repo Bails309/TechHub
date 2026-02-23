@@ -4,7 +4,7 @@ import { z } from 'zod';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { writeFile, mkdir } from 'fs/promises';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
@@ -12,6 +12,8 @@ import { getServerAuthSession } from '@/lib/auth';
 import { encryptSecret, hasSecretKey } from '@/lib/crypto';
 import { hashPassword, validatePasswordComplexity } from '@/lib/password';
 import { getPasswordPolicy } from '@/lib/passwordPolicy';
+import { lookup } from 'dns/promises';
+import { isIP } from 'net';
 
 const appSchemaBase = z.object({
   name: z.string().min(2),
@@ -341,6 +343,11 @@ export type CreateLocalUserState = {
   message: string;
 };
 
+export type LinkSsoAccountState = {
+  status: 'idle' | 'success' | 'error';
+  message: string;
+};
+
 export async function createLocalUser(
   _prevState: CreateLocalUserState,
   formData: FormData
@@ -367,40 +374,129 @@ export async function createLocalUser(
     return { status: 'error', message: complexityError };
   }
 
-  const existing = await prisma.user.findUnique({ where: { email: payload.data.email } });
-  if (existing) {
-    return { status: 'error', message: 'User already exists' };
-  }
-
   const validRoles = await prisma.role.findMany({ select: { id: true } });
   const validSet = new Set(validRoles.map((role) => role.id));
   const roleIds = (payload.data.roleIds ?? []).filter((id) => validSet.has(id));
 
   const passwordHash = await hashPassword(payload.data.password);
-  await prisma.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: {
-        name: payload.data.name,
-        email: payload.data.email,
-        passwordHash,
-        mustChangePassword: true
-      }
-    });
-
-    if (roleIds.length) {
-      await tx.userRole.createMany({
-        data: roleIds.map((roleId) => ({ userId: user.id, roleId })),
-        skipDuplicates: true
+  try {
+    await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name: payload.data.name,
+          email: payload.data.email,
+          passwordHash,
+          mustChangePassword: true
+        }
       });
-    }
 
-    await tx.passwordHistory.create({
-      data: { userId: user.id, hash: passwordHash }
+      if (roleIds.length) {
+        await tx.userRole.createMany({
+          data: roleIds.map((roleId) => ({ userId: user.id, roleId })),
+          skipDuplicates: true
+        });
+      }
+
+      await tx.passwordHistory.create({
+        data: { userId: user.id, hash: passwordHash }
+      });
     });
-  });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { status: 'error', message: 'User already exists' };
+    }
+    throw error;
+  }
 
   revalidatePath('/admin');
   return { status: 'success', message: 'Local user created' };
+}
+
+const linkSsoAccountSchema = z.object({
+  email: z.string().email(),
+  provider: z.enum(['azure-ad', 'keycloak']),
+  providerAccountId: z.string().min(1)
+});
+
+export async function linkSsoAccount(
+  _prevState: LinkSsoAccountState,
+  formData: FormData
+): Promise<LinkSsoAccountState> {
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
+
+  const payload = linkSsoAccountSchema.safeParse({
+    email: String(formData.get('email') ?? '').trim().toLowerCase(),
+    provider: String(formData.get('provider') ?? '').trim(),
+    providerAccountId: String(formData.get('providerAccountId') ?? '').trim()
+  });
+
+  if (!payload.success) {
+    return { status: 'error', message: 'Invalid link details' };
+  }
+
+  const user = await prisma.user.findUnique({ where: { email: payload.data.email } });
+  if (!user) {
+    return { status: 'error', message: 'User not found' };
+  }
+
+  const existingAccount = await prisma.account.findUnique({
+    where: {
+      provider_providerAccountId: {
+        provider: payload.data.provider,
+        providerAccountId: payload.data.providerAccountId
+      }
+    }
+  });
+
+  if (existingAccount && existingAccount.userId !== user.id) {
+    return { status: 'error', message: 'SSO account already linked to another user' };
+  }
+
+  const userProviderAccount = await prisma.account.findFirst({
+    where: { userId: user.id, provider: payload.data.provider }
+  });
+
+  if (userProviderAccount && userProviderAccount.providerAccountId !== payload.data.providerAccountId) {
+    return { status: 'error', message: 'User already linked to a different SSO account' };
+  }
+
+  try {
+    await prisma.$transaction([
+      prisma.account.upsert({
+        where: {
+          provider_providerAccountId: {
+            provider: payload.data.provider,
+            providerAccountId: payload.data.providerAccountId
+          }
+        },
+        update: { userId: user.id },
+        create: {
+          userId: user.id,
+          type: 'oauth',
+          provider: payload.data.provider,
+          providerAccountId: payload.data.providerAccountId
+        }
+      }),
+      prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash: null, mustChangePassword: false }
+      }),
+      prisma.passwordHistory.deleteMany({
+        where: { userId: user.id }
+      })
+    ]);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { status: 'error', message: 'SSO account already linked' };
+    }
+    throw error;
+  }
+
+  revalidatePath('/admin');
+  return { status: 'success', message: 'SSO account linked' };
 }
 
 const passwordPolicySchema = z.object({
@@ -470,8 +566,73 @@ function normalizeIssuer(value: string) {
   return value.replace(/\/+$/, '');
 }
 
+function isPrivateIpv4(ip: string) {
+  const parts = ip.split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
+    return false;
+  }
+  const [a, b] = parts;
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  return false;
+}
+
+function isPrivateIpv6(ip: string) {
+  const normalized = ip.toLowerCase();
+  if (normalized === '::1') return true;
+  if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
+  if (normalized.startsWith('fe80')) return true;
+  return false;
+}
+
+async function validateIssuerUrl(rawIssuer: string) {
+  let url: URL;
+  try {
+    url = new URL(rawIssuer);
+  } catch {
+    throw new Error('Issuer URL must be a valid URL');
+  }
+
+  if (url.protocol !== 'https:') {
+    throw new Error('Issuer URL must use https');
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
+    throw new Error('Issuer URL must be a public hostname');
+  }
+
+  const ipType = isIP(hostname);
+  if (ipType === 4 && isPrivateIpv4(hostname)) {
+    throw new Error('Issuer URL must be a public hostname');
+  }
+  if (ipType === 6 && isPrivateIpv6(hostname)) {
+    throw new Error('Issuer URL must be a public hostname');
+  }
+
+  if (ipType === 0) {
+    const records = await lookup(hostname, { all: true });
+    if (!records.length) {
+      throw new Error('Issuer URL host could not be resolved');
+    }
+    for (const record of records) {
+      if (record.family === 4 && isPrivateIpv4(record.address)) {
+        throw new Error('Issuer URL must be a public hostname');
+      }
+      if (record.family === 6 && isPrivateIpv6(record.address)) {
+        throw new Error('Issuer URL must be a public hostname');
+      }
+    }
+  }
+
+  return normalizeIssuer(url.toString());
+}
+
 async function testOpenIdConfiguration(issuer: string) {
-  const normalized = normalizeIssuer(issuer);
+  const normalized = await validateIssuerUrl(issuer);
   const endpoint = `${normalized}/.well-known/openid-configuration`;
   const response = await fetch(endpoint, { method: 'GET' });
   if (!response.ok) {
@@ -522,6 +683,7 @@ export async function updateSsoConfig(
         changes: { enabled }
       }
     });
+    revalidateTag('sso-config');
     revalidatePath('/admin');
     return { status: 'success', message: 'Credentials settings saved' };
   }
@@ -641,7 +803,7 @@ export async function updateSsoConfig(
     } catch (error) {
       return { status: 'error', message: error instanceof Error ? error.message : 'Test failed' };
     }
-
+    revalidateTag('sso-config');
     revalidatePath('/admin');
     return { status: 'success', message: 'Connection test succeeded' };
   }
@@ -718,6 +880,7 @@ export async function updateSsoConfig(
       }
     });
 
+    revalidateTag('sso-config');
     revalidatePath('/admin');
     return { status: 'success', message: 'Entra ID settings saved' };
   }
@@ -789,6 +952,7 @@ export async function updateSsoConfig(
     }
   });
 
+  revalidateTag('sso-config');
   revalidatePath('/admin');
   return { status: 'success', message: 'Keycloak settings saved' };
 }

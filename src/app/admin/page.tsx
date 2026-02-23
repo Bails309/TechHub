@@ -7,6 +7,7 @@ import EditAppForm from '@/components/EditAppForm';
 import NewAppForm from '@/components/NewAppForm';
 import SsoConfigForm from '@/components/SsoConfigForm';
 import CreateLocalUserForm from '@/components/CreateLocalUserForm';
+import LinkSsoAccountForm from '@/components/LinkSsoAccountForm';
 import UsersList from '@/components/UsersList';
 import {
   createApp,
@@ -16,6 +17,7 @@ import {
   createRole,
   deleteRole,
   createLocalUser,
+  linkSsoAccount,
   updatePasswordPolicy
 } from './actions';
 
@@ -271,6 +273,14 @@ export default async function AdminPage({
         <p className="text-xs text-ink-300 mt-3">
           New local users must change their password on first login. Password policy is
           managed below.
+        </p>
+      </section>
+
+      <section className="glass rounded-[36px] p-8">
+        <h2 className="font-serif text-2xl mb-6">Link SSO account</h2>
+        <LinkSsoAccountForm linkSsoAccount={linkSsoAccount} />
+        <p className="text-xs text-ink-300 mt-3">
+          Linking removes local passwords and converts the user to SSO-only.
         </p>
       </section>
 
