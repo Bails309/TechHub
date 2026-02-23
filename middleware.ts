@@ -47,6 +47,13 @@ export async function middleware(request: NextRequest) {
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
     if (token?.mustChangePassword && token?.authProvider === 'credentials') {
       const url = request.nextUrl.clone();
+      // If this is an API request, return a JSON 403 so callers (fetch/Postman)
+      // receive a machine-readable error. For browser HTML requests, redirect
+      // to the change-password page as before.
+      if (request.nextUrl.pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'must_change_password' }, { status: 403 });
+      }
+
       url.pathname = '/auth/change-password';
       return NextResponse.redirect(url);
     }
@@ -56,7 +63,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Exclude API routes and static/_next assets so we don't run JWT decryption on
-  // API or static requests which are expensive and not necessary for this check.
-  matcher: ['/((?!api|_next/static|_next/image|_next/data|favicon.ico|theme-init.js|uploads/).*)']
+  // Run middleware for API routes as well so server endpoints can be protected
+  // when a user must change their password. Static/_next assets remain excluded.
+  matcher: ['/((?!_next/static|_next/image|_next/data|favicon.ico|theme-init.js|uploads/).*)']
 };

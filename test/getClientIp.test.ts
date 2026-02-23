@@ -43,7 +43,9 @@ describe('getClientIp and getRateLimitKey', () => {
 
     const headers = { 'x-forwarded-for': '198.51.100.1, 198.51.100.2' } as Record<string, string>;
     const ip = auth.getClientIp(headers, '10.9.8.7');
-    expect(ip).toBe('198.51.100.1');
+    // With right-to-left parsing (skipping trusted proxies) we pick the
+    // first untrusted address starting from the right-hand side.
+    expect(ip).toBe('198.51.100.2');
   });
 
   it('ignores proxy headers when remote is not a trusted proxy', async () => {
