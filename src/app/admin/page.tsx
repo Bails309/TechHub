@@ -6,7 +6,6 @@ import DeleteAppForm from '@/components/DeleteAppForm';
 import EditAppForm from '@/components/EditAppForm';
 import NewAppForm from '@/components/NewAppForm';
 import SsoConfigForm from '@/components/SsoConfigForm';
-import SsoRotationForm from '@/components/SsoRotationForm';
 import CreateLocalUserForm from '@/components/CreateLocalUserForm';
 import LinkSsoAccountForm from '@/components/LinkSsoAccountForm';
 import UsersList from '@/components/UsersList';
@@ -20,8 +19,7 @@ import {
   deleteRole,
   createLocalUser,
   linkSsoAccount,
-  updatePasswordPolicy,
-  rotateSsoSecretsAction
+  updatePasswordPolicy
 } from './actions';
 
 
@@ -71,8 +69,7 @@ export default async function AdminPage({
     users,
     passwordPolicy,
     totalUsers,
-    totalApps,
-    rotationHistory
+    totalApps
   ] =
     await Promise.all([
       prisma.appLink.findMany({
@@ -97,12 +94,7 @@ export default async function AdminPage({
     }),
     prisma.passwordPolicy.findFirst(),
       prisma.user.count(),
-      prisma.appLink.count(),
-      prisma.ssoAudit.findMany({
-        where: { action: 'rotate' },
-        orderBy: { createdAt: 'desc' },
-        take: 10
-      })
+      prisma.appLink.count()
     ]);
 
   const ssoMap = new Map(ssoConfigs.map((item) => [item.provider, item]));
@@ -264,52 +256,7 @@ export default async function AdminPage({
         />
       </section>
 
-      <section className="glass rounded-[36px] p-8">
-        <h2 className="font-serif text-2xl mb-6">SSO key rotation</h2>
-        <SsoRotationForm rotateSsoSecrets={rotateSsoSecretsAction} />
-        <div className="mt-6 space-y-3">
-          <p className="text-xs uppercase tracking-[0.2em] text-ink-400">
-            Recent rotation runs
-          </p>
-          {rotationHistory.length ? (
-            <div className="space-y-2">
-              {rotationHistory.map((entry) => {
-                const changes = (entry.changes ?? {}) as Record<string, unknown>;
-                const updated = typeof changes.updated === 'number' ? changes.updated : null;
-                const skipped = typeof changes.skipped === 'number' ? changes.skipped : null;
-                const failed = typeof changes.failed === 'number' ? changes.failed : null;
-                const targetKeyId =
-                  typeof changes.targetKeyId === 'string' ? changes.targetKeyId : null;
-                const fromKeyId = typeof changes.fromKeyId === 'string' ? changes.fromKeyId : null;
-                const trigger = typeof changes.trigger === 'string' ? changes.trigger : 'unknown';
-                const dryRun = changes.dryRun === true ? 'dry run' : 'applied';
-
-                return (
-                  <div
-                    key={entry.id}
-                    className="rounded-2xl border border-ink-800 px-4 py-3 text-xs text-ink-200"
-                  >
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="font-semibold text-ink-100">{trigger}</span>
-                      <span>{dryRun}</span>
-                      <span>{new Date(entry.createdAt).toLocaleString()}</span>
-                    </div>
-                    <div className="mt-2 text-ink-300">
-                      Updated: {updated ?? '-'} · Skipped: {skipped ?? '-'} · Failed: {failed ?? '-'}
-                    </div>
-                    <div className="mt-1 text-ink-300">
-                      Target key: {targetKeyId ?? '-'}
-                      {fromKeyId ? ` · From key: ${fromKeyId}` : ''}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-xs text-ink-300">No rotation runs recorded yet.</p>
-          )}
-        </div>
-      </section>
+      
 
       <section className="glass rounded-[36px] p-8">
         <h2 className="font-serif text-2xl mb-6">Roles</h2>

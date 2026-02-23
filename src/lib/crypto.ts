@@ -1,8 +1,6 @@
 import crypto from 'crypto';
 
 const KEY_ENV = 'SSO_MASTER_KEY';
-const KEY_RING_ENV = 'SSO_MASTER_KEYS';
-const KEY_ID_ENV = 'SSO_MASTER_KEY_ID';
 const ENVELOPE_ENV = 'SSO_ENVELOPE_ENCRYPTION';
 const TOKEN_PREFIX_V1 = 'v1';
 const TOKEN_PREFIX_V2 = 'v2';
@@ -24,39 +22,6 @@ function parseKey(raw: string, label: string) {
 }
 
 function loadKeyRing(): KeyRing {
-  const ringRaw = process.env[KEY_RING_ENV];
-  if (ringRaw) {
-    const keys = new Map<string, Buffer>();
-    const entries = ringRaw
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-    for (const entry of entries) {
-      const [id, value] = entry.split('=');
-      const keyId = id?.trim();
-      const keyValue = value?.trim();
-      if (!keyId || !keyValue) {
-        throw new Error(`${KEY_RING_ENV} entries must be in keyId=base64 format`);
-      }
-      if (keys.has(keyId)) {
-        throw new Error(`${KEY_RING_ENV} contains duplicate keyId: ${keyId}`);
-      }
-      keys.set(keyId, parseKey(keyValue, `${KEY_RING_ENV}:${keyId}`));
-    }
-
-    if (!keys.size) {
-      throw new Error(`${KEY_RING_ENV} must include at least one key`);
-    }
-
-    const currentId = (process.env[KEY_ID_ENV] || Array.from(keys.keys())[0]).trim();
-    if (!keys.has(currentId)) {
-      throw new Error(`${KEY_ID_ENV} must reference a keyId in ${KEY_RING_ENV}`);
-    }
-
-    const orderedIds = [currentId, ...Array.from(keys.keys()).filter((id) => id !== currentId)];
-    return { currentId, keys, orderedIds };
-  }
-
   const raw = process.env[KEY_ENV];
   if (!raw) {
     throw new Error(`${KEY_ENV} is not set`);
