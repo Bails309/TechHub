@@ -2,8 +2,7 @@
 
 import { z } from 'zod';
 import path from 'path';
-import { randomUUID } from 'crypto';
-import { writeFile, mkdir } from 'fs/promises';
+import { saveIcon as storageSaveIcon, deleteIcon as storageDeleteIcon } from '@/lib/storage';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
@@ -78,17 +77,18 @@ const uploadSchema = z
 
 async function saveIcon(file: File) {
   const parsed = uploadSchema.safeParse(file);
-  if (!parsed.success) {
-    return undefined;
-  }
+  if (!parsed.success) return undefined;
+  return storageSaveIcon(file);
+}
 
-  const extension = path.extname(file.name) || '.png';
-  const filename = `${randomUUID()}${extension}`;
-  const uploadDir = path.join(process.cwd(), 'uploads');
-  await mkdir(uploadDir, { recursive: true });
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(path.join(uploadDir, filename), buffer);
-  return `/uploads/${filename}`;
+async function safeDeleteIcon(iconPath?: string) {
+  if (!iconPath) return;
+  try {
+    await storageDeleteIcon(iconPath);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('Failed to delete old icon', iconPath, err);
+  }
 }
 
 export async function createApp(formData: FormData) {
@@ -156,9 +156,15 @@ export async function deleteApp(formData: FormData) {
     return;
   }
 
-  await prisma.appLink.delete({
-    where: { id }
-  });
+  // fetch existing record so we can remove uploaded icon file afterwards
+  const app = await prisma.appLink.findUnique({ where: { id } });
+
+  await prisma.appLink.delete({ where: { id } });
+
+  // delete uploaded icon file if present
+  if (app?.icon) {
+    await safeDeleteIcon(app.icon);
+  }
 
   revalidatePath('/admin');
   revalidatePath('/');
@@ -195,6 +201,9 @@ export async function updateApp(formData: FormData) {
         ? normalizedSelect
         : null;
 
+  // Fetch existing icon path so we can remove the old file after successful update
+  const existingApp = await prisma.appLink.findUnique({ where: { id: payload.id } });
+
   await prisma.$transaction(async (tx) => {
     await tx.appLink.update({
       where: { id: payload.id },
@@ -218,6 +227,15 @@ export async function updateApp(formData: FormData) {
       });
     }
   });
+
+  // After successful transaction, delete old icon file when appropriate
+  if (existingApp?.icon) {
+    if (iconRemove) {
+      await safeDeleteIcon(existingApp.icon);
+    } else if (iconPath && existingApp.icon !== iconPath) {
+      await safeDeleteIcon(existingApp.icon);
+    }
+  }
 
   revalidatePath('/admin');
   revalidatePath('/');
