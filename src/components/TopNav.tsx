@@ -118,7 +118,7 @@ export default function TopNav() {
                 <ShieldCheck size={16} />
                 Sign out
                 <span className="text-ink-400 text-xs">
-                  {roles.includes('admin') ? 'Admin session' : user.name ?? 'Signed in'}
+                  {user.name ?? user.email ?? 'Signed in'}
                 </span>
               </button>
             </div>
