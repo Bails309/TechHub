@@ -88,21 +88,19 @@ function parseForwarded(forwarded: string | undefined) {
 }
 
 function normalizeIp(raw: string | undefined) {
-  if (!raw) {
-    return undefined;
-  }
-  const trimmed = raw.split(',')[0]?.trim();
-  if (!trimmed) {
-    return undefined;
-  }
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
 
+  // IPv6 with brackets [::1]
   if (trimmed.startsWith('[')) {
     const end = trimmed.indexOf(']');
     const inside = end >= 0 ? trimmed.slice(1, end) : trimmed.slice(1);
     return ipaddr.isValid(inside) ? ipaddr.process(inside).toString() : undefined;
   }
 
-  if (trimmed.includes('.') && trimmed.includes(':')) {
+  // host:port formats (IPv4 or hostname with port)
+  if (trimmed.includes(':') && trimmed.indexOf(':') === trimmed.lastIndexOf(':') && trimmed.includes('.')) {
     const withoutPort = trimmed.split(':')[0];
     return ipaddr.isValid(withoutPort) ? ipaddr.process(withoutPort).toString() : undefined;
   }
@@ -121,13 +119,32 @@ export function getClientIp(headers: HeaderSource, remoteAddr?: string) {
       const trustedClientIp = normalizeIp(readHeader(headers, 'x-client-ip'));
       if (trustedClientIp) return trustedClientIp;
 
+      // Prefer x-forwarded-for but select the correct client IP by scanning
+      // from right-to-left and skipping any addresses that belong to trusted proxies.
       const forwardedFor = readHeader(headers, 'x-forwarded-for');
-      const realIp = readHeader(headers, 'x-real-ip');
-      const cfIp = readHeader(headers, 'cf-connecting-ip');
-      const trueClientIp = readHeader(headers, 'true-client-ip');
+      if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
+        const parts = forwardedFor.split(',').map((s) => s.trim()).filter(Boolean);
+        for (let i = parts.length - 1; i >= 0; i--) {
+          const candidate = normalizeIp(parts[i]);
+          if (!candidate) continue;
+          // if candidate is a trusted proxy, skip it
+          if (isFromTrustedProxy(candidate)) continue;
+          return candidate;
+        }
+      }
+
+      // fallbacks for other single-value headers
+      const realIp = normalizeIp(readHeader(headers, 'x-real-ip'));
+      if (realIp && !isFromTrustedProxy(realIp)) return realIp;
+      const cfIp = normalizeIp(readHeader(headers, 'cf-connecting-ip'));
+      if (cfIp && !isFromTrustedProxy(cfIp)) return cfIp;
+      const trueClientIp = normalizeIp(readHeader(headers, 'true-client-ip'));
+      if (trueClientIp && !isFromTrustedProxy(trueClientIp)) return trueClientIp;
       const forwarded = parseForwarded(readHeader(headers, 'forwarded'));
-      const raw = forwardedFor ?? realIp ?? cfIp ?? trueClientIp ?? forwarded;
-      return normalizeIp(raw) ?? remoteNormalized;
+      const forwardedIp = normalizeIp(forwarded);
+      if (forwardedIp && !isFromTrustedProxy(forwardedIp)) return forwardedIp;
+
+      return remoteNormalized;
     }
 
     // TRUST_PROXY=true but immediate remote isn't trusted: ignore headers, use remote
