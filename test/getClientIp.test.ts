@@ -70,4 +70,20 @@ describe('getClientIp and getRateLimitKey', () => {
     // The function should therefore return undefined when the immediate remote is not provided.
     expect(ip2).toBeUndefined();
   });
+
+  it('admin server actions throw when session.mustChangePassword is true', async () => {
+    // Reload modules and mock auth to simulate a locked admin session
+    vi.resetModules();
+    vi.mock('@/lib/auth', () => ({
+      getServerAuthSession: async () => ({
+        user: { id: 'admin1', roles: ['admin'], mustChangePassword: true, authProvider: 'credentials' }
+      })
+    }));
+    vi.mock('@/lib/prisma', () => ({ prisma: {} }));
+    vi.mock('@/lib/storage', () => ({ saveIcon: async () => '/uploads/fake.png', deleteIcon: async () => {} }));
+
+    const { createApp } = await import('../src/app/admin/actions');
+    const form = { get: () => null, getAll: () => [] } as unknown as FormData;
+    await expect(createApp(form)).rejects.toThrow('Unauthorized: must_change_password');
+  });
 });
