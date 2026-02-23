@@ -56,5 +56,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|_next/data|favicon.ico|theme-init.js|uploads/).*)']
+  // Exclude API routes and static/_next assets so we don't run JWT decryption on
+  // API or static requests which are expensive and not necessary for this check.
+  matcher: ['/((?!api|_next/static|_next/image|_next/data|favicon.ico|theme-init.js|uploads/).*)']
 };
