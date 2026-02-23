@@ -10,6 +10,7 @@ import { verifyPassword } from './password';
 import { assertRateLimit } from './rateLimit';
 import { getServerSession } from 'next-auth';
 import { getSsoConfigMap } from './sso';
+import ipaddr from 'ipaddr.js';
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -27,7 +28,7 @@ const keycloakConfiguredEnv =
   Boolean(process.env.KEYCLOAK_ISSUER);
 
 const credentialsEnabledEnv = process.env.ENABLE_CREDENTIALS !== 'false';
-const allowEmailLinking = process.env.ALLOW_SSO_EMAIL_LINKING === 'true';
+const allowEmailLinking = false;
 const trustProxy = process.env.TRUST_PROXY === 'true';
 const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
 
@@ -52,21 +53,61 @@ function parseForwarded(forwarded: string | undefined) {
   return match?.[1]?.replace(/^"|"$/g, '') ?? undefined;
 }
 
-function getRateLimitKey(headers: HeaderSource, fallbackKey?: string) {
+function normalizeIp(raw: string | undefined) {
+  if (!raw) {
+    return undefined;
+  }
+  const trimmed = raw.split(',')[0]?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (trimmed.startsWith('[')) {
+    const end = trimmed.indexOf(']');
+    const inside = end >= 0 ? trimmed.slice(1, end) : trimmed.slice(1);
+    return ipaddr.isValid(inside) ? ipaddr.process(inside).toString() : undefined;
+  }
+
+  if (trimmed.includes('.') && trimmed.includes(':')) {
+    const withoutPort = trimmed.split(':')[0];
+    return ipaddr.isValid(withoutPort) ? ipaddr.process(withoutPort).toString() : undefined;
+  }
+
+  return ipaddr.isValid(trimmed) ? ipaddr.process(trimmed).toString() : undefined;
+}
+
+function getClientIp(headers: HeaderSource) {
+  const trustedClientIp = normalizeIp(readHeader(headers, 'x-client-ip'));
+  if (trustedClientIp) {
+    return trustedClientIp;
+  }
+
   if (trustProxy) {
     const forwardedFor = readHeader(headers, 'x-forwarded-for');
     const realIp = readHeader(headers, 'x-real-ip');
-    const clientIp = readHeader(headers, 'x-client-ip');
     const cfIp = readHeader(headers, 'cf-connecting-ip');
     const trueClientIp = readHeader(headers, 'true-client-ip');
     const forwarded = parseForwarded(readHeader(headers, 'forwarded'));
-    const raw = forwardedFor ?? realIp ?? clientIp ?? cfIp ?? trueClientIp ?? forwarded;
-    if (raw) {
-      return raw.split(',')[0]?.trim() ?? 'unknown';
-    }
+    const raw = forwardedFor ?? realIp ?? cfIp ?? trueClientIp ?? forwarded;
+    return normalizeIp(raw);
   }
 
-  return fallbackKey ? `user:${fallbackKey.toLowerCase()}` : 'unknown';
+  return undefined;
+}
+
+function getRateLimitKey(headers: HeaderSource, fallbackKey?: string) {
+  const ip = getClientIp(headers);
+  const emailKey = fallbackKey ? fallbackKey.toLowerCase() : undefined;
+
+  if (ip && emailKey) {
+    return `ip:${ip}|user:${emailKey}`;
+  }
+
+  if (ip) {
+    return `ip:${ip}`;
+  }
+
+  return emailKey ? `user:${emailKey}` : 'unknown';
 }
 
 function buildCredentialsProvider() {
@@ -82,8 +123,8 @@ function buildCredentialsProvider() {
         return null;
       }
 
-      const ip = getRateLimitKey(req?.headers, parsed.data.email);
-      await assertRateLimit(ip);
+      const rateKey = getRateLimitKey(req?.headers, parsed.data.email);
+      await assertRateLimit(rateKey);
 
       const user = await prisma.user.findUnique({
         where: { email: parsed.data.email },
@@ -227,11 +268,14 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             (profile as { email_verified?: boolean } | null | undefined)?.email_verified
           );
 
-          if (allowEmailLinking && existing && !accountExists && !emailVerified) {
+          if (!accountExists && existing && !allowEmailLinking) {
             return false;
           }
 
-          if (allowEmailLinking && existing && !accountExists && emailVerified) {
+          if (allowEmailLinking && existing && !accountExists) {
+            if (!emailVerified) {
+              return false;
+            }
             await prisma.user.update({
               where: { id: existing.id },
               data: { mustChangePassword: false }

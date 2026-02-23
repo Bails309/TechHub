@@ -631,27 +631,35 @@ async function validateIssuerUrl(rawIssuer: string): Promise<ResolvedIssuer> {
       throw new Error('Issuer URL host could not be resolved');
     }
     const validRecords = records
-      .map((record) => record.address)
-      .filter((address): address is string => Boolean(address))
-      .filter((address) => ipaddr.isValid(address));
+      .filter((record) => Boolean(record.address) && (record.family === 4 || record.family === 6))
+      .map((record) => ({ address: String(record.address), family: record.family as 4 | 6 }));
 
     if (!validRecords.length) {
       throw new Error('Issuer URL host resolved to no valid IPs');
     }
 
-    for (const address of validRecords) {
-      if (!isPublicIp(address)) {
+    for (const rec of validRecords) {
+      if (!isPublicIp(rec.address)) {
         throw new Error('Issuer URL must be a public hostname');
       }
     }
 
-    const uniqueAddresses = Array.from(new Set(validRecords));
+    // Deduplicate by address
+    const seen = new Set<string>();
+    const uniqueRecords: Array<{ address: string; family: 4 | 6 }> = [];
+    for (const rec of validRecords) {
+      if (!seen.has(rec.address)) {
+        seen.add(rec.address);
+        uniqueRecords.push(rec);
+      }
+    }
+
     return {
       normalized: normalizeIssuer(url.toString()),
       hostname,
-      addresses: uniqueAddresses.map((address) => ({
-        address: ipaddr.process(address).toNormalizedString(),
-        family: ipaddr.process(address).kind() === 'ipv6' ? 6 : 4
+      addresses: uniqueRecords.map((rec) => ({
+        address: ipaddr.process(rec.address).toNormalizedString(),
+        family: rec.family
       }))
     };
   }
@@ -677,27 +685,29 @@ async function fetchWithPinnedIp(url: string, hostname: string, address: string)
   const target = new URL(url);
 
   return await new Promise<{ ok: boolean; status: number }>((resolve, reject) => {
-    const request = https.request(
-      {
-        protocol: target.protocol,
-        hostname: target.hostname,
-        port: target.port || 443,
-        path: `${target.pathname}${target.search}`,
-        method: 'GET',
-        headers: { host: hostname },
-        servername: hostname,
-        lookup: (_host, _options, callback) => {
-          callback(null, resolvedAddress, resolvedFamily);
-        }
-      },
-      (response) => {
-        const status = response.statusCode ?? 0;
-        response.resume();
-        resolve({ ok: status >= 200 && status < 300, status });
-      }
-    );
+    // Connect directly to the resolved IP address and use the original hostname for SNI
+    // and the Host header. This avoids relying on a custom lookup callback which
+    // can surface ERR_INVALID_IP_ADDRESS in some environments.
+    const requestOptions: https.RequestOptions = {
+      protocol: target.protocol,
+      hostname: resolvedAddress,
+      port: target.port || 443,
+      path: `${target.pathname}${target.search}`,
+      method: 'GET',
+      headers: { host: hostname },
+      servername: hostname
+    };
 
-    request.on('error', reject);
+    const request = https.request(requestOptions, (response) => {
+      const status = response.statusCode ?? 0;
+      response.resume();
+      resolve({ ok: status >= 200 && status < 300, status });
+    });
+
+    request.on('error', (err) => {
+      reject(err instanceof Error ? err : new Error(String(err)));
+    });
+
     request.end();
   });
 }
@@ -719,6 +729,16 @@ async function testOpenIdConfiguration(issuer: string) {
   let lastError: Error | null = null;
   let lastAddress: string | null = null;
   for (const record of orderedAddresses) {
+    if (!record?.address) {
+      // skip invalid entries defensively
+      continue;
+    }
+    if (!ipaddr.isValid(record.address)) {
+      // skip entries that aren't valid IPs
+      lastAddress = record.address ?? null;
+      lastError = new Error('Resolved address is not a valid IP');
+      continue;
+    }
     try {
       const response = await fetchWithPinnedIp(endpoint, resolved.hostname, record.address);
       if (!response.ok) {
@@ -733,15 +753,6 @@ async function testOpenIdConfiguration(issuer: string) {
 
   if (lastError) {
     const detail = formatFetchError(lastError);
-    const shouldFallback = /Invalid IP address|ERR_INVALID_IP_ADDRESS/i.test(detail);
-    if (shouldFallback) {
-      const response = await fetch(endpoint, { method: 'GET' });
-      if (!response.ok) {
-        throw new Error(`OpenID discovery failed (${response.status})`);
-      }
-      return;
-    }
-
     const suffix = lastAddress ? ` (last address: ${lastAddress})` : '';
     throw new Error(`OpenID discovery failed: ${detail}${suffix}`);
   }
