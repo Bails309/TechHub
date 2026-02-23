@@ -19,11 +19,19 @@ async function saveLocal(file: File) {
 async function deleteLocal(iconPath?: string) {
   if (!iconPath) return;
   const rel = iconPath.startsWith('/') ? iconPath.slice(1) : iconPath;
-  const uploadsDir = 'uploads';
-  if (!rel.startsWith(uploadsDir + '/')) return;
-  const full = path.join(process.cwd(), rel);
+  const uploadsDirName = 'uploads';
+  // Only allow paths that reference the uploads directory
+  if (!rel.startsWith(uploadsDirName + '/')) return;
+
+  const uploadsDirAbs = path.join(process.cwd(), uploadsDirName);
+  // Resolve the final absolute path and ensure it's inside the uploads directory
+  const resolved = path.resolve(process.cwd(), rel);
+  const relativeToUploads = path.relative(uploadsDirAbs, resolved);
+  // If the resolved path is outside uploads, reject (prevents path traversal)
+  if (relativeToUploads.startsWith('..') || path.isAbsolute(relativeToUploads)) return;
+
   try {
-    await import('fs/promises').then((fs) => fs.unlink(full)).catch(() => null);
+    await import('fs/promises').then((fs) => fs.unlink(resolved)).catch(() => null);
   } catch {
     // ignore
   }
