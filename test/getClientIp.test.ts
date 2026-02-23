@@ -64,6 +64,8 @@ describe('getClientIp and getRateLimitKey', () => {
     expect(ip1).toBe('2001:db8::1');
 
     const ip2 = auth.getClientIp({ 'x-real-ip': '198.51.100.55:54321' } as Record<string, string>, undefined);
-    expect(ip2).toBe('198.51.100.55');
+    // With TRUST_PROXY=false we must NOT trust proxy-supplied headers like `x-real-ip`.
+    // The function should therefore return undefined when the immediate remote is not provided.
+    expect(ip2).toBeUndefined();
   });
 });
