@@ -39,9 +39,17 @@ async function deleteLocal(iconPath?: string) {
 
 // S3 implementation
 function createS3Client() {
-  const region = process.env.S3_REGION;
-  const client = new S3Client({ region });
-  return client;
+  // lazily initialize a single S3 client so we reuse HTTP connections
+  // and benefit from keep-alive connection pooling across calls.
+  // This avoids creating a new client per upload/delete which harms latency.
+  let client: S3Client | null = null;
+  return function getClient() {
+    if (!client) {
+      const region = process.env.S3_REGION;
+      client = new S3Client({ region });
+    }
+    return client as S3Client;
+  };
 }
 
 async function saveS3(file: File) {
@@ -51,7 +59,9 @@ async function saveS3(file: File) {
   const key = `uploads/${randomUUID()}${extension}`;
   const buffer = Buffer.from(await file.arrayBuffer());
   const client = createS3Client();
-  await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: file.type }));
+  // createS3Client returns a getter when using lazy singleton pattern
+  const s3 = typeof client === 'function' ? client() : client;
+  await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: file.type }));
   const region = process.env.S3_REGION;
   const url = region
     ? `https://${bucket}.s3.${region}.amazonaws.com/${key}`
@@ -77,7 +87,8 @@ async function deleteS3(iconPath?: string) {
     // not a URL
   }
   const client = createS3Client();
-  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })).catch(() => null);
+  const s3 = typeof client === 'function' ? client() : client;
+  await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })).catch(() => null);
 }
 
 export async function saveIcon(file: File) {
