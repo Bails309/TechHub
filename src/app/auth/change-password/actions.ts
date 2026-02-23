@@ -76,15 +76,26 @@ export async function changePassword(
   }
 
   const nextHash = await hashPassword(parsed.data.newPassword);
-  await prisma.$transaction([
-    prisma.passwordHistory.create({
-      data: { userId: user.id, hash: user.passwordHash }
-    }),
-    prisma.user.update({
+  await prisma.$transaction(async (tx) => {
+    await tx.passwordHistory.create({
+      data: { userId: user.id, hash: user.passwordHash! }
+    });
+    await tx.user.update({
       where: { id: user.id },
       data: { passwordHash: nextHash, mustChangePassword: false }
-    })
-  ]);
+    });
+    const excess = await tx.passwordHistory.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      skip: policy.historyCount,
+      select: { id: true }
+    });
+    if (excess.length) {
+      await tx.passwordHistory.deleteMany({
+        where: { id: { in: excess.map((entry) => entry.id) } }
+      });
+    }
+  });
 
   return { status: 'success', message: 'Password updated' };
 }

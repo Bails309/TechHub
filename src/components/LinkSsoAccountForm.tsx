@@ -28,7 +28,9 @@ export default function LinkSsoAccountForm({ linkSsoAccount }: LinkSsoAccountFor
       .replace(/_/g, '/')
       .padEnd(Math.ceil(parts[1].length / 4) * 4, '=');
     try {
-      const json = atob(payload);
+      const binary = atob(payload);
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      const json = new TextDecoder().decode(bytes);
       return JSON.parse(json) as { sub?: string };
     } catch {
       return null;

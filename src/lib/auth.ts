@@ -31,18 +31,48 @@ const allowEmailLinking = process.env.ALLOW_SSO_EMAIL_LINKING === 'true';
 const trustProxy = process.env.TRUST_PROXY === 'true';
 const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
 
-function getRateLimitKey(headers: Record<string, string | string[] | undefined>) {
+type HeaderSource = Record<string, string | string[] | undefined> | Headers | undefined;
+
+function readHeader(headers: HeaderSource, name: string) {
+  if (!headers) {
+    return undefined;
+  }
+  if (headers instanceof Headers) {
+    return headers.get(name) ?? undefined;
+  }
+  const value = headers[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function parseForwarded(forwarded: string | undefined) {
+  if (!forwarded) {
+    return undefined;
+  }
+  const match = forwarded.match(/for=([^;]+)/i);
+  return match?.[1]?.replace(/^"|"$/g, '') ?? undefined;
+}
+
+function getRateLimitKey(headers: HeaderSource, fallbackKey?: string) {
+  const forwardedFor = readHeader(headers, 'x-forwarded-for');
+  const realIp = readHeader(headers, 'x-real-ip');
+  const clientIp = readHeader(headers, 'x-client-ip');
+  const cfIp = readHeader(headers, 'cf-connecting-ip');
+  const trueClientIp = readHeader(headers, 'true-client-ip');
+  const forwarded = parseForwarded(readHeader(headers, 'forwarded'));
+
   if (trustProxy) {
-    const forwardedFor = headers['x-forwarded-for'];
-    const raw = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
+    const raw = forwardedFor ?? realIp ?? clientIp ?? cfIp ?? trueClientIp ?? forwarded;
     if (raw) {
       return raw.split(',')[0]?.trim() ?? 'unknown';
     }
-    const realIp = headers['x-real-ip'];
-    return Array.isArray(realIp) ? realIp[0] ?? 'unknown' : realIp ?? 'unknown';
   }
 
-  return 'local';
+  const raw = realIp ?? clientIp ?? cfIp ?? trueClientIp ?? forwardedFor ?? forwarded;
+  if (raw) {
+    return raw.split(',')[0]?.trim() ?? 'unknown';
+  }
+
+  return fallbackKey ? `user:${fallbackKey.toLowerCase()}` : 'unknown';
 }
 
 function buildCredentialsProvider() {
@@ -58,7 +88,7 @@ function buildCredentialsProvider() {
         return null;
       }
 
-      const ip = getRateLimitKey(req?.headers ?? {});
+      const ip = getRateLimitKey(req?.headers, parsed.data.email);
       await assertRateLimit(ip);
 
       const user = await prisma.user.findUnique({
@@ -174,7 +204,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
     session: { strategy: 'jwt' },
     providers,
     callbacks: {
-      async signIn({ user, account }) {
+      async signIn({ user, account, profile }) {
         if (account?.provider && account.provider !== 'credentials') {
           if (!user?.email) {
             return false;
@@ -184,23 +214,34 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             where: { email: user.email }
           });
 
+          const accountExists = account?.providerAccountId
+            ? await prisma.account.findUnique({
+                where: {
+                  provider_providerAccountId: {
+                    provider: account.provider,
+                    providerAccountId: account.providerAccountId
+                  }
+                }
+              })
+            : null;
+
           if (requirePreprovisionedUsers && !existing) {
             return false;
           }
 
-          if (allowEmailLinking && existing) {
-            await prisma.$transaction([
-              prisma.user.update({
-                where: { id: existing.id },
-                data: {
-                  passwordHash: null,
-                  mustChangePassword: false
-                }
-              }),
-              prisma.passwordHistory.deleteMany({
-                where: { userId: existing.id }
-              })
-            ]);
+          const emailVerified = Boolean(
+            (profile as { email_verified?: boolean } | null | undefined)?.email_verified
+          );
+
+          if (allowEmailLinking && existing && !accountExists && !emailVerified) {
+            return false;
+          }
+
+          if (allowEmailLinking && existing && !accountExists && emailVerified) {
+            await prisma.user.update({
+              where: { id: existing.id },
+              data: { mustChangePassword: false }
+            });
           }
         }
 
@@ -223,23 +264,33 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           token.authProvider = (user as { authProvider?: string }).authProvider;
         }
 
-        if (!token.roles && token.sub) {
-          const roles = await prisma.userRole.findMany({
-            where: { userId: token.sub },
-            include: { role: true }
-          });
-          token.roles = roles.map((item) => item.role.name);
+        if (Array.isArray((user as { roles?: string[] } | undefined)?.roles)) {
+          token.roles = (user as { roles: string[] }).roles;
         }
 
         return token;
       },
       async session({ session, token }) {
         if (session.user) {
-          session.user.roles = (token.roles as string[] | undefined) ?? [];
-          session.user.id = token.sub ?? '';
-          session.user.mustChangePassword =
-            (token.mustChangePassword as boolean | undefined) ?? false;
+          const userId = token.sub ?? '';
+          session.user.id = userId;
           session.user.authProvider = token.authProvider as string | undefined;
+
+          if (userId) {
+            const userRecord = await prisma.user.findUnique({
+              where: { id: userId },
+              select: {
+                mustChangePassword: true,
+                roles: { include: { role: true } }
+              }
+            });
+            session.user.roles = userRecord?.roles.map((item) => item.role.name) ?? [];
+            session.user.mustChangePassword = userRecord?.mustChangePassword ?? false;
+          } else {
+            session.user.roles = (token.roles as string[] | undefined) ?? [];
+            session.user.mustChangePassword =
+              (token.mustChangePassword as boolean | undefined) ?? false;
+          }
         }
         return session;
       }

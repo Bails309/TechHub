@@ -27,9 +27,13 @@ export const dynamic = 'force-dynamic';
 export default async function AdminPage({
   searchParams
 }: {
-  searchParams?: Promise<{ error?: string }>;
+  searchParams?: Promise<{ error?: string; page?: string }>;
 }) {
   const resolvedParams = await searchParams;
+  const pageSize = 50;
+  const requestedPage = Number(resolvedParams?.page ?? '1');
+  const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const usersSkip = (page - 1) * pageSize;
   const session = await getServerAuthSession();
   const roles = session?.user?.roles ?? [];
   const errorMessage =
@@ -52,7 +56,7 @@ export default async function AdminPage({
     );
   }
 
-  const [apps, rolesList, categories, ssoConfigs, users, passwordPolicy] = await Promise.all([
+  const [apps, rolesList, categories, ssoConfigs, users, passwordPolicy, totalUsers] = await Promise.all([
     prisma.appLink.findMany({
       orderBy: { createdAt: 'desc' },
       include: { userAccesses: true }
@@ -67,9 +71,12 @@ export default async function AdminPage({
     prisma.ssoConfig.findMany(),
     prisma.user.findMany({
       include: { roles: { include: { role: true } }, accounts: true },
-      orderBy: { email: 'asc' }
+      orderBy: { email: 'asc' },
+      skip: usersSkip,
+      take: pageSize
     }),
-    prisma.passwordPolicy.findFirst()
+    prisma.passwordPolicy.findFirst(),
+    prisma.user.count()
   ]);
 
   const ssoMap = new Map(ssoConfigs.map((item) => [item.provider, item]));
@@ -187,6 +194,10 @@ export default async function AdminPage({
       value: user.id,
       label: user.name ? `${user.name} (${user.email})` : user.email ?? user.id
     }));
+
+  const totalPages = Math.max(1, Math.ceil(totalUsers / pageSize));
+  const prevPage = page > 1 ? page - 1 : null;
+  const nextPage = page < totalPages ? page + 1 : null;
 
   return (
     <div className="px-6 md:px-12 py-12 space-y-8">
@@ -421,6 +432,40 @@ export default async function AdminPage({
 
       <section className="glass rounded-[36px] p-8">
         <h2 className="font-serif text-2xl mb-6">Users</h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-xs text-ink-300">
+          <span>
+            Showing {users.length} of {totalUsers} users
+          </span>
+          <div className="flex items-center gap-2">
+            {prevPage ? (
+              <a
+                href={`/admin?page=${prevPage}`}
+                className="rounded-full border border-ink-700 px-3 py-1 text-xs text-ink-200 hover:border-ink-400 transition"
+              >
+                Previous
+              </a>
+            ) : (
+              <span className="rounded-full border border-ink-800 px-3 py-1 text-xs text-ink-500">
+                Previous
+              </span>
+            )}
+            <span className="text-xs text-ink-400">
+              Page {page} of {totalPages}
+            </span>
+            {nextPage ? (
+              <a
+                href={`/admin?page=${nextPage}`}
+                className="rounded-full border border-ink-700 px-3 py-1 text-xs text-ink-200 hover:border-ink-400 transition"
+              >
+                Next
+              </a>
+            ) : (
+              <span className="rounded-full border border-ink-800 px-3 py-1 text-xs text-ink-500">
+                Next
+              </span>
+            )}
+          </div>
+        </div>
         <UsersList
           users={users.map((user) => ({
             id: user.id,

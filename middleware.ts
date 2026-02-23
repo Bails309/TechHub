@@ -8,9 +8,9 @@ function buildCsp(nonce: string) {
     "base-uri 'self'",
     "form-action 'self'",
     "img-src 'self' data: blob: https:",
-    "style-src 'self' 'nonce-" + nonce + "'",
+    "style-src 'self' 'nonce-" + nonce + "' 'unsafe-inline'",
     "font-src 'self' https: data:",
-    "script-src 'self' 'nonce-" + nonce + "'",
+    "script-src 'self' 'nonce-" + nonce + "' 'strict-dynamic' https: 'unsafe-inline'",
     "connect-src 'self' https:",
     "object-src 'none'",
     "frame-ancestors 'self'"

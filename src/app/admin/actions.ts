@@ -14,6 +14,7 @@ import { hashPassword, validatePasswordComplexity } from '@/lib/password';
 import { getPasswordPolicy } from '@/lib/passwordPolicy';
 import { lookup } from 'dns/promises';
 import { isIP } from 'net';
+import { Agent, fetch as undiciFetch } from 'undici';
 
 const appSchemaBase = z.object({
   name: z.string().min(2),
@@ -588,7 +589,13 @@ function isPrivateIpv6(ip: string) {
   return false;
 }
 
-async function validateIssuerUrl(rawIssuer: string) {
+type ResolvedIssuer = {
+  normalized: string;
+  hostname: string;
+  addresses: Array<{ address: string; family: 4 | 6 }>;
+};
+
+async function validateIssuerUrl(rawIssuer: string): Promise<ResolvedIssuer> {
   let url: URL;
   try {
     url = new URL(rawIssuer);
@@ -626,18 +633,67 @@ async function validateIssuerUrl(rawIssuer: string) {
         throw new Error('Issuer URL must be a public hostname');
       }
     }
+    return {
+      normalized: normalizeIssuer(url.toString()),
+      hostname,
+      addresses: records.map((record) => ({
+        address: record.address,
+        family: record.family as 4 | 6
+      }))
+    };
   }
 
-  return normalizeIssuer(url.toString());
+  return {
+    normalized: normalizeIssuer(url.toString()),
+    hostname,
+    addresses: [{ address: hostname, family: ipType as 4 | 6 }]
+  };
+}
+
+async function fetchWithPinnedIp(url: string, hostname: string, address: string, family: 4 | 6) {
+  const dispatcher = new Agent({
+    connect: {
+      lookup: (_hostname, _options, callback) => {
+        callback(null, address, family);
+      },
+      servername: hostname
+    }
+  });
+
+  try {
+    return await undiciFetch(url, {
+      method: 'GET',
+      headers: { host: hostname },
+      dispatcher
+    });
+  } finally {
+    dispatcher.close();
+  }
 }
 
 async function testOpenIdConfiguration(issuer: string) {
-  const normalized = await validateIssuerUrl(issuer);
-  const endpoint = `${normalized}/.well-known/openid-configuration`;
-  const response = await fetch(endpoint, { method: 'GET' });
-  if (!response.ok) {
-    throw new Error(`OpenID discovery failed (${response.status})`);
+  const resolved = await validateIssuerUrl(issuer);
+  const endpoint = `${resolved.normalized}/.well-known/openid-configuration`;
+
+  let lastError: Error | null = null;
+  for (const record of resolved.addresses) {
+    try {
+      const response = await fetchWithPinnedIp(
+        endpoint,
+        resolved.hostname,
+        record.address,
+        record.family
+      );
+      if (!response.ok) {
+        throw new Error(`OpenID discovery failed (${response.status})`);
+      }
+      return;
+    } catch (error) {
+      lastError = error as Error;
+    }
   }
+
+  throw lastError ?? new Error('OpenID discovery failed');
 }
 
 export async function updateSsoConfig(

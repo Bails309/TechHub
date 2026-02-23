@@ -1,12 +1,24 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useFormState } from 'react-dom';
+import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { changePassword, ChangePasswordState } from './actions';
 
 const initialState: ChangePasswordState = { status: 'idle', message: '' };
 
 export default function ChangePasswordPage() {
   const [state, formAction] = useFormState(changePassword, initialState);
+  const router = useRouter();
+  const { update } = useSession();
+
+  useEffect(() => {
+    if (state.status === 'success') {
+      void update();
+      router.replace('/');
+    }
+  }, [state.status, update, router]);
 
   return (
     <div className="px-6 md:px-12 py-12">
