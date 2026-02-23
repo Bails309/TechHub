@@ -1,14 +1,13 @@
 # TechHub
-Modern app-launcher portal for internal teams with SSO, credential fallback, and admin-managed catalogues.
+Modern app-launcher portal for internal teams with SSO, credential fallback, and an admin-managed catalogue.
 
-## Features
+## Highlights
 - Next.js App Router + TypeScript + Tailwind
-- Microsoft Entra ID SSO with optional credentials fallback
-- Prisma + Postgres catalogue with role-based visibility
-- Drag-and-drop ordering per user (guests stored locally)
-- Search, category headings toggle, and theme switcher
-- Docker build + compose database
-- Security headers, CSP with per-request nonce, and credential rate limiting
+- Microsoft Entra ID and Keycloak SSO, with optional local credentials
+- Admin-managed catalogue with role-based and user-specific access
+- Configurable password policy and forced first-login reset for local users
+- Per-user app ordering, search, and theme toggle
+- Docker build + Postgres 16 + Prisma 5
 
 ## Tech stack
 - Next.js 15, React 18
@@ -35,12 +34,52 @@ The compose entrypoint runs `prisma db push` and `prisma db seed` before `npm st
 ## Environment variables
 - `NEXTAUTH_SECRET`: required for NextAuth JWT signing
 - `NEXTAUTH_URL`: app base URL (use `http://localhost:3000` locally)
-- `AZURE_AD_CLIENT_ID`: Entra ID application (optional)
-- `AZURE_AD_CLIENT_SECRET`: Entra ID secret (optional)
-- `AZURE_AD_TENANT_ID`: Entra ID tenant (optional)
-- `ADMIN_EMAIL`: seeded admin user email
-- `ADMIN_PASSWORD`: seeded admin user password
 - `DATABASE_URL`: Postgres connection string
+- `SSO_MASTER_KEY`: base64-encoded 32-byte key for encrypting SSO secrets in the database
+- `ADMIN_EMAIL`: seeded admin user email (initial admin only)
+- `ADMIN_PASSWORD`: seeded admin user password (initial admin only; user must change on first login)
+- `AZURE_AD_CLIENT_ID`: Entra ID client ID (optional fallback if no DB config)
+- `AZURE_AD_CLIENT_SECRET`: Entra ID client secret (optional fallback if no DB config)
+- `AZURE_AD_TENANT_ID`: Entra ID tenant ID (optional fallback if no DB config)
+- `KEYCLOAK_CLIENT_ID`: Keycloak client ID (optional fallback if no DB config)
+- `KEYCLOAK_CLIENT_SECRET`: Keycloak client secret (optional fallback if no DB config)
+- `KEYCLOAK_ISSUER`: Keycloak issuer URL (optional fallback if no DB config)
+- `ENABLE_CREDENTIALS`: set to `false` to disable local credentials login when no DB config exists
+
+Generate a master key with:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+## Authentication flow
+- Local credentials are optional and can be disabled globally or via the admin UI.
+- SSO providers are configured in the admin UI and stored encrypted using `SSO_MASTER_KEY`.
+- First-time local users must change their password at `/auth/change-password`.
+- SSO users are auto-linked to existing local accounts by email and converted to SSO-only on first login.
+
+## Admin workflow
+- Visit `/admin` to manage apps, roles, users, and SSO settings.
+- Admin access requires the `admin` role on the user.
+- Configure SSO providers from the "SSO configuration" section (requires `SSO_MASTER_KEY` to save secrets).
+- Create local users, roles, and user-specific app assignments from the admin UI.
+
+Default password policy:
+- Minimum length: 12
+- Uppercase, lowercase, number, and symbol required
+- Last 5 passwords cannot be reused
+- Admins can change the policy from `/admin`
+
+## App access rules
+- `PUBLIC`: visible to everyone
+- `AUTHENTICATED`: visible to signed-in users
+- `ROLE`: visible to users with the assigned role
+- `USER`: visible only to explicitly assigned users
+
+## Uploads
+- Icon uploads are stored in `uploads/` and served via `/uploads/*`.
+- Icons are limited to PNG and JPEG only.
+- Max icon upload size is 2 MB.
+- Docker compose mounts a named volume at `/app/uploads` to persist icons.
 
 ## Scripts
 - `npm run dev`: start development server
@@ -53,26 +92,12 @@ The compose entrypoint runs `prisma db push` and `prisma db seed` before `npm st
 - `npm run prisma:migrate:deploy`: apply migrations
 - `npm run prisma:seed`: seed roles, admin user, and sample apps
 
-## Admin workflow
-- Visit `/admin` to create, edit, and remove apps.
-- Admin access requires the `admin` role on the user.
-- Promote users by adding a `UserRole` entry (or update the seed and re-run `npm run prisma:seed`).
-
-## App ordering and search
-- Signed-in users store ordering in Postgres via `/api/app-order`.
-- Guests store ordering and search state in local storage.
-
-## Uploads
-- Icon uploads are stored in `uploads/` and served via `/uploads/*`.
-- Icons are limited to PNG and JPEG only.
-- Max icon upload size is 2 MB.
-- Docker compose mounts a named volume at `/app/uploads` to persist icons.
-
 ## Security notes
 - CSP is applied via middleware with a per-request nonce for scripts and styles.
 - `/api/app-order` returns 400 for invalid JSON or payloads.
+- SSO secrets are encrypted at rest using AES-256-GCM with `SSO_MASTER_KEY`.
 
 ## Production notes
-- Set a strong `NEXTAUTH_SECRET` and change the seeded admin password.
+- Set a strong `NEXTAUTH_SECRET` and rotate the seeded admin password.
 - If you prefer migrations, use `prisma:migrate` and `prisma:migrate:deploy` instead of `prisma:push`.
 - Restrict access to `/admin` behind role assignment and SSO as appropriate.

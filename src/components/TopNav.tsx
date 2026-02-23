@@ -12,6 +12,7 @@ export default function TopNav() {
   const user = session?.user;
   const roles = user?.roles ?? [];
   const isAuthenticated = Boolean(user);
+  const isLocalUser = user?.authProvider === 'credentials';
   const { theme } = useTheme();
   const [searchValue, setSearchValue] = useState('');
 
@@ -73,9 +74,11 @@ export default function TopNav() {
           <Link href="/" className="text-ink-200 hover:text-white transition">
             Portal
           </Link>
-          <Link href="/admin" className="text-ink-200 hover:text-white transition">
-            Admin
-          </Link>
+          {roles.includes('admin') ? (
+            <Link href="/admin" className="text-ink-200 hover:text-white transition">
+              Admin
+            </Link>
+          ) : null}
           <div className="hidden md:flex items-center gap-2 rounded-full border border-ink-600 px-3 py-2 text-ink-100">
             <Search size={16} className="text-ink-300" />
             <input
@@ -98,14 +101,27 @@ export default function TopNav() {
             </button>
           ) : null}
           {user ? (
-            <button
-              type="button"
-              onClick={() => signOut({ callbackUrl: '/auth/signin' })}
-              className="flex items-center gap-2 rounded-full border border-ink-600 px-4 py-2 text-ink-100 hover:border-ink-300 transition"
-            >
-              <ShieldCheck size={16} />
-              {roles.includes('admin') ? 'Admin session' : user.name ?? 'Signed in'}
-            </button>
+            <div className="flex items-center gap-3">
+              {isLocalUser ? (
+                <Link
+                  href="/auth/change-password"
+                  className="rounded-full border border-ink-600 px-4 py-2 text-xs text-ink-200 hover:border-ink-300 transition"
+                >
+                  Change password
+                </Link>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: '/auth/signin' })}
+                className="flex items-center gap-2 rounded-full border border-ink-600 px-4 py-2 text-ink-100 hover:border-ink-300 transition"
+              >
+                <ShieldCheck size={16} />
+                Sign out
+                <span className="text-ink-400 text-xs">
+                  {roles.includes('admin') ? 'Admin session' : user.name ?? 'Signed in'}
+                </span>
+              </button>
+            </div>
           ) : (
             <Link
               href="/auth/signin"

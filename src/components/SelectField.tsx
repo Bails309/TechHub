@@ -13,13 +13,15 @@ interface SelectFieldProps {
   options: SelectOption[];
   defaultValue?: string;
   className?: string;
+  onChange?: (value: string) => void;
 }
 
 export default function SelectField({
   name,
   options,
   defaultValue,
-  className
+  className,
+  onChange
 }: SelectFieldProps) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(defaultValue ?? options[0]?.value ?? '');
@@ -64,6 +66,7 @@ export default function SelectField({
                   type="button"
                   onClick={() => {
                     setValue(option.value);
+                    onChange?.(option.value);
                     setOpen(false);
                   }}
                   className={`select-option flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition ${

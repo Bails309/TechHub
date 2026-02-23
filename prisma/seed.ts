@@ -21,15 +21,24 @@ async function main() {
   const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@techhub.local';
   const adminPassword = process.env.ADMIN_PASSWORD ?? 'ChangeMeNow!';
 
-  const adminUser = await prisma.user.upsert({
-    where: { email: adminEmail },
-    update: {},
-    create: {
-      email: adminEmail,
-      name: 'TechHub Admin',
-      passwordHash: await bcrypt.hash(adminPassword, SALT_ROUNDS)
-    }
-  });
+  const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });
+  const adminUser = existingAdmin
+    ? await prisma.user.update({
+        where: { id: existingAdmin.id },
+        data: {
+          mustChangePassword: existingAdmin.passwordHash
+            ? await bcrypt.compare(adminPassword, existingAdmin.passwordHash)
+            : existingAdmin.mustChangePassword
+        }
+      })
+    : await prisma.user.create({
+        data: {
+          email: adminEmail,
+          name: 'TechHub Admin',
+          passwordHash: await bcrypt.hash(adminPassword, SALT_ROUNDS),
+          mustChangePassword: true
+        }
+      });
 
   await prisma.userRole.upsert({
     where: { userId_roleId: { userId: adminUser.id, roleId: adminRole.id } },

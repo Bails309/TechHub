@@ -7,6 +7,7 @@ interface NewAppFormProps {
   categorySelectOptions: SelectOption[];
   audienceOptions: SelectOption[];
   roleOptions: SelectOption[];
+  userOptions: SelectOption[];
   action: (formData: FormData) => void | Promise<void>;
 }
 
@@ -14,10 +15,18 @@ export default function NewAppForm({
   categorySelectOptions,
   audienceOptions,
   roleOptions,
+  userOptions,
   action
 }: NewAppFormProps) {
   const [isPending, startTransition] = useTransition();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [audience, setAudience] = useState('AUTHENTICATED');
+
+  const handleAudienceChange = (value: string) => {
+    if (value === 'PUBLIC' || value === 'AUTHENTICATED' || value === 'ROLE' || value === 'USER') {
+      setAudience(value);
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -63,13 +72,33 @@ export default function NewAppForm({
           className="input-surface w-full rounded-full px-5 py-3 text-ink-100 shadow-glow/30 focus:outline-none focus:ring-2 focus:ring-ocean-400/60"
         />
       </div>
-      <SelectField name="audience" options={audienceOptions} defaultValue="AUTHENTICATED" />
+      <SelectField
+        name="audience"
+        options={audienceOptions}
+        defaultValue="AUTHENTICATED"
+        onChange={handleAudienceChange}
+      />
       <SelectField
         name="roleId"
         options={roleOptions}
         defaultValue=""
         className="md:col-span-2"
       />
+      {audience === 'USER' ? (
+        <div className="md:col-span-2 space-y-2">
+          <label className="text-xs uppercase tracking-[0.2em] text-ink-400">
+            Assign users (for specific user apps)
+          </label>
+          <div className="grid gap-2 md:grid-cols-2">
+            {userOptions.map((option) => (
+              <label key={option.value} className="flex items-center gap-2 text-xs text-ink-200">
+                <input type="checkbox" name="userIds" value={option.value} className="h-4 w-4" />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <textarea
         name="description"
         placeholder="Short description"

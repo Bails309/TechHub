@@ -10,13 +10,15 @@ interface EditAppFormProps {
     url: string;
     category: string | null;
     description: string | null;
-    audience: 'PUBLIC' | 'AUTHENTICATED' | 'ROLE';
+    audience: 'PUBLIC' | 'AUTHENTICATED' | 'ROLE' | 'USER';
     roleId: string | null;
     icon?: string | null;
   };
   categorySelectOptions: SelectOption[];
   audienceOptions: SelectOption[];
   roleOptions: SelectOption[];
+  userOptions: SelectOption[];
+  assignedUserIds: string[];
   action: (formData: FormData) => void | Promise<void>;
 }
 
@@ -25,10 +27,19 @@ export default function EditAppForm({
   categorySelectOptions,
   audienceOptions,
   roleOptions,
+  userOptions,
+  assignedUserIds,
   action
 }: EditAppFormProps) {
   const [isPending, startTransition] = useTransition();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [audience, setAudience] = useState(app.audience);
+
+  const handleAudienceChange = (value: string) => {
+    if (value === 'PUBLIC' || value === 'AUTHENTICATED' || value === 'ROLE' || value === 'USER') {
+      setAudience(value);
+    }
+  };
 
   const existingIcon = app.icon ?? null;
   const displayIcon = useMemo(() => previewUrl ?? existingIcon, [existingIcon, previewUrl]);
@@ -74,8 +85,34 @@ export default function EditAppForm({
         placeholder="New category"
         className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
       />
-      <SelectField name="audience" options={audienceOptions} defaultValue={app.audience} />
+      <SelectField
+        name="audience"
+        options={audienceOptions}
+        defaultValue={app.audience}
+        onChange={handleAudienceChange}
+      />
       <SelectField name="roleId" options={roleOptions} defaultValue={app.roleId ?? ''} />
+      {audience === 'USER' ? (
+        <div className="md:col-span-2 space-y-2">
+          <label className="text-xs uppercase tracking-[0.2em] text-ink-400">
+            Assign users (for specific user apps)
+          </label>
+          <div className="grid gap-2 md:grid-cols-2">
+            {userOptions.map((option) => (
+              <label key={option.value} className="flex items-center gap-2 text-xs text-ink-200">
+                <input
+                  type="checkbox"
+                  name="userIds"
+                  value={option.value}
+                  defaultChecked={assignedUserIds.includes(option.value)}
+                  className="h-4 w-4"
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <textarea
         name="description"
         defaultValue={app.description ?? ''}

@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 
 function buildCsp(nonce: string) {
   return [
@@ -16,7 +17,7 @@ function buildCsp(nonce: string) {
   ].join('; ');
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const nonce = crypto.randomUUID();
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
@@ -30,6 +31,25 @@ export function middleware(request: NextRequest) {
   const accept = request.headers.get('accept') ?? '';
   if (accept.includes('text/html')) {
     response.headers.set('Content-Security-Policy', buildCsp(nonce));
+  }
+
+  const pathname = request.nextUrl.pathname;
+  const allowlist = [
+    '/auth/signin',
+    '/auth/post-login',
+    '/auth/change-password',
+    '/api/auth',
+    '/api/health'
+  ];
+  const isAllowed = allowlist.some((path) => pathname.startsWith(path));
+
+  if (!isAllowed) {
+    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    if (token?.mustChangePassword && token?.authProvider === 'credentials') {
+      const url = request.nextUrl.clone();
+      url.pathname = '/auth/change-password';
+      return NextResponse.redirect(url);
+    }
   }
 
   return response;

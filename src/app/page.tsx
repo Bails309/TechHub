@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import PortalView from '@/components/PortalView';
 import StatsStrip from '@/components/StatsStrip';
 
+export const dynamic = 'force-dynamic';
+
 export default async function Home() {
   const session = await getServerAuthSession();
   const roles = session?.user?.roles ?? [];
@@ -16,6 +18,10 @@ export default async function Home() {
   const audienceFilters: Prisma.AppLinkWhereInput[] = [{ audience: 'PUBLIC' }];
   if (session) {
     audienceFilters.push({ audience: 'AUTHENTICATED' });
+    audienceFilters.push({
+      audience: 'USER',
+      userAccesses: { some: { userId: session.user.id } }
+    });
   }
   if (roleIds.length) {
     audienceFilters.push({ audience: 'ROLE', roleId: { in: roleIds } });

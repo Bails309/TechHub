@@ -1,37 +1,63 @@
 'use client';
 
 import { signIn } from 'next-auth/react';
+import type { ClientSafeProvider } from 'next-auth/react';
 
 export default function SignInButtons({
-  focusCredentials = false
+  providers,
+  focusCredentials = false,
+  callbackUrl = '/auth/post-login'
 }: {
+  providers: Record<string, ClientSafeProvider> | null;
   focusCredentials?: boolean;
+  callbackUrl?: string;
 }) {
+  const azureProvider = providers?.['azure-ad'];
+  const keycloakProvider = providers?.keycloak;
+  const credentialsProvider = providers?.credentials;
+  const showCredentialsFallback = providers === null;
+
   const handleCredentials = () => {
+    if (!credentialsProvider) {
+      return;
+    }
     if (focusCredentials) {
       document.getElementById('credentials')?.scrollIntoView({ behavior: 'smooth' });
       return;
     }
 
-    void signIn();
+    void signIn('credentials', { callbackUrl });
   };
 
   return (
     <div className="flex flex-wrap gap-3">
-      <button
-        type="button"
-        onClick={() => signIn('azure-ad')}
-        className="rounded-full bg-ocean-500 px-5 py-3 text-sm font-semibold text-white hover:bg-ocean-400 transition"
-      >
-        Sign in with Microsoft
-      </button>
-      <button
-        type="button"
-        onClick={handleCredentials}
-        className="rounded-full border border-ink-600 px-5 py-3 text-sm font-semibold text-ink-100 hover:border-ink-300 transition"
-      >
-        Use credentials
-      </button>
+      {azureProvider ? (
+        <button
+          type="button"
+          onClick={() => signIn('azure-ad', { callbackUrl })}
+          className="rounded-full bg-ocean-500 px-5 py-3 text-sm font-semibold text-white hover:bg-ocean-400 transition"
+        >
+          Sign in with Microsoft
+        </button>
+      ) : null}
+      {keycloakProvider ? (
+        <button
+          type="button"
+          onClick={() => signIn('keycloak', { callbackUrl })}
+          className="rounded-full bg-ink-200 px-5 py-3 text-sm font-semibold text-ink-900 hover:bg-ink-100 transition"
+        >
+          Sign in with Keycloak
+        </button>
+      ) : null}
+      {credentialsProvider || showCredentialsFallback ? (
+        <button
+          type="button"
+          onClick={handleCredentials}
+          className="rounded-full border border-ink-600 px-5 py-3 text-sm font-semibold text-ink-100 hover:border-ink-300 transition"
+        >
+          Use credentials
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -11,6 +11,7 @@ enum AppAudience {
   PUBLIC
   AUTHENTICATED
   ROLE
+  USER
 }
 
 model User {
@@ -20,10 +21,13 @@ model User {
   emailVerified DateTime?
   image         String?
   passwordHash  String?
+  mustChangePassword Boolean @default(false)
+  passwordHistory PasswordHistory[]
   accounts      Account[]
   sessions      Session[]
   roles         UserRole[]
   appOrder      UserAppOrder?
+  appAccesses   UserAppAccess[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -56,8 +60,18 @@ model AppLink {
   audience    AppAudience @default(AUTHENTICATED)
   role        Role?       @relation(fields: [roleId], references: [id])
   roleId      String?
+  userAccesses UserAppAccess[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+}
+
+model UserAppAccess {
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  app    AppLink @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId  String
+
+  @@id([userId, appId])
 }
 
 model UserAppOrder {
@@ -76,6 +90,7 @@ model Account {
   refresh_token     String?
   access_token      String?
   expires_at        Int?
+  refresh_expires_in Int?
   token_type        String?
   scope             String?
   id_token          String?
@@ -100,4 +115,42 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model SsoConfig {
+  id              String   @id @default(cuid())
+  provider        String   @unique
+  enabled         Boolean  @default(false)
+  config          Json?
+  clientSecretEnc String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SsoAudit {
+  id        String   @id @default(cuid())
+  provider  String
+  action    String
+  actorId   String?
+  changes   Json?
+  createdAt DateTime @default(now())
+}
+
+model PasswordPolicy {
+  id        String   @id @default(cuid())
+  minLength Int      @default(12)
+  requireUpper Boolean @default(true)
+  requireLower Boolean @default(true)
+  requireNumber Boolean @default(true)
+  requireSymbol Boolean @default(true)
+  historyCount Int @default(5)
+  updatedAt DateTime @updatedAt
+}
+
+model PasswordHistory {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  hash      String
+  createdAt DateTime @default(now())
 }

@@ -5,6 +5,8 @@ declare module 'next-auth' {
     user: {
       id: string;
       roles: string[];
+      mustChangePassword?: boolean;
+      authProvider?: string;
       name?: string | null;
       email?: string | null;
       image?: string | null;
@@ -13,5 +15,14 @@ declare module 'next-auth' {
 
   interface User {
     roles?: string[];
+    mustChangePassword?: boolean;
+    authProvider?: string;
+  }
+}
+
+declare module 'next-auth/jwt' {
+  interface JWT {
+    authProvider?: string;
+    mustChangePassword?: boolean;
   }
 }
