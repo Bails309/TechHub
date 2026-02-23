@@ -30,6 +30,40 @@ const keycloakConfiguredEnv =
 const credentialsEnabledEnv = process.env.ENABLE_CREDENTIALS !== 'false';
 const allowEmailLinking = false;
 const trustProxy = process.env.TRUST_PROXY === 'true';
+const trustedProxiesEnv = String(process.env.TRUSTED_PROXIES ?? '').trim();
+
+// Parse TRUSTED_PROXIES into CIDR tuples using ipaddr.js
+let trustedProxyCidrs: Array<[ipaddr.IPv4 | ipaddr.IPv6, number]> = [];
+if (trustedProxiesEnv) {
+  trustedProxyCidrs = trustedProxiesEnv
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((cidr) => {
+      try {
+        const parsed = ipaddr.parseCIDR(cidr);
+        // convert readonly tuple to mutable tuple for compatibility with ipaddr.match
+        return [parsed[0], parsed[1]] as [ipaddr.IPv4 | ipaddr.IPv6, number];
+      } catch {
+        return undefined as unknown as [ipaddr.IPv4 | ipaddr.IPv6, number] | undefined;
+      }
+    })
+    .filter(Boolean) as Array<[ipaddr.IPv4 | ipaddr.IPv6, number]>;
+}
+
+function isFromTrustedProxy(remoteIp: string | undefined) {
+  if (!remoteIp) return false;
+  if (!trustedProxyCidrs.length) return false;
+  try {
+    const addr = ipaddr.parse(remoteIp);
+    for (const cidr of trustedProxyCidrs) {
+      if (addr.match(cidr)) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
 
 type HeaderSource = Record<string, string | string[] | undefined> | Headers | undefined;
@@ -76,27 +110,36 @@ function normalizeIp(raw: string | undefined) {
   return ipaddr.isValid(trimmed) ? ipaddr.process(trimmed).toString() : undefined;
 }
 
-function getClientIp(headers: HeaderSource) {
-  const trustedClientIp = normalizeIp(readHeader(headers, 'x-client-ip'));
-  if (trustedClientIp) {
-    return trustedClientIp;
-  }
+function getClientIp(headers: HeaderSource, remoteAddr?: string) {
+  // Prefer immediate remote address when available
+  const remoteNormalized = normalizeIp(remoteAddr ?? undefined);
 
+  // If TRUST_PROXY is enabled and the immediate remote is a trusted proxy,
+  // accept proxy-supplied headers (but only from configured trusted proxies).
   if (trustProxy) {
-    const forwardedFor = readHeader(headers, 'x-forwarded-for');
-    const realIp = readHeader(headers, 'x-real-ip');
-    const cfIp = readHeader(headers, 'cf-connecting-ip');
-    const trueClientIp = readHeader(headers, 'true-client-ip');
-    const forwarded = parseForwarded(readHeader(headers, 'forwarded'));
-    const raw = forwardedFor ?? realIp ?? cfIp ?? trueClientIp ?? forwarded;
-    return normalizeIp(raw);
+    if (remoteNormalized && isFromTrustedProxy(remoteNormalized)) {
+      const trustedClientIp = normalizeIp(readHeader(headers, 'x-client-ip'));
+      if (trustedClientIp) return trustedClientIp;
+
+      const forwardedFor = readHeader(headers, 'x-forwarded-for');
+      const realIp = readHeader(headers, 'x-real-ip');
+      const cfIp = readHeader(headers, 'cf-connecting-ip');
+      const trueClientIp = readHeader(headers, 'true-client-ip');
+      const forwarded = parseForwarded(readHeader(headers, 'forwarded'));
+      const raw = forwardedFor ?? realIp ?? cfIp ?? trueClientIp ?? forwarded;
+      return normalizeIp(raw) ?? remoteNormalized;
+    }
+
+    // TRUST_PROXY=true but immediate remote isn't trusted: ignore headers, use remote
+    return remoteNormalized ?? undefined;
   }
 
-  return undefined;
+  // Not trusting proxy headers: prefer immediate remote address, then x-real-ip
+  return remoteNormalized ?? normalizeIp(readHeader(headers, 'x-real-ip')) ?? undefined;
 }
 
-function getRateLimitKey(headers: HeaderSource, fallbackKey?: string) {
-  const ip = getClientIp(headers);
+function getRateLimitKey(headers: HeaderSource, fallbackKey?: string, remoteAddr?: string) {
+  const ip = getClientIp(headers, remoteAddr);
   const emailKey = fallbackKey ? fallbackKey.toLowerCase() : undefined;
 
   if (ip && emailKey) {
@@ -123,7 +166,19 @@ function buildCredentialsProvider() {
         return null;
       }
 
-      const rateKey = getRateLimitKey(req?.headers, parsed.data.email);
+      function extractRemoteAddr(r: unknown): string | undefined {
+        if (!r || typeof r !== 'object') return undefined;
+        const rec = r as Record<string, unknown>;
+        const socket = rec.socket as Record<string, unknown> | undefined;
+        if (socket && typeof socket.remoteAddress === 'string') return socket.remoteAddress;
+        const connection = rec.connection as Record<string, unknown> | undefined;
+        if (connection && typeof connection.remoteAddress === 'string') return connection.remoteAddress;
+        if (typeof rec.ip === 'string') return rec.ip;
+        return undefined;
+      }
+
+      const remoteAddr = extractRemoteAddr(req);
+      const rateKey = getRateLimitKey(req?.headers, parsed.data.email, remoteAddr);
       await assertRateLimit(rateKey);
 
       const user = await prisma.user.findUnique({

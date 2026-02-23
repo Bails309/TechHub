@@ -53,6 +53,8 @@ The compose entrypoint runs `prisma db push` and `prisma db seed` before `npm st
 - `ENABLE_CREDENTIALS`: set to `false` to disable local credentials login when no DB config exists
 - `ALLOW_SSO_EMAIL_LINKING`: set to `true` to auto-link SSO users to existing local accounts by email (default: `false`). When `false`, SSO accounts must be linked by an admin.
 - `TRUST_PROXY`: set to `true` when running behind a trusted reverse proxy to trust `X-Forwarded-For`
+- `TRUST_PROXY`: set to `true` when running behind a trusted reverse proxy to trust `X-Forwarded-For` and related headers
+- `TRUSTED_PROXIES`: optional comma-separated list of CIDRs/IPs for immediate trusted proxies (e.g. `10.0.0.0/8,203.0.113.5`). When set, proxy headers are only trusted if the immediate remote address matches one of these CIDRs.
 - `REQUIRE_PREPROVISIONED_USERS`: set to `true` (default/recommended) to block SSO sign-in unless a local user exists. Prevents SSO self-registration.
 
 Generate a master key with:
@@ -118,6 +120,8 @@ Default password policy:
 - CSP is applied via middleware with a per-request nonce for scripts and styles (tightened to nonce-only for scripts/styles).
 - SSRF protection is enforced for SSO issuer validation (DNS/IP validation).
 - Rate limiting is hardened and respects the `TRUST_PROXY` flag.
+- When running behind a reverse proxy, set `TRUST_PROXY=true` and configure `TRUSTED_PROXIES` to the immediate proxy IPs/CIDRs. This ensures the app only accepts `X-Forwarded-For` / `X-Client-Ip` from known proxies and prevents client-side header spoofing.
+- See [docs/proxy-trust.md](docs/proxy-trust.md) for deployment guidance and testing instructions to verify proxy/no-proxy behavior.
 - `/api/app-order` returns 400 for invalid JSON or payloads.
 - SSO secrets are encrypted at rest using AES-256-GCM with `SSO_MASTER_KEY`.
 
