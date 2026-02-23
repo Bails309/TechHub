@@ -33,7 +33,17 @@ export default function AdminActionForm({
               await action(formData);
               setMessage(successMessage);
               setTone('success');
-            } catch {
+            } catch (err: unknown) {
+              function isNextRedirectLike(error: unknown) {
+                if (typeof error !== 'object' || error === null) return false;
+                const rec = error as Record<string, unknown>;
+                if (rec.digest === 'NEXT_REDIRECT') return true;
+                if (typeof rec.message === 'string' && rec.message.includes('NEXT_REDIRECT')) return true;
+                if (Boolean(rec.__next_redirect__)) return true;
+                return false;
+              }
+
+              if (isNextRedirectLike(err)) throw err;
               setMessage(errorMessage);
               setTone('error');
             }
