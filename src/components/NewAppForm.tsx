@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import SelectField, { SelectOption } from './SelectField';
 
 interface NewAppFormProps {
@@ -21,7 +21,26 @@ export default function NewAppForm({
   const [isPending, startTransition] = useTransition();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [audience, setAudience] = useState('AUTHENTICATED');
-  const safePreviewUrl = previewUrl?.startsWith('blob:') ? previewUrl : null;
+  const safePreviewUrl = useMemo(() => {
+    if (!previewUrl) {
+      return null;
+    }
+    try {
+      if (previewUrl.startsWith('blob:')) {
+        return previewUrl;
+      }
+      const url = new URL(previewUrl, window.location.origin);
+      if (url.origin !== window.location.origin) {
+        return null;
+      }
+      if (!url.pathname.startsWith('/uploads/')) {
+        return null;
+      }
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }, [previewUrl]);
 
   const handleAudienceChange = (value: string) => {
     if (value === 'PUBLIC' || value === 'AUTHENTICATED' || value === 'ROLE' || value === 'USER') {

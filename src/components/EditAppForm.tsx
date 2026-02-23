@@ -47,10 +47,21 @@ export default function EditAppForm({
     if (!displayIcon) {
       return null;
     }
-    if (displayIcon.startsWith('blob:') || displayIcon.startsWith('/uploads/')) {
-      return displayIcon;
+    try {
+      if (displayIcon.startsWith('blob:')) {
+        return displayIcon;
+      }
+      const url = new URL(displayIcon, window.location.origin);
+      if (url.origin !== window.location.origin) {
+        return null;
+      }
+      if (!url.pathname.startsWith('/uploads/')) {
+        return null;
+      }
+      return url.toString();
+    } catch {
+      return null;
     }
-    return null;
   }, [displayIcon]);
 
   useEffect(() => {
