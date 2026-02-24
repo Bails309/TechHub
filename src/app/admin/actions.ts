@@ -113,7 +113,16 @@ export async function createApp(formData: FormData) {
   });
 
   const iconFile = formData.get('icon');
-  const iconPath = iconFile instanceof File ? await saveIcon(iconFile) : undefined;
+  let iconPath: string | undefined;
+  if (iconFile instanceof File) {
+    const parsedIcon = uploadSchema.safeParse(iconFile);
+    if (!parsedIcon.success) {
+      throw new Error('Invalid file type or size');
+    }
+    iconPath = await saveIcon(iconFile);
+  } else {
+    iconPath = undefined;
+  }
 
   const normalizedNewCategory = payload.categoryNew?.trim();
   const normalizedSelect = payload.categorySelect?.trim();
@@ -207,8 +216,19 @@ export async function updateApp(formData: FormData) {
   });
 
   const iconFile = formData.get('icon');
-  const iconPath = iconFile instanceof File ? await saveIcon(iconFile) : undefined;
   const iconRemove = formData.get('iconRemove') === 'on';
+  let iconPath: string | undefined;
+  if (iconRemove) {
+    iconPath = undefined;
+  } else if (iconFile instanceof File) {
+    const parsedIcon = uploadSchema.safeParse(iconFile);
+    if (!parsedIcon.success) {
+      throw new Error('Invalid file type or size');
+    }
+    iconPath = await saveIcon(iconFile);
+  } else {
+    iconPath = undefined;
+  }
 
   const normalizedNewCategory = payload.categoryNew?.trim();
   const normalizedSelect = payload.categorySelect?.trim();
