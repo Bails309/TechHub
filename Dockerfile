@@ -2,12 +2,14 @@
 FROM node:20-bullseye-slim AS deps
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN npm install -g npm@11.10.1
 COPY package.json package-lock.json* ./
 RUN npm ci --prefer-offline --no-audit --no-fund
 
 FROM node:20-bullseye-slim AS builder
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN npm install -g npm@11.10.1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run prisma:generate
@@ -18,6 +20,7 @@ RUN npm run build
 FROM node:20-bullseye-slim AS runner
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN npm install -g npm@11.10.1
 ENV NODE_ENV=production
 ENV PORT=3000
 COPY --from=builder /app/public ./public
