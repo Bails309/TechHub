@@ -69,12 +69,7 @@ export async function changePassword(
     orderBy: { createdAt: 'desc' },
     take: policy.historyCount
   });
-
   // Run expensive bcrypt checks outside of any DB transaction/lock
-  if (await verifyPassword(parsed.data.newPassword, user.passwordHash)) {
-    return { status: 'error', message: 'New password must be different from current password' };
-  }
-
   for (const entry of recent) {
     if (await verifyPassword(parsed.data.newPassword, entry.hash)) {
       return { status: 'error', message: 'New password was used recently' };
