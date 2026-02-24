@@ -73,7 +73,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 - First-time local users must change their password at `/auth/change-password`.
 - **SSO sign-in is only allowed for users who already exist locally.**
 - **Admins must explicitly link SSO accounts to local users via the admin UI.**
-- If `ALLOW_SSO_EMAIL_LINKING` is `true`, SSO users are auto-linked to existing local accounts by email (not recommended for strict onboarding).
+ - Automatic email-based linking is disabled. Admins must explicitly link SSO accounts to local users via the admin UI.
+ - The `ALLOW_SSO_EMAIL_LINKING` option is deprecated and not recommended; enabling it may expose accounts to unintended linking risks.
 
 
 ## Admin workflow

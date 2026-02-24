@@ -79,6 +79,11 @@ export default function TopNav() {
               Admin
             </Link>
           ) : null}
+          {roles.includes('admin') ? (
+            <Link href="/admin/sso-audit" className="text-ink-200 hover:text-white transition">
+              SSO Audit
+            </Link>
+          ) : null}
           <div className="hidden md:flex items-center gap-2 rounded-full border border-ink-600 px-3 py-2 text-ink-100">
             <Search size={16} className="text-ink-300" />
             <input

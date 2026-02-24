@@ -117,7 +117,7 @@ export default function SsoConfigForm({
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-ink-800/60 bg-ink-900/30 px-4 py-3 text-xs text-ink-300">
-        SSO accounts are auto-linked by email and converted to SSO-only on first login.
+        SSO accounts must be explicitly linked to local users by an admin via the Link SSO Account form. Linked accounts will have local passwords cleared on link/first SSO login.
       </div>
       {!hasMasterKey ? (
         <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">

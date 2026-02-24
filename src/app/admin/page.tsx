@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import type { SsoAudit } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { getServerAuthSession } from '@/lib/auth';
 import { decryptSecret, hasSecretKey } from '@/lib/crypto';
@@ -75,6 +76,7 @@ export default async function AdminPage({
     users,
     passwordPolicy,
     totalUsers,
+    ssoAudits,
     totalApps
   ] =
     await Promise.all([
@@ -100,10 +102,13 @@ export default async function AdminPage({
     }),
     prisma.passwordPolicy.findFirst(),
       prisma.user.count(),
+      prisma.ssoAudit.findMany({ orderBy: { createdAt: 'desc' }, take: 50 }),
       prisma.appLink.count()
     ]);
 
   const ssoMap = new Map(ssoConfigs.map((item) => [item.provider, item]));
+
+  // ssoAudit entries (recent) are returned from the query above
 
   const azureConfig = ssoMap.get('azure-ad');
   const keycloakConfig = ssoMap.get('keycloak');
@@ -261,6 +266,8 @@ export default async function AdminPage({
           defaultClientId={defaultClientId}
         />
       </section>
+
+      
 
       
 

@@ -354,18 +354,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             (profile as { email_verified?: boolean } | null | undefined)?.email_verified
           );
 
-          if (!accountExists && existing && !allowEmailLinking) {
+          // Do NOT auto-link SSO accounts to existing local users by email.
+          // Linking must be performed explicitly by an admin via the UI.
+          if (!accountExists && existing) {
             return false;
-          }
-
-          if (allowEmailLinking && existing && !accountExists) {
-            if (!emailVerified) {
-              return false;
-            }
-            await prisma.user.update({
-              where: { id: existing.id },
-              data: { mustChangePassword: false }
-            });
           }
         }
 
