@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getServerAuthSession } from '../../lib/auth';
+import { getServerAuthSession } from '../../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 
