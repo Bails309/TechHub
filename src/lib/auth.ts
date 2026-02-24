@@ -408,7 +408,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           const lastChecked = typeof token.lastCheckedAt === 'number' ? token.lastCheckedAt : 0;
           const delta = now - lastChecked;
 
-          if (token.sub && delta >= JWT_CHECK_INTERVAL_MS) {
+          if (token.sub && delta > JWT_CHECK_INTERVAL_MS) {
             try {
               const meta = await getUserMeta(String(token.sub));
               if (!meta) {
