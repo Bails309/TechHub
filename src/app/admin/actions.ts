@@ -96,9 +96,7 @@ export async function createApp(formData: FormData) {
   if (!session?.user?.roles?.includes('admin')) {
     throw new Error('Unauthorized');
   }
-  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
-  }
+  
 
   const payload = appSchema.parse({
     name: formData.get('name'),
@@ -159,9 +157,7 @@ export async function deleteApp(formData: FormData) {
   if (!session?.user?.roles?.includes('admin')) {
     throw new Error('Unauthorized');
   }
-  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
-  }
+  
 
   const id = String(formData.get('id') ?? '');
   if (!id) {
@@ -187,9 +183,7 @@ export async function updateApp(formData: FormData) {
   if (!session?.user?.roles?.includes('admin')) {
     throw new Error('Unauthorized');
   }
-  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
-  }
+  
 
   const payload = updateSchema.parse({
     id: formData.get('id'),
@@ -474,10 +468,7 @@ export async function createLocalUser(
     return { status: 'error', message: 'Unauthorized' };
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
-  }
-  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
+    return { status: 'error', message: 'Unauthorized: must_change_password' };
   }
 
   const payload = localUserSchema.safeParse({
@@ -873,6 +864,10 @@ export async function updateSsoConfig(
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
+  }
+
+  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
+    return { status: 'error', message: 'Unauthorized: must_change_password' };
   }
 
   const provider = ssoProviderSchema.safeParse(String(formData.get('provider') ?? ''));
