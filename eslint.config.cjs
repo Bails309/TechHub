@@ -18,7 +18,7 @@ module.exports = [
     },
     plugins: {
       '@typescript-eslint': require('@typescript-eslint/eslint-plugin'),
-      next: require('eslint-plugin-next'),
+      next: require('@next/eslint-plugin-next'),
     },
     rules: {
       // Disable Next.js image rule for cases where <img> is intentional (blob preview, same-origin)
