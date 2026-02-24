@@ -11,6 +11,8 @@ RUN apk add --no-cache openssl
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run prisma:generate
+# Increase Node heap for builds to avoid worker crashes (SIGBUS/OOM)
+ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN npm run build
 
 FROM node:20-alpine AS runner
