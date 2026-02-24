@@ -315,13 +315,47 @@ export async function updateUserRoles(formData: FormData) {
     redirect('/admin?error=confirm-admin');
   }
 
-  await prisma.$transaction([
-    prisma.userRole.deleteMany({ where: { userId: parsed.data.userId } }),
-    prisma.userRole.createMany({
-      data: nextRoles.map((roleId) => ({ userId: parsed.data.userId, roleId })),
-      skipDuplicates: true
-    })
-  ]);
+  const adminRoleCheck = adminRole;
+  if (adminRoleCheck) {
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Lock the admin role row so concurrent updates serialize here.
+        await tx.$queryRaw`
+          SELECT id FROM "Role" WHERE id = ${adminRoleCheck.id} FOR UPDATE
+        `;
+
+        // If we're removing the admin role from this user, ensure we won't drop to zero admins.
+        const targetIsAdmin = await tx.userRole.findFirst({ where: { userId: parsed.data.userId, roleId: adminRoleCheck.id } });
+        const adminCount = await tx.userRole.count({ where: { roleId: adminRoleCheck.id } });
+
+        if (targetIsAdmin && !nextAdmin && adminCount <= 1) {
+          throw new Error('last-admin');
+        }
+
+        await tx.userRole.deleteMany({ where: { userId: parsed.data.userId } });
+        if (nextRoles.length) {
+          await tx.userRole.createMany({
+            data: nextRoles.map((roleId) => ({ userId: parsed.data.userId, roleId })),
+            skipDuplicates: true
+          });
+        }
+      });
+    } catch (err) {
+      if ((err as Error).message === 'last-admin') {
+        redirect('/admin?error=last-admin');
+      }
+      throw err;
+    }
+  } else {
+    // No admin role exists at all, just perform the replace.
+    await prisma.$transaction([
+      prisma.userRole.deleteMany({ where: { userId: parsed.data.userId } }),
+      prisma.userRole.createMany({
+        data: nextRoles.map((roleId) => ({ userId: parsed.data.userId, roleId })),
+        skipDuplicates: true
+      })
+    ]);
+  }
 
   revalidatePath('/admin');
 }
