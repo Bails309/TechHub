@@ -62,7 +62,6 @@ export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
           <div className="mt-2 flex items-center gap-3">
             <div className="h-10 w-10 rounded-2xl bg-white/10 flex items-center justify-center">
               {app.icon && !iconError ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={app.icon}
                   alt=""

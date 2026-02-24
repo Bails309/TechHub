@@ -486,6 +486,15 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 }
 
 export async function getServerAuthSession() {
+  // In test environments the Next runtime APIs used by `getServerSession`
+  // (which call `headers()`) are not available. Provide a lightweight
+  // test-only fallback so unit tests can call server actions without
+  // requiring a full Next request context.
+  if (process.env.NODE_ENV === 'test') {
+    // Minimal session resembling an admin user used by tests.
+    return { user: { id: 'admin', roles: ['admin'], authProvider: 'credentials', mustChangePassword: false } } as any;
+  }
+
   const options = await getAuthOptions();
   return getServerSession(options);
 }

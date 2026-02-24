@@ -1,6 +1,26 @@
 import { vi, describe, it, expect } from 'vitest';
 
 // Mocks
+// Provide a lightweight mock for Next's headers API used in some server modules
+vi.mock('next/headers', () => ({
+  headers: () => ({ get: (_: string) => undefined })
+}));
+
+// Mock next-auth's server helper to avoid calling Next runtime APIs in tests
+vi.mock('next-auth', () => ({
+  getServerSession: async () => ({ user: { id: 'admin', roles: ['admin'], authProvider: 'credentials', mustChangePassword: false } })
+}));
+
+// Provide no-op revalidation helpers so server actions can call them during tests
+vi.mock('next/cache', () => ({
+  revalidatePath: async (_: string) => {},
+  revalidateTag: async (_: string) => {},
+  unstable_cache: (fn: any) => {
+    // Return the original function (no caching) for tests
+    return (...args: any[]) => fn(...args);
+  }
+}));
+
 const deleteIconMock = vi.fn();
 const saveIconMock = vi.fn().mockResolvedValue('/uploads/fake.png');
 
@@ -77,7 +97,15 @@ describe('createApp orphaned icon cleanup', () => {
       getAll: (_k: string) => []
     } as unknown as FormData;
 
-    await expect(createApp(form)).rejects.toThrow('simulated-db-failure');
+    try {
+      await createApp(form);
+      throw new Error('createApp did not throw');
+    } catch (err) {
+      // Print full stack for debugging where the headers() call originates
+      // eslint-disable-next-line no-console
+      console.error('createApp threw:', err && (err as Error).stack ? (err as Error).stack : err);
+      expect(String(err)).toContain('simulated-db-failure');
+    }
 
     // Ensure upload was attempted and the uploaded icon was removed on failure
     expect(saveIconMock).toHaveBeenCalled();

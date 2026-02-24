@@ -6,7 +6,7 @@
     "dev": "npm run prisma:push && next dev",
     "build": "next build",
     "start": "npm run prisma:push && next start",
-    "lint": "next lint",
+    "lint": "eslint src --ext .ts,.tsx --no-error-on-unmatched-pattern",
     "prisma:generate": "prisma generate",
     "test": "vitest",
     "prisma:migrate": "prisma migrate dev",
@@ -48,6 +48,8 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^9.9.1",
     "eslint-config-next": "^15.1.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
     "postcss": "^8.4.41",
     "prettier": "^3.3.3",
     "prisma": "^5.18.0",
@@ -56,3 +58,4 @@
     "typescript": "^5.5.4"
   }
 }
+
