@@ -40,6 +40,8 @@
     "vitest": "^1.6.1",
     "esbuild": "^0.27.3",
     "@next/eslint-plugin-next": "^15.5.12",
+    "eslint-plugin-next": "^15.5.12",
+    "eslint-plugin-next": "^15.5.12",
     "ioredis-mock": "^8.13.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.14.10",
