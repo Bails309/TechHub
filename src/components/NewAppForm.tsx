@@ -8,7 +8,7 @@ interface NewAppFormProps {
   audienceOptions: SelectOption[];
   roleOptions: SelectOption[];
   userOptions: SelectOption[];
-  action: (formData: FormData) => void | Promise<void>;
+  action: (formData: FormData) => void | Promise<{ status: 'success' | 'error'; message: string }>;
 }
 
 export default function NewAppForm({
@@ -66,9 +66,17 @@ export default function NewAppForm({
         startTransition(() => {
           void (async () => {
             try {
-              await action(formData);
-              setStatusMessage('App created.');
-              setStatusTone('success');
+              const result = await action(formData);
+              if (result && result.status === 'success') {
+                setStatusMessage(result.message ?? 'App created.');
+                setStatusTone('success');
+              } else if (result && result.status === 'error') {
+                setStatusMessage(result.message ?? 'Unable to create app.');
+                setStatusTone('error');
+              } else {
+                setStatusMessage('App created.');
+                setStatusTone('success');
+              }
             } catch {
               setStatusMessage('Unable to create app.');
               setStatusTone('error');

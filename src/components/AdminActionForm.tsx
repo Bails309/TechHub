@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { useState, useTransition } from 'react';
 
 type AdminActionFormProps = {
-  action: (formData: FormData) => void | Promise<void>;
+  action: (formData: FormData) => void | Promise<void | { status: 'idle' | 'success' | 'error'; message: string }>;
   successMessage?: string;
   errorMessage?: string;
   className?: string;
@@ -30,9 +30,20 @@ export default function AdminActionForm({
         startTransition(() => {
           void (async () => {
             try {
-              await action(formData);
-              setMessage(successMessage);
-              setTone('success');
+              const res = await action(formData);
+              if (res && typeof res === 'object' && 'status' in res) {
+                const state = res as { status: string; message: string };
+                if (state.status === 'error') {
+                  setMessage(state.message || errorMessage);
+                  setTone('error');
+                } else {
+                  setMessage(state.message || successMessage);
+                  setTone('success');
+                }
+              } else {
+                setMessage(successMessage);
+                setTone('success');
+              }
             } catch (err: unknown) {
               function isNextRedirectLike(error: unknown) {
                 if (typeof error !== 'object' || error === null) return false;

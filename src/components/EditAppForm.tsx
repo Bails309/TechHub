@@ -19,7 +19,7 @@ interface EditAppFormProps {
   roleOptions: SelectOption[];
   userOptions: SelectOption[];
   assignedUserIds: string[];
-  action: (formData: FormData) => void | Promise<void>;
+  action: (formData: FormData) => void | Promise<void | { status: 'idle' | 'success' | 'error'; message: string }>;
 }
 
 export default function EditAppForm({
@@ -82,9 +82,17 @@ export default function EditAppForm({
         startTransition(() => {
           void (async () => {
             try {
-              await action(formData);
-              setStatusMessage('Changes saved.');
-              setStatusTone('success');
+              const result = await action(formData);
+              if (result && result.status === 'success') {
+                setStatusMessage(result.message ?? 'Changes saved.');
+                setStatusTone('success');
+              } else if (result && result.status === 'error') {
+                setStatusMessage(result.message ?? 'Unable to save changes.');
+                setStatusTone('error');
+              } else {
+                setStatusMessage('Changes saved.');
+                setStatusTone('success');
+              }
             } catch {
               setStatusMessage('Unable to save changes.');
               setStatusTone('error');

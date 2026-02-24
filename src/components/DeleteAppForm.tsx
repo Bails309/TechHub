@@ -9,7 +9,7 @@ export default function DeleteAppForm({
 }: {
   id: string;
   name: string;
-  action: (formData: FormData) => void | Promise<void>;
+  action: (formData: FormData) => void | Promise<{ status: 'success' | 'error'; message: string }>;
 }) {
   const [isPending, startTransition] = useTransition();
   const [isOpen, setIsOpen] = useState(false);
@@ -79,16 +79,24 @@ export default function DeleteAppForm({
               <form
                 action={(formData) => {
                   startTransition(() => {
-                    void (async () => {
-                      try {
-                        await action(formData);
-                        setStatusMessage('App removed.');
-                        setStatusTone('success');
-                      } catch {
-                        setStatusMessage('Unable to remove app.');
-                        setStatusTone('error');
-                      }
-                    })();
+                      void (async () => {
+                        try {
+                          const res = await action(formData);
+                          if (res && res.status === 'success') {
+                            setStatusMessage(res.message ?? 'App removed.');
+                            setStatusTone('success');
+                          } else if (res && res.status === 'error') {
+                            setStatusMessage(res.message ?? 'Unable to remove app.');
+                            setStatusTone('error');
+                          } else {
+                            setStatusMessage('App removed.');
+                            setStatusTone('success');
+                          }
+                        } catch {
+                          setStatusMessage('Unable to remove app.');
+                          setStatusTone('error');
+                        }
+                      })();
                   });
                   setIsOpen(false);
                 }}

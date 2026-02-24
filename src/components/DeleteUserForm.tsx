@@ -6,7 +6,7 @@ import AdminActionForm from './AdminActionForm';
 type Props = {
   userId: string;
   userEmail?: string | null;
-  action: (formData: FormData) => void | Promise<void>;
+  action: (formData: FormData) => void | Promise<void | { status: 'idle' | 'success' | 'error'; message: string }>;
 };
 
 export default function DeleteUserForm({ userId, userEmail, action }: Props) {

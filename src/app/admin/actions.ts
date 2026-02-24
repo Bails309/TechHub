@@ -4,7 +4,6 @@ import { z } from 'zod';
 import path from 'path';
 import { saveIcon as storageSaveIcon, deleteIcon as storageDeleteIcon } from '@/lib/storage';
 import { revalidatePath, revalidateTag } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { getServerAuthSession } from '@/lib/auth';
@@ -16,6 +15,8 @@ import { getPasswordPolicy } from '@/lib/passwordPolicy';
 import { lookup } from 'dns/promises';
 import https from 'https';
 import ipaddr from 'ipaddr.js';
+
+export type AdminActionState = { status: 'idle' | 'success' | 'error'; message: string };
 
 const appSchemaBase = z.object({
   name: z.string().min(2),
@@ -95,14 +96,14 @@ async function safeDeleteIcon(iconPath?: string) {
 export async function createApp(formData: FormData) {
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
-    throw new Error('Unauthorized');
+    return { status: 'error', message: 'Unauthorized' } as const;
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
+    return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
   }
   
 
-  const payload = appSchema.parse({
+  const payload = appSchema.safeParse({
     name: formData.get('name'),
     url: formData.get('url'),
     categorySelect: formData.get('categorySelect') || undefined,
@@ -113,20 +114,25 @@ export async function createApp(formData: FormData) {
     userIds: formData.getAll('userIds').map((value) => String(value))
   });
 
+  const parsed = payload;
+  if (!parsed.success) {
+    return { status: 'error', message: 'Invalid app details' } as const;
+  }
+
   const iconFile = formData.get('icon');
   let iconPath: string | undefined;
   if (iconFile instanceof File) {
     const parsedIcon = uploadSchema.safeParse(iconFile);
     if (!parsedIcon.success) {
-      throw new Error('Invalid file type or size');
+      return { status: 'error', message: 'Invalid file type or size' } as const;
     }
     iconPath = await saveIcon(iconFile);
   } else {
     iconPath = undefined;
   }
 
-  const normalizedNewCategory = payload.categoryNew?.trim();
-  const normalizedSelect = payload.categorySelect?.trim();
+  const normalizedNewCategory = parsed.data.categoryNew?.trim();
+  const normalizedSelect = parsed.data.categorySelect?.trim();
   const category =
     normalizedNewCategory && normalizedNewCategory.length > 0
       ? normalizedNewCategory
@@ -138,19 +144,19 @@ export async function createApp(formData: FormData) {
     await prisma.$transaction(async (tx) => {
       const app = await tx.appLink.create({
         data: {
-          name: payload.name,
-          url: payload.url,
+          name: parsed.data.name,
+          url: parsed.data.url,
           category,
-          description: payload.description,
-          audience: payload.audience,
-          roleId: payload.audience === 'ROLE' ? payload.roleId : null,
+          description: parsed.data.description,
+          audience: parsed.data.audience,
+          roleId: parsed.data.audience === 'ROLE' ? parsed.data.roleId : null,
           icon: iconPath
         }
       });
 
-      if (payload.audience === 'USER' && payload.userIds?.length) {
+      if (parsed.data.audience === 'USER' && parsed.data.userIds?.length) {
         await tx.userAppAccess.createMany({
-          data: payload.userIds.map((userId) => ({ userId, appId: app.id })),
+          data: parsed.data.userIds.map((userId) => ({ userId, appId: app.id })),
           skipDuplicates: true
         });
       }
@@ -158,53 +164,66 @@ export async function createApp(formData: FormData) {
   } catch (err) {
     // If the DB transaction failed, remove any uploaded icon to avoid orphaned files
     if (iconPath) await safeDeleteIcon(iconPath);
+    // For unexpected DB failures we want the error to surface so tests and
+    // higher-level handlers can inspect it; rethrow instead of returning
+    // a user-facing state.
     throw err;
   }
 
   revalidatePath('/admin');
   revalidatePath('/');
+  return { status: 'success', message: 'App created' } as const;
 }
 
 export async function deleteApp(formData: FormData) {
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
-    throw new Error('Unauthorized');
+    return { status: 'error', message: 'Unauthorized' } as const;
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
+    return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
   }
   
 
   const id = String(formData.get('id') ?? '');
   if (!id) {
-    return;
+    return { status: 'error', message: 'Missing id' } as const;
   }
 
   // fetch existing record so we can remove uploaded icon file afterwards
   const app = await prisma.appLink.findUnique({ where: { id } });
 
-  await prisma.appLink.delete({ where: { id } });
+  try {
+    await prisma.appLink.delete({ where: { id } });
+  } catch (err) {
+    return { status: 'error', message: err instanceof Error ? err.message : 'Failed to delete app' } as const;
+  }
 
   // delete uploaded icon file if present
   if (app?.icon) {
-    await safeDeleteIcon(app.icon);
+    try {
+      await safeDeleteIcon(app.icon);
+    } catch {
+      // ignore
+    }
   }
 
   revalidatePath('/admin');
   revalidatePath('/');
+  return { status: 'success', message: 'App deleted' } as const;
 }
 
 export async function updateApp(formData: FormData) {
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
-    throw new Error('Unauthorized');
+    return { status: 'error', message: 'Unauthorized' } as const;
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
+    return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
   }
   
 
-  const payload = updateSchema.parse({
+  const payload = updateSchema.safeParse({
     id: formData.get('id'),
     name: formData.get('name'),
     url: formData.get('url'),
@@ -216,6 +235,22 @@ export async function updateApp(formData: FormData) {
     userIds: formData.getAll('userIds').map((value) => String(value))
   });
 
+  const parsed = updateSchema.safeParse({
+    id: formData.get('id'),
+    name: formData.get('name'),
+    url: formData.get('url'),
+    categorySelect: formData.get('categorySelect') || undefined,
+    categoryNew: formData.get('categoryNew') || undefined,
+    description: formData.get('description') || undefined,
+    audience: formData.get('audience'),
+    roleId: formData.get('roleId') || undefined,
+    userIds: formData.getAll('userIds').map((value) => String(value))
+  });
+
+  if (!parsed.success) {
+    return { status: 'error', message: 'Invalid app details' } as const;
+  }
+
   const iconFile = formData.get('icon');
   const iconRemove = formData.get('iconRemove') === 'on';
   let iconPath: string | undefined;
@@ -224,15 +259,15 @@ export async function updateApp(formData: FormData) {
   } else if (iconFile instanceof File) {
     const parsedIcon = uploadSchema.safeParse(iconFile);
     if (!parsedIcon.success) {
-      throw new Error('Invalid file type or size');
+      return { status: 'error', message: 'Invalid file type or size' } as const;
     }
     iconPath = await saveIcon(iconFile);
   } else {
     iconPath = undefined;
   }
 
-  const normalizedNewCategory = payload.categoryNew?.trim();
-  const normalizedSelect = payload.categorySelect?.trim();
+  const normalizedNewCategory = parsed.data.categoryNew?.trim();
+  const normalizedSelect = parsed.data.categorySelect?.trim();
   const category =
     normalizedNewCategory && normalizedNewCategory.length > 0
       ? normalizedNewCategory
@@ -241,38 +276,38 @@ export async function updateApp(formData: FormData) {
         : null;
 
   // Fetch existing icon path so we can remove the old file after successful update
-  const existingApp = await prisma.appLink.findUnique({ where: { id: payload.id } });
+  const existingApp = await prisma.appLink.findUnique({ where: { id: parsed.data.id } });
 
   try {
     await prisma.$transaction(async (tx) => {
       await tx.appLink.update({
-        where: { id: payload.id },
+        where: { id: parsed.data.id },
         data: {
-          name: payload.name,
-          url: payload.url,
+          name: parsed.data.name,
+          url: parsed.data.url,
           category,
-          description: payload.description,
-          audience: payload.audience,
-          roleId: payload.audience === 'ROLE' ? payload.roleId : null,
+          description: parsed.data.description,
+          audience: parsed.data.audience,
+          roleId: parsed.data.audience === 'ROLE' ? parsed.data.roleId : null,
           ...(iconRemove ? { icon: null } : {}),
           ...(iconPath ? { icon: iconPath } : {})
         }
       });
 
-      await tx.userAppAccess.deleteMany({ where: { appId: payload.id } });
-      if (payload.audience === 'USER' && payload.userIds?.length) {
+      await tx.userAppAccess.deleteMany({ where: { appId: parsed.data.id } });
+      if (parsed.data.audience === 'USER' && parsed.data.userIds?.length) {
         await tx.userAppAccess.createMany({
-          data: payload.userIds.map((userId) => ({ userId, appId: payload.id })),
+          data: parsed.data.userIds.map((userId) => ({ userId, appId: parsed.data.id })),
           skipDuplicates: true
         });
       }
     });
-  } catch (err) {
+    } catch (err) {
     // If update failed, and we uploaded a new icon, remove it to avoid orphaned files
     if (iconPath && existingApp?.icon !== iconPath) {
       await safeDeleteIcon(iconPath);
     }
-    throw err;
+    return { status: 'error', message: err instanceof Error ? err.message : 'Failed to update app' } as const;
   }
 
   // After successful transaction, delete old icon file when appropriate
@@ -286,6 +321,7 @@ export async function updateApp(formData: FormData) {
 
   revalidatePath('/admin');
   revalidatePath('/');
+  return { status: 'success', message: 'App updated' } as const;
 }
 
 const userRoleSchema = z.object({
@@ -293,13 +329,13 @@ const userRoleSchema = z.object({
   roleIds: z.array(z.string().min(1))
 });
 
-export async function updateUserRoles(formData: FormData) {
+export async function updateUserRoles(formData: FormData): Promise<AdminActionState> {
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
-    throw new Error('Unauthorized');
+    return { status: 'error', message: 'Unauthorized' };
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
+    return { status: 'error', message: 'Unauthorized: must_change_password' };
   }
 
   const userId = String(formData.get('userId') ?? '').trim();
@@ -311,7 +347,7 @@ export async function updateUserRoles(formData: FormData) {
 
   const parsed = userRoleSchema.safeParse({ userId, roleIds });
   if (!parsed.success) {
-    return;
+    return { status: 'error', message: 'Invalid roles payload' };
   }
 
   const validRoles = await prisma.role.findMany({ select: { id: true } });
@@ -329,11 +365,11 @@ export async function updateUserRoles(formData: FormData) {
   const nextAdmin = adminRoleId ? nextRoles.includes(adminRoleId) : false;
 
   if (adminRoleId && parsed.data.userId === session.user.id && !nextAdmin) {
-    redirect('/admin?error=self-admin');
+    return { status: 'error', message: 'self-admin' };
   }
 
   if (adminRoleId && nextAdmin && !currentlyAdmin && !confirmAdminGrant) {
-    redirect('/admin?error=confirm-admin');
+    return { status: 'error', message: 'confirm-admin' };
   }
 
   const adminRoleCheck = adminRole;
@@ -361,11 +397,11 @@ export async function updateUserRoles(formData: FormData) {
           });
         }
       });
-    } catch (err) {
+      } catch (err) {
       if ((err as Error).message === 'last-admin') {
-        redirect('/admin?error=last-admin');
+        return { status: 'error', message: 'last-admin' };
       }
-      throw err;
+      return { status: 'error', message: err instanceof Error ? err.message : 'Failed to update roles' };
     }
   } else {
     // No admin role exists at all, just perform the replace.
@@ -386,44 +422,40 @@ export async function updateUserRoles(formData: FormData) {
   }
 
   revalidatePath('/admin');
+  return { status: 'success', message: 'User roles updated' };
 }
 
-export async function deleteUser(formData: FormData) {
-  const session = await getServerAuthSession();
-  if (!session?.user?.roles?.includes('admin')) {
-    throw new Error('Unauthorized');
+export async function deleteUser(formData: FormData): Promise<AdminActionState> {
+  const sessionCheck = await getServerAuthSession();
+  if (!sessionCheck?.user?.roles?.includes('admin')) {
+    return { status: 'error', message: 'Unauthorized' };
   }
-  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
+  if (sessionCheck?.user?.mustChangePassword && sessionCheck.user.authProvider === 'credentials') {
+    return { status: 'error', message: 'Unauthorized: must_change_password' };
   }
 
   const userId = String(formData.get('userId') ?? '').trim();
-  if (!userId) return;
+  if (!userId) return { status: 'error', message: 'Missing userId' };
 
   const confirmEmail = String(formData.get('confirmEmail') ?? '').trim().toLowerCase();
 
   // Validate confirmation matches target user's email
   const target = await prisma.user.findUnique({ where: { id: userId } });
-  if (!target) return;
+  if (!target) return { status: 'error', message: 'User not found' };
   const targetEmail = (target.email ?? '').toLowerCase();
   if (!confirmEmail || confirmEmail !== targetEmail) {
-    // treat as unauthorized/missing confirmation
-    redirect('/admin?error=confirm-delete');
+    return { status: 'error', message: 'confirm-delete' };
   }
 
   // Prevent deleting your own account from the admin dashboard
-  if (userId === session.user.id) {
-    redirect('/admin?error=self-delete');
+  if (userId === sessionCheck.user.id) {
+    return { status: 'error', message: 'self-delete' };
   }
 
-  // Prevent deleting the last admin — use a transaction with a row-level lock
-  // on the admin role to avoid a race condition where two concurrent deletes
-  // could both observe adminCount === 1.
   const adminRole = await prisma.role.findUnique({ where: { name: 'admin' } });
   if (adminRole) {
     try {
       await prisma.$transaction(async (tx) => {
-        // Lock the role row so concurrent transactions serialize here.
         await tx.$queryRaw`
           SELECT id FROM "Role" WHERE id = ${adminRole.id} FOR UPDATE
         `;
@@ -431,7 +463,6 @@ export async function deleteUser(formData: FormData) {
         const adminCount = await tx.userRole.count({ where: { roleId: adminRole.id } });
         const targetIsAdmin = await tx.userRole.findFirst({ where: { userId, roleId: adminRole.id } });
         if (targetIsAdmin && adminCount <= 1) {
-          // Signal to outer scope that deletion is not allowed
           throw new Error('last-admin');
         }
 
@@ -439,12 +470,16 @@ export async function deleteUser(formData: FormData) {
       });
     } catch (err) {
       if ((err as Error).message === 'last-admin') {
-        redirect('/admin?error=last-admin');
+        return { status: 'error', message: 'last-admin' };
       }
-      throw err;
+      return { status: 'error', message: err instanceof Error ? err.message : 'Failed to delete user' };
     }
   } else {
-    await prisma.user.delete({ where: { id: userId } });
+    try {
+      await prisma.user.delete({ where: { id: userId } });
+    } catch (err) {
+      return { status: 'error', message: err instanceof Error ? err.message : 'Failed to delete user' };
+    }
   }
 
   // Invalidate any cached metadata for deleted user
@@ -456,19 +491,20 @@ export async function deleteUser(formData: FormData) {
 
   revalidatePath('/admin');
   revalidatePath('/');
+  return { status: 'success', message: 'User deleted' };
 }
 
 const roleSchema = z.object({
   name: z.string().min(2).max(48)
 });
 
-export async function createRole(formData: FormData) {
+export async function createRole(formData: FormData): Promise<AdminActionState> {
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
-    throw new Error('Unauthorized');
+    return { status: 'error', message: 'Unauthorized' };
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
+    return { status: 'error', message: 'Unauthorized: must_change_password' };
   }
 
   const payload = roleSchema.safeParse({
@@ -476,35 +512,41 @@ export async function createRole(formData: FormData) {
   });
 
   if (!payload.success) {
-    return;
+    return { status: 'error', message: 'Invalid role name' };
   }
 
-  await prisma.role.upsert({
-    where: { name: payload.data.name },
-    update: {},
-    create: { name: payload.data.name }
-  });
+  try {
+    await prisma.role.upsert({
+      where: { name: payload.data.name },
+      update: {},
+      create: { name: payload.data.name }
+    });
+  } catch (err) {
+    return { status: 'error', message: err instanceof Error ? err.message : 'Failed to create role' };
+  }
 
   revalidatePath('/admin');
+  return { status: 'success', message: 'Role created' };
 }
 
-export async function deleteRole(formData: FormData) {
+export async function deleteRole(formData: FormData): Promise<AdminActionState> {
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
-    throw new Error('Unauthorized');
+    return { status: 'error', message: 'Unauthorized' };
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
+    return { status: 'error', message: 'Unauthorized: must_change_password' };
   }
 
   const roleId = String(formData.get('roleId') ?? '').trim();
   if (!roleId) {
-    return;
+    return { status: 'error', message: 'Missing roleId' };
   }
 
   const role = await prisma.role.findUnique({ where: { id: roleId } });
-  if (!role || role.name === 'admin') {
-    throw new Error('Cannot delete admin role');
+  if (!role) return { status: 'error', message: 'Role not found' };
+  if (role.name === 'admin') {
+    return { status: 'error', message: 'Cannot delete admin role' };
   }
 
   const [userRoleCount, appRoleCount] = await Promise.all([
@@ -513,11 +555,17 @@ export async function deleteRole(formData: FormData) {
   ]);
 
   if (userRoleCount > 0 || appRoleCount > 0) {
-    throw new Error('Role is assigned; remove assignments before deleting');
+    return { status: 'error', message: 'Role is assigned; remove assignments before deleting' };
   }
 
-  await prisma.role.delete({ where: { id: roleId } });
+  try {
+    await prisma.role.delete({ where: { id: roleId } });
+  } catch (err) {
+    return { status: 'error', message: err instanceof Error ? err.message : 'Failed to delete role' };
+  }
+
   revalidatePath('/admin');
+  return { status: 'success', message: 'Role deleted' };
 }
 
 const localUserSchema = z.object({
@@ -753,13 +801,13 @@ const passwordPolicySchema = z.object({
   historyCount: z.number().int().min(0).max(20)
 });
 
-export async function updatePasswordPolicy(formData: FormData) {
+export async function updatePasswordPolicy(formData: FormData): Promise<AdminActionState> {
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
-    throw new Error('Unauthorized');
+    return { status: 'error', message: 'Unauthorized' } as AdminActionState;
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
+    return { status: 'error', message: 'Unauthorized: must_change_password' } as AdminActionState;
   }
 
   const payload = passwordPolicySchema.safeParse({
@@ -772,16 +820,21 @@ export async function updatePasswordPolicy(formData: FormData) {
   });
 
   if (!payload.success) {
-    return;
+    return { status: 'error', message: 'Invalid password policy' } as AdminActionState;
   }
 
-  await prisma.passwordPolicy.upsert({
-    where: { id: 'singleton' },
-    update: payload.data,
-    create: { id: 'singleton', ...payload.data }
-  });
+  try {
+    await prisma.passwordPolicy.upsert({
+      where: { id: 'singleton' },
+      update: payload.data,
+      create: { id: 'singleton', ...payload.data }
+    });
+  } catch (err) {
+    return { status: 'error', message: err instanceof Error ? err.message : 'Failed to update policy' } as AdminActionState;
+  }
 
   revalidatePath('/admin');
+  return { status: 'success', message: 'Password policy updated' } as AdminActionState;
 }
 
 type SsoActionState = {

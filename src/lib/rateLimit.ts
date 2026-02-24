@@ -16,14 +16,16 @@ async function initRedisClient(): Promise<IORedis | null> {
   if (redisInitPromise) return redisInitPromise;
 
   const url = process.env.REDIS_URL ?? '';
-  if (!url) return null;
+  if (!url && process.env.NODE_ENV === 'production') {
+    throw new Error('REDIS_URL must be set when using Redis in production');
+  }
 
   redisInitPromise = (async () => {
     const opts: RedisOptions = {};
     if (process.env.REDIS_PASSWORD) opts.password = process.env.REDIS_PASSWORD;
     if (process.env.REDIS_TLS === 'true') opts.tls = {} as RedisOptions['tls'];
     try {
-      const client = new IORedis(url, opts);
+      const client = url ? new IORedis(url, opts) : new IORedis();
       client.on('error', () => {});
       // quick health check
       await client.ping();
@@ -34,6 +36,8 @@ async function initRedisClient(): Promise<IORedis | null> {
         if (redisClient) await redisClient.disconnect();
       } catch {}
       redisClient = null;
+      if (process.env.NODE_ENV === 'production') return null;
+      // In non-production allow returning null so tests can fallback or mock
       return null;
     } finally {
       redisInitPromise = null;
