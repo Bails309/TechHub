@@ -1,4 +1,6 @@
 Proxy trust and header handling
+````markdown
+Proxy trust and header handling
 
 Overview
 
@@ -6,9 +8,9 @@ When running TechHub behind a reverse proxy or load balancer (e.g., AWS ALB, ngi
 
 Recommended configuration
 
-- `TRUST_PROXY` (boolean): set to `true` when the application is behind a single trusted reverse proxy that correctly sets `X-Forwarded-For` and removes client-supplied header duplicates. When `true`, TechHub will parse `X-Forwarded-For` to extract the first public IP.
+- `TRUST_PROXY` (boolean): set to `true` when the application is behind trusted reverse proxies that correctly set `X-Forwarded-For`. When `true`, TechHub will parse `X-Forwarded-For` from right-to-left and choose the first public IP that is not in the immediate trusted proxy set.
 
-- `TRUSTED_PROXIES` (optional, suggested): a comma-separated list of CIDRs or IPs that are considered trusted proxies (example: `10.0.0.0/8,203.0.113.5`). When provided, TechHub will only accept `X-Client-Ip` or `X-Forwarded-For` when the request originates from one of these trusted proxies.
+- `TRUSTED_PROXIES` (optional, suggested): a comma-separated list of CIDRs or IPs that are considered trusted proxies (example: `10.0.0.0/8,203.0.113.5`). When provided, TechHub will only accept `X-Client-Ip` or `X-Forwarded-For` when the immediate remote address matches one of these CIDRs. The implementation uses CIDR matching and `ipaddr.js` for normalization.
 
 Security guidance
 
@@ -20,9 +22,11 @@ Security guidance
 
 Implementation notes
 
-- TechHub provides helper utilities (to be added) that parse `X-Forwarded-For`, normalize IPs, and check whether the immediate remote IP is in the `TRUSTED_PROXIES` list.
+- TechHub parses `X-Forwarded-For` right-to-left and will skip any IPs that fall into trusted proxy CIDRs listed in `TRUSTED_PROXIES`. The first remaining public IP (IPv4 or IPv6) is treated as the client IP. If `TRUST_PROXY` is not set or the immediate remote IP is not in `TRUSTED_PROXIES`, proxy headers are ignored.
 
-- Rate limiting and audit logs should always be based on server-validated client IPs. Avoid allowing unauthenticated clients to bypass rate limits by spoofing headers.
+- The implementation normalizes addresses using `ipaddr.js` and performs CIDR matching for `TRUSTED_PROXIES`.
+
+- Rate limiting and audit logs are based on server-validated client IPs; do not rely on raw header values without a trusted proxy configuration.
 
 Example (env):
 
@@ -31,4 +35,10 @@ TRUST_PROXY=true
 TRUSTED_PROXIES=10.0.0.0/8,192.168.0.0/16
 ```
 
+Testing tips
+
+- To verify header behavior locally, run the app behind a simple proxy (nginx) that forwards `X-Forwarded-For` and set `TRUSTED_PROXIES` to the proxy's address. Confirm the application logs/use the expected client IP rather than the proxy address.
+
 If you'd like, I can add the `TRUSTED_PROXIES` parsing helper and wire it into `src/lib/auth.ts` next.
+
+````

@@ -52,8 +52,7 @@ The compose entrypoint runs `prisma db push` and `prisma db seed` before `npm st
 - `KEYCLOAK_ISSUER`: Keycloak issuer URL (optional fallback if no DB config)
 - `ENABLE_CREDENTIALS`: set to `false` to disable local credentials login when no DB config exists
 - `ALLOW_SSO_EMAIL_LINKING`: set to `true` to auto-link SSO users to existing local accounts by email (default: `false`). When `false`, SSO accounts must be linked by an admin.
-- `TRUST_PROXY`: set to `true` when running behind a trusted reverse proxy to trust `X-Forwarded-For`
-- `TRUST_PROXY`: set to `true` when running behind a trusted reverse proxy to trust `X-Forwarded-For` and related headers
+- `TRUST_PROXY`: set to `true` when running behind a trusted reverse proxy to trust `X-Forwarded-For` and related headers.
 - `TRUSTED_PROXIES`: optional comma-separated list of CIDRs/IPs for immediate trusted proxies (e.g. `10.0.0.0/8,203.0.113.5`). When set, proxy headers are only trusted if the immediate remote address matches one of these CIDRs.
 - `REQUIRE_PREPROVISIONED_USERS`: set to `true` (default/recommended) to block SSO sign-in unless a local user exists. Prevents SSO self-registration.
 
@@ -104,6 +103,33 @@ Default password policy:
 - Max icon upload size is 2 MB.
 - Docker compose mounts a named volume at `/app/uploads` to persist icons.
 
+## Tests
+
+- Unit and integration tests run with Vitest. Tests are executed in CI mode inside the `app` Docker service to provide a reproducible environment with Postgres seeded.
+- To run tests inside Docker (recommended):
+
+```bash
+docker compose up --build -d
+docker compose exec app sh -c "CI=true npm test --reporter=verbose"
+```
+
+- To run tests locally without Docker (requires local Postgres and Prisma setup):
+
+```bash
+npm install
+# ensure DATABASE_URL points to a running Postgres instance
+npm run prisma:push
+npm run prisma:seed
+CI=true npm test --reporter=verbose
+```
+
+## Notable recent changes
+
+- `ioredis` upgraded to v5; `ioredis-mock` bumped to 8.x for test compatibility.
+- S3 client now uses a module-level singleton to reduce SDK client churn and improve connection reuse for AWS SDK v3.
+- Admin actions enforce `mustChangePassword` for credential-based sessions; several server-action guards and safe cleanup logic were added to prevent orphaned uploads on DB failures.
+- If you maintain CI, ensure the Docker-based test step runs before merging and that `SSO_MASTER_KEY` and other secrets are provided to the environment where needed.
+
 ## Scripts
 - `npm run dev`: start development server
 - `npm run build`: build production bundle
@@ -120,7 +146,7 @@ Default password policy:
 - CSP is applied via middleware with a per-request nonce for scripts and styles (tightened to nonce-only for scripts/styles).
 - SSRF protection is enforced for SSO issuer validation (DNS/IP validation).
 - Rate limiting is hardened and respects the `TRUST_PROXY` flag.
-- When running behind a reverse proxy, set `TRUST_PROXY=true` and configure `TRUSTED_PROXIES` to the immediate proxy IPs/CIDRs. This ensures the app only accepts `X-Forwarded-For` / `X-Client-Ip` from known proxies and prevents client-side header spoofing.
+- When running behind a reverse proxy, set `TRUST_PROXY=true` and configure `TRUSTED_PROXIES` to the immediate proxy IPs/CIDRs. The application parses `X-Forwarded-For` from right-to-left and uses the first public IP that is not in the immediate trusted proxy set; this prevents clients from spoofing headers when proxies are correctly configured.
 - See [docs/proxy-trust.md](docs/proxy-trust.md) for deployment guidance and testing instructions to verify proxy/no-proxy behavior.
 - `/api/app-order` returns 400 for invalid JSON or payloads.
 - SSO secrets are encrypted at rest using AES-256-GCM with `SSO_MASTER_KEY`.
