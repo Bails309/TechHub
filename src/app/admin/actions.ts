@@ -883,6 +883,14 @@ async function fetchWithPinnedIp(url: string, hostname: string, address: string)
       reject(err instanceof Error ? err : new Error(String(err)));
     });
 
+    // Prevent hanging connections by enforcing a strict timeout (5s).
+    // If the remote accepts the TCP connection but never responds, this
+    // ensures the request is aborted and the promise rejects instead of
+    // leaving the event loop waiting indefinitely.
+    request.setTimeout(5000, () => {
+      request.destroy(new Error('Request timed out'));
+    });
+
     request.end();
   });
 }
