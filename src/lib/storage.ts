@@ -75,9 +75,9 @@ async function deleteS3(iconPath?: string) {
   try {
     const url = new URL(iconPath, 'https://example.com');
     // URL path may be /uploads/.. or full URL
-    if (url.hostname.endsWith('.amazonaws.com')) {
-      key = url.pathname.replace(/^\//, '');
-    }
+    // Use the URL pathname as the S3 key when iconPath is a URL.
+    // This supports custom domains or CDNs in front of the bucket.
+    key = url.pathname.replace(/^\//, '');
   } catch {
     // not a URL
   }
