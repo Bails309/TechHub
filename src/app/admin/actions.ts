@@ -2,16 +2,16 @@
 
 import { z } from 'zod';
 import path from 'path';
-import { saveIcon as storageSaveIcon, deleteIcon as storageDeleteIcon } from '@/lib/storage';
+import { saveIcon as storageSaveIcon, deleteIcon as storageDeleteIcon } from '../../lib/storage';
 import { revalidatePath, revalidateTag } from 'next/cache';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '../../lib/prisma';
 import { Prisma } from '@prisma/client';
-import { getServerAuthSession } from '@/lib/auth';
+import { getServerAuthSession } from '../../lib/auth';
 import { invalidateUserMeta } from '../../lib/userCache';
-import { encryptSecret, hasSecretKey } from '@/lib/crypto';
+import { encryptSecret, hasSecretKey } from '../../lib/crypto';
 // SSO rotation removed: previously used rotateSsoSecrets utilities
-import { hashPassword, validatePasswordComplexity } from '@/lib/password';
-import { getPasswordPolicy } from '@/lib/passwordPolicy';
+import { hashPassword, validatePasswordComplexity } from '../../lib/password';
+import { getPasswordPolicy } from '../../lib/passwordPolicy';
 import { lookup } from 'dns/promises';
 import https from 'https';
 import ipaddr from 'ipaddr.js';
@@ -164,9 +164,11 @@ export async function createApp(formData: FormData) {
   } catch (err) {
     // If the DB transaction failed, remove any uploaded icon to avoid orphaned files
     if (iconPath) await safeDeleteIcon(iconPath);
-    // For unexpected DB failures we want the error to surface so tests and
-    // higher-level handlers can inspect it; rethrow instead of returning
-    // a user-facing state.
+    // Map common unique constraint errors to friendly UI state; otherwise
+    // rethrow so higher-level handlers/tests can inspect unexpected failures.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return { status: 'error', message: 'App already exists' } as const;
+    }
     throw err;
   }
 
@@ -222,18 +224,6 @@ export async function updateApp(formData: FormData) {
     return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
   }
   
-
-  const payload = updateSchema.safeParse({
-    id: formData.get('id'),
-    name: formData.get('name'),
-    url: formData.get('url'),
-    categorySelect: formData.get('categorySelect') || undefined,
-    categoryNew: formData.get('categoryNew') || undefined,
-    description: formData.get('description') || undefined,
-    audience: formData.get('audience'),
-    roleId: formData.get('roleId') || undefined,
-    userIds: formData.getAll('userIds').map((value) => String(value))
-  });
 
   const parsed = updateSchema.safeParse({
     id: formData.get('id'),

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import type { SsoAudit } from '@prisma/client';
+// SSO audit type removed (not used in this view)
 import { randomUUID } from 'crypto';
 import { getServerAuthSession } from '@/lib/auth';
 import { decryptSecret, hasSecretKey } from '@/lib/crypto';
@@ -76,7 +76,7 @@ export default async function AdminPage({
     users,
     passwordPolicy,
     totalUsers,
-    ssoAudits,
+    _ssoAudits,
     totalApps
   ] =
     await Promise.all([

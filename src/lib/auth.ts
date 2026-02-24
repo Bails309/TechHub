@@ -213,7 +213,7 @@ function buildCredentialsProvider() {
           // No client IP available: fall back to per-user rate limiting
           await assertRateLimit(`user:${emailKey}`);
         }
-      } catch (e) {
+      } catch {
         // Convert rate-limiter rejections into a safe, user-facing error so
         // NextAuth does not surface internal rate limiter details or a 500.
         const err = new Error('Rate limit exceeded. Please try again later.');
@@ -388,11 +388,11 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           token.mustChangePassword = user.mustChangePassword;
         }
 
-        if (account?.provider) {
+          if (account?.provider) {
           token.authProvider = account.provider;
         }
 
-        if (!token.authProvider && user?.authProvider) {
+          if (!token.authProvider && user?.authProvider) {
           token.authProvider = user.authProvider;
         }
 
@@ -408,7 +408,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           const lastChecked = typeof token.lastCheckedAt === 'number' ? token.lastCheckedAt : 0;
           const delta = now - lastChecked;
 
-          if (token.sub) {
+          if (token.sub && delta >= JWT_CHECK_INTERVAL_MS) {
             try {
               const meta = await getUserMeta(String(token.sub));
               if (!meta) {
@@ -437,10 +437,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                 if (typeof meta.updatedAt === 'number') token.userUpdatedAt = meta.updatedAt;
                 token.lastCheckedAt = now;
               }
-              } catch (e) {
-                // If cache/DB read fails, at minimum schedule the next check.
-                token.lastCheckedAt = now;
-              }
+            } catch {
+              // If cache/DB read fails, at minimum schedule the next check.
+              token.lastCheckedAt = now;
+            }
           }
 
         return token;

@@ -31,7 +31,7 @@ async function initRedisClient(): Promise<IORedis | null> {
       await client.ping();
       redisClient = client;
       return redisClient;
-    } catch (e) {
+    } catch {
       try {
         if (redisClient) await redisClient.disconnect();
       } catch {}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getProviders, signIn } from 'next-auth/react';
 import type { ClientSafeProvider } from 'next-auth/react';
-import SignInButtons from '@/components/SignInButtons';
+import SignInButtons from '../../../components/SignInButtons';
 
 export default function SignInPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);

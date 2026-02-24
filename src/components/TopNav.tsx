@@ -59,6 +59,7 @@ export default function TopNav() {
       <div className="glass rounded-3xl px-6 py-4 flex items-center justify-between shadow-glow">
         <div className="flex items-center gap-3">
           <div className="h-10 w-24">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={theme === 'dark' ? '/capita-logo-dark.png' : '/capita-logo.png'}
               alt="Capita logo"

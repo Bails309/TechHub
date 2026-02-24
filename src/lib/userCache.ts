@@ -116,4 +116,6 @@ export function setRedisClient(client: Redis | null) {
   redis = client;
 }
 
-export default { getUserMeta, invalidateUserMeta, setUserMetaForTest, setRedisClient, clearMemCache };
+const userCache = { getUserMeta, invalidateUserMeta, setUserMetaForTest, setRedisClient, clearMemCache };
+
+export default userCache;

@@ -183,6 +183,7 @@ export default function EditAppForm({
           <div className="mt-3 flex items-center gap-3">
             <div className="h-10 w-10 rounded-2xl bg-white/10 flex items-center justify-center">
               {/* codeql[js/xss-through-dom] preview URL is constrained to same-origin uploads or blob */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={safeDisplayIcon} alt="" className="h-8 w-8 object-contain" />
             </div>
             <p className="text-xs text-ink-300">Icon preview</p>

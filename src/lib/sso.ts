@@ -43,7 +43,7 @@ export async function getSsoConfigMapWithDeps(
     if (row.clientSecretEnc) {
       try {
         clientSecret = decryptFn(row.clientSecretEnc);
-      } catch (e) {
+      } catch {
         throw new Error('FATAL: Failed to decrypt SSO secrets. Check SSO_MASTER_KEY.');
       }
       if (!clientSecret) {
