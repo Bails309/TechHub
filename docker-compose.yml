@@ -18,7 +18,10 @@ services:
     env_file:
       - .env
     environment:
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - RATE_LIMIT_STORE=${RATE_LIMIT_STORE:-redis}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_TLS=${REDIS_TLS:-false}
     depends_on:
       - db
       - redis

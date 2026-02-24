@@ -19,6 +19,12 @@ Modern app-launcher portal for internal teams with SSO, credential fallback, and
 - Prisma 5 + Postgres 16
 - Tailwind CSS
 
+## Documentation
+
+- `docs/proxy-trust.md`: guidance for configuring `TRUST_PROXY` and `TRUSTED_PROXIES` when running behind proxies.
+- `docs/redis.md`: details on the local compose-provided Redis, external Redis configuration, and rate-limiter behavior.
+- `docs/ci-redis.md`: explains CI workflow changes to start Redis and use the Redis-backed limiter in tests.
+
 ## Quick start (local)
 1. Install Node.js 20+ and Docker Desktop.
 2. Copy `.env.example` to `.env` and set values.
@@ -56,7 +62,12 @@ The compose entrypoint runs `prisma db push` and `prisma db seed` before `npm st
 - `TRUSTED_PROXIES`: optional comma-separated list of CIDRs/IPs for immediate trusted proxies (e.g. `10.0.0.0/8,203.0.113.5`). When set, proxy headers are only trusted if the immediate remote address matches one of these CIDRs.
 - `REQUIRE_PREPROVISIONED_USERS`: set to `true` (default/recommended) to block SSO sign-in unless a local user exists. Prevents SSO self-registration.
 
-- `REDIS_URL`: optional Redis connection string (e.g. `redis://redis:6379`). When set, the app uses Redis for the server-side user metadata cache and (optionally) the rate limiter. If not set, the app falls back to an in-memory cache suitable for single-process development only.
+- `REDIS_URL`: Redis connection string (e.g. `redis://redis:6379`). The application now requires Redis for the server-side user metadata cache and for the Redis-backed rate limiter when `RATE_LIMIT_STORE=redis`. There is no silent in-memory fallback when Redis is required — the app will fail fast if Redis cannot be reached. For local development the compose file starts a Redis container by default.
+
+Local Redis (compose) and external Redis
+- The included `docker-compose.yml` will automatically start a local Redis container and set `REDIS_URL=redis://redis:6379` for the `app` service. This means Redis works "out of the box" when you run `docker compose up --build` locally.
+- To use an external Redis in production or staging, set `REDIS_URL` to your external connection string (for example `redis://:password@redis.example.com:6379` or `rediss://...` for TLS). You can also set `REDIS_PASSWORD` and `REDIS_TLS=true` — the app's Redis client will use those settings.
+- To enable the Redis-backed rate limiter, set `RATE_LIMIT_STORE=redis` in your environment (recommended for production). When `RATE_LIMIT_STORE` is not set to `redis`, the app falls back to an in-memory limiter which is suitable only for single-process development.
 
 - `USER_META_CACHE_TTL_SEC`: optional TTL in seconds for cached user metadata (roles and `mustChangePassword`). Defaults to `300` (5 minutes). Tune for your deployment's freshness vs. load trade-offs.
 
