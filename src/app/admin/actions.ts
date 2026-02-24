@@ -602,30 +602,31 @@ export async function linkSsoAccount(
     return { status: 'error', message: 'User not found' };
   }
 
-  const existingAccount = await prisma.account.findUnique({
-    where: {
-      provider_providerAccountId: {
-        provider: payload.data.provider,
-        providerAccountId: payload.data.providerAccountId
-      }
-    }
-  });
-
-  if (existingAccount && existingAccount.userId !== user.id) {
-    return { status: 'error', message: 'SSO account already linked to another user' };
-  }
-
-  const userProviderAccount = await prisma.account.findFirst({
-    where: { userId: user.id, provider: payload.data.provider }
-  });
-
-  if (userProviderAccount && userProviderAccount.providerAccountId !== payload.data.providerAccountId) {
-    return { status: 'error', message: 'User already linked to a different SSO account' };
-  }
-
   try {
-    await prisma.$transaction([
-      prisma.account.upsert({
+    await prisma.$transaction(async (tx) => {
+      // Re-check accounts inside the transaction to avoid TOCTOU races
+      const existingAccount = await tx.account.findUnique({
+        where: {
+          provider_providerAccountId: {
+            provider: payload.data.provider,
+            providerAccountId: payload.data.providerAccountId
+          }
+        }
+      });
+
+      if (existingAccount && existingAccount.userId !== user.id) {
+        throw new Error('existing-account-linked-to-other');
+      }
+
+      const userProviderAccount = await tx.account.findFirst({
+        where: { userId: user.id, provider: payload.data.provider }
+      });
+
+      if (userProviderAccount && userProviderAccount.providerAccountId !== payload.data.providerAccountId) {
+        throw new Error('user-linked-different-account');
+      }
+
+      await tx.account.upsert({
         where: {
           provider_providerAccountId: {
             provider: payload.data.provider,
@@ -639,31 +640,37 @@ export async function linkSsoAccount(
           provider: payload.data.provider,
           providerAccountId: payload.data.providerAccountId
         }
-      }),
-      prisma.user.update({
+      });
+
+      await tx.user.update({
         where: { id: user.id },
         data: { passwordHash: null, mustChangePassword: false }
-      }),
-      prisma.passwordHistory.deleteMany({
-        where: { userId: user.id }
-      })
-        ,
-        prisma.ssoAudit.create({
-          data: {
-            provider: payload.data.provider,
-            action: 'link',
-            actorId: session?.user?.id ?? null,
-            changes: {
-              userId: user.id,
-              providerAccountId: payload.data.providerAccountId,
-              email: user.email
-            }
+      });
+
+      await tx.passwordHistory.deleteMany({ where: { userId: user.id } });
+
+      await tx.ssoAudit.create({
+        data: {
+          provider: payload.data.provider,
+          action: 'link',
+          actorId: session?.user?.id ?? null,
+          changes: {
+            userId: user.id,
+            providerAccountId: payload.data.providerAccountId,
+            email: user.email
           }
-        })
-    ]);
+        }
+      });
+    });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return { status: 'error', message: 'SSO account already linked' };
+    }
+    if ((error as Error).message === 'existing-account-linked-to-other') {
+      return { status: 'error', message: 'SSO account already linked to another user' };
+    }
+    if ((error as Error).message === 'user-linked-different-account') {
+      return { status: 'error', message: 'User already linked to a different SSO account' };
     }
     throw error;
   }
