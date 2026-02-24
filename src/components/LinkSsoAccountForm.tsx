@@ -1,7 +1,8 @@
-'use client';
+"use client";
 
 import { useFormState } from 'react-dom';
 import { useState } from 'react';
+import SelectField from './SelectField';
 import type { LinkSsoAccountState } from '@/app/admin/actions';
 
 const initialState: LinkSsoAccountState = { status: 'idle', message: '' };
@@ -70,15 +71,17 @@ export default function LinkSsoAccountForm({ linkSsoAccount }: LinkSsoAccountFor
         required
         className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
       />
-      <select
-        name="provider"
-        required
-        className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
-      >
-        <option value="">Select provider</option>
-        <option value="azure-ad">Microsoft Entra ID</option>
-        <option value="keycloak">Keycloak</option>
-      </select>
+      <div>
+        <SelectField
+          name="provider"
+          options={[
+            { value: '', label: 'Select provider' },
+            { value: 'azure-ad', label: 'Microsoft Entra ID' },
+            { value: 'keycloak', label: 'Keycloak' }
+          ]}
+          defaultValue={''}
+        />
+      </div>
       <div className="md:col-span-2 space-y-2">
         <label className="text-xs uppercase tracking-[0.2em] text-ink-400">
           Provider account ID (sub)

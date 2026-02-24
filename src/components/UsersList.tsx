@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import SelectField from './SelectField';
 
 export type UserListItem = {
   id: string;
@@ -68,16 +69,19 @@ export default function UsersList({ users }: { users: UserListItem[] }) {
         </div>
         <div className="flex items-center gap-2 text-xs text-ink-300">
           <span>Provider:</span>
-          <select
-            value={providerFilter}
-            onChange={(event) => setProviderFilter(event.target.value as ProviderFilter)}
-            className="input-surface rounded-full px-3 py-1 text-xs text-ink-100"
-          >
-            <option value="any">Any</option>
-            <option value="azure-ad">Azure AD</option>
-            <option value="keycloak">Keycloak</option>
-            <option value="credentials">Credentials</option>
-          </select>
+          <div style={{ minWidth: 160 }}>
+            <SelectField
+              name="providerFilter"
+              options={[
+                { value: 'any', label: 'Any' },
+                { value: 'azure-ad', label: 'Microsoft Entra ID' },
+                { value: 'keycloak', label: 'Keycloak' },
+                { value: 'credentials', label: 'Credentials' }
+              ]}
+              defaultValue={providerFilter}
+              onChange={(v) => setProviderFilter(v as ProviderFilter)}
+            />
+          </div>
         </div>
       </div>
 

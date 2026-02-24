@@ -506,7 +506,7 @@ export async function deleteRole(formData: FormData) {
 }
 
 const localUserSchema = z.object({
-  name: z.string().optional(),
+  name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(1),
   roleIds: z.array(z.string().min(1)).optional()
@@ -534,14 +534,33 @@ export async function createLocalUser(
     return { status: 'error', message: 'Unauthorized: must_change_password' };
   }
 
+  const rawName = String(formData.get('name') ?? '').trim();
+  const rawEmail = String(formData.get('email') ?? '').trim().toLowerCase();
+  const rawPassword = String(formData.get('password') ?? '');
+  const rawRoles = formData.getAll('roles').map((value) => String(value)).filter(Boolean);
+
   const payload = localUserSchema.safeParse({
-    name: String(formData.get('name') ?? '').trim() || undefined,
-    email: String(formData.get('email') ?? '').trim().toLowerCase(),
-    password: String(formData.get('password') ?? ''),
-    roleIds: formData.getAll('roles').map((value) => String(value)).filter(Boolean)
+    name: rawName,
+    email: rawEmail,
+    password: rawPassword,
+    roleIds: rawRoles
   });
 
   if (!payload.success) {
+    // Provide a specific, actionable error so the UI can surface it
+    // without wiping the user's other inputs.
+    if (!rawName) {
+      return { status: 'error', message: 'Full name is required' };
+    }
+    // Zod will validate email format; surface a clear message if email is invalid
+    const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail);
+    if (!emailValid) {
+      return { status: 'error', message: 'A valid email address is required' };
+    }
+    if (!rawPassword) {
+      return { status: 'error', message: 'Password is required' };
+    }
+
     return { status: 'error', message: 'Invalid user details' };
   }
 
@@ -1059,8 +1078,11 @@ export async function updateSsoConfig(
       if (!payload.clientId || !payload.tenantId) {
         return { status: 'error', message: 'Client ID and Tenant ID are required' };
       }
-      const hasExistingSecret = Boolean(existing?.clientSecretEnc);
-      if (!payload.clientSecret && !hasExistingSecret && !payload.clearSecret) {
+      // Require explicit client secret when enabling the provider. Do NOT
+      // silently reuse an existing stored secret — administrators must
+      // provide the secret when enabling to avoid accidental misconfiguration
+      // or relying on stale secrets.
+      if (!payload.clientSecret && !payload.clearSecret) {
         return { status: 'error', message: 'Client secret is required' };
       }
       if (payload.clearSecret && !payload.clientSecret) {
@@ -1115,7 +1137,7 @@ export async function updateSsoConfig(
 
     revalidateTag('sso-config');
     revalidatePath('/admin');
-    return { status: 'success', message: 'Entra ID settings saved' };
+    return { status: 'success', message: payload.enabled ? 'Entra ID settings saved and enabled' : 'Entra ID settings saved (disabled)' };
   }
 
   const payload = ssoKeycloakSchema.parse({
@@ -1131,8 +1153,8 @@ export async function updateSsoConfig(
     if (!payload.clientId || !payload.issuer) {
       return { status: 'error', message: 'Client ID and Issuer are required' };
     }
-    const hasExistingSecret = Boolean(existing?.clientSecretEnc);
-    if (!payload.clientSecret && !hasExistingSecret && !payload.clearSecret) {
+    // Require explicit client secret when enabling the provider.
+    if (!payload.clientSecret && !payload.clearSecret) {
       return { status: 'error', message: 'Client secret is required' };
     }
     if (payload.clearSecret && !payload.clientSecret) {
@@ -1187,7 +1209,7 @@ export async function updateSsoConfig(
 
   revalidateTag('sso-config');
   revalidatePath('/admin');
-  return { status: 'success', message: 'Keycloak settings saved' };
+  return { status: 'success', message: payload.enabled ? 'Keycloak settings saved and enabled' : 'Keycloak settings saved (disabled)' };
 }
 
 // Rotation actions removed — managed by single SSO_MASTER_KEY now.
