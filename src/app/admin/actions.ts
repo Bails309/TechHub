@@ -96,6 +96,9 @@ export async function createApp(formData: FormData) {
   if (!session?.user?.roles?.includes('admin')) {
     throw new Error('Unauthorized');
   }
+  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
+    throw new Error('Unauthorized: must_change_password');
+  }
   
 
   const payload = appSchema.parse({
@@ -157,6 +160,9 @@ export async function deleteApp(formData: FormData) {
   if (!session?.user?.roles?.includes('admin')) {
     throw new Error('Unauthorized');
   }
+  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
+    throw new Error('Unauthorized: must_change_password');
+  }
   
 
   const id = String(formData.get('id') ?? '');
@@ -182,6 +188,9 @@ export async function updateApp(formData: FormData) {
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     throw new Error('Unauthorized');
+  }
+  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
+    throw new Error('Unauthorized: must_change_password');
   }
   
 
