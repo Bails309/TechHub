@@ -646,15 +646,8 @@ export async function linkSsoAccount(
         throw new Error('user-linked-different-account');
       }
 
-      await tx.account.upsert({
-        where: {
-          provider_providerAccountId: {
-            provider: payload.data.provider,
-            providerAccountId: payload.data.providerAccountId
-          }
-        },
-        update: { userId: user.id },
-        create: {
+      await tx.account.create({
+        data: {
           userId: user.id,
           type: 'oauth',
           provider: payload.data.provider,
