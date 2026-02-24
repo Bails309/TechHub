@@ -215,7 +215,9 @@ function buildCredentialsProvider() {
       } catch (e) {
         // Convert rate-limiter rejections into a safe, user-facing error so
         // NextAuth does not surface internal rate limiter details or a 500.
-        throw new Error('Rate limit exceeded. Please try again later.');
+        const err = new Error('Rate limit exceeded. Please try again later.');
+        err.name = 'RateLimitError';
+        throw err;
       }
 
       const user = await prisma.user.findUnique({
