@@ -8,6 +8,7 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { getServerAuthSession } from '@/lib/auth';
+import { invalidateUserMeta } from '../../lib/userCache';
 import { encryptSecret, hasSecretKey } from '@/lib/crypto';
 // SSO rotation removed: previously used rotateSsoSecrets utilities
 import { hashPassword, validatePasswordComplexity } from '@/lib/password';
@@ -377,6 +378,13 @@ export async function updateUserRoles(formData: FormData) {
     ]);
   }
 
+  // Invalidate cached user meta so session cache reflects new roles.
+  try {
+    await invalidateUserMeta(parsed.data.userId);
+  } catch {
+    // ignore cache invalidation failures
+  }
+
   revalidatePath('/admin');
 }
 
@@ -437,6 +445,13 @@ export async function deleteUser(formData: FormData) {
     }
   } else {
     await prisma.user.delete({ where: { id: userId } });
+  }
+
+  // Invalidate any cached metadata for deleted user
+  try {
+    await invalidateUserMeta(userId);
+  } catch {
+    // ignore
   }
 
   revalidatePath('/admin');
@@ -575,6 +590,7 @@ export async function createLocalUser(
   const roleIds = (payload.data.roleIds ?? []).filter((id) => validSet.has(id));
 
   const passwordHash = await hashPassword(payload.data.password);
+  let createdUserId: string | null = null;
   try {
     await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -585,6 +601,7 @@ export async function createLocalUser(
           mustChangePassword: true
         }
       });
+      createdUserId = user.id;
 
       if (roleIds.length) {
         await tx.userRole.createMany({
@@ -602,6 +619,14 @@ export async function createLocalUser(
       return { status: 'error', message: 'User already exists' };
     }
     throw error;
+  }
+
+  // Invalidate cache for the newly created user so any session lookups use
+  // authoritative data (mustChangePassword is true on newly created users).
+  try {
+    if (createdUserId) await invalidateUserMeta(createdUserId);
+  } catch {
+    // ignore cache errors
   }
 
   revalidatePath('/admin');
@@ -707,7 +732,13 @@ export async function linkSsoAccount(
     throw error;
   }
 
-
+  // Invalidate cached metadata for this user so sessions pick up
+  // mustChangePassword=false and any role changes.
+  try {
+    await invalidateUserMeta(user.id);
+  } catch {
+    // ignore cache errors
+  }
 
   revalidatePath('/admin');
   return { status: 'success', message: 'SSO account linked' };

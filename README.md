@@ -56,6 +56,10 @@ The compose entrypoint runs `prisma db push` and `prisma db seed` before `npm st
 - `TRUSTED_PROXIES`: optional comma-separated list of CIDRs/IPs for immediate trusted proxies (e.g. `10.0.0.0/8,203.0.113.5`). When set, proxy headers are only trusted if the immediate remote address matches one of these CIDRs.
 - `REQUIRE_PREPROVISIONED_USERS`: set to `true` (default/recommended) to block SSO sign-in unless a local user exists. Prevents SSO self-registration.
 
+- `REDIS_URL`: optional Redis connection string (e.g. `redis://redis:6379`). When set, the app uses Redis for the server-side user metadata cache and (optionally) the rate limiter. If not set, the app falls back to an in-memory cache suitable for single-process development only.
+
+- `USER_META_CACHE_TTL_SEC`: optional TTL in seconds for cached user metadata (roles and `mustChangePassword`). Defaults to `300` (5 minutes). Tune for your deployment's freshness vs. load trade-offs.
+
 Generate a master key with:
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"

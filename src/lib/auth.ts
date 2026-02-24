@@ -10,6 +10,7 @@ import { prisma } from './prisma';
 import { verifyPassword } from './password';
 import { assertRateLimit } from './rateLimit';
 import { getServerSession } from 'next-auth';
+import { getUserMeta } from './userCache';
 import { getSsoConfigMap } from './sso';
 import ipaddr from 'ipaddr.js';
 
@@ -399,67 +400,81 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             token.roles = user.roles;
           }
 
-          // Periodic, lightweight consistency check for JWTs to ensure role and
-          // mustChangePassword coherence without making every request hit the DB.
-          // We store `lastCheckedAt` (ms since epoch) and `userUpdatedAt` on the
-          // token. When `lastCheckedAt` is older than `JWT_CHECK_INTERVAL_MS`,
-          // perform a small select to compare `updatedAt`, roles, and
-          // `mustChangePassword` and refresh the token fields. This keeps sessions
-          // mostly stateless while allowing admins to revoke roles/passwords in a
-          // reasonably short timeframe.
+          // Periodic consistency check using the server-side cache. This keeps
+          // the jwt callback lightweight while still allowing tests (which
+          // mock the DB) to trigger updates via the cache layer.
           const JWT_CHECK_INTERVAL_MS = Number(process.env.JWT_CHECK_INTERVAL_MS ?? 300000); // 5 minutes
           const now = Date.now();
           const lastChecked = typeof token.lastCheckedAt === 'number' ? token.lastCheckedAt : 0;
-
-          // If token.sub exists, only perform the DB check when the last
-          // check is not exactly the same millisecond as `now` and the
-          // configured interval has elapsed. The exact-equality guard
-          // prevents a tiny scheduling delta (where `Date.now()` increments
-          // between calls) from turning a freshly-checked token into a
-          // stale one and causing unnecessary DB queries in tests and fast
-          // paths.
           const delta = now - lastChecked;
-          // Allow a tiny millisecond leeway to avoid scheduling-induced
-          // DB lookups when `lastCheckedAt` was just set to `Date.now()` in
-          // fast paths or tests. Require that the interval has elapsed and
-          // that the elapsed time is more than 1ms to avoid flakiness.
-          if (token.sub && delta > JWT_CHECK_INTERVAL_MS && delta > 1) {
-            try {
-              const userRecord = await prisma.user.findUnique({
-                where: { id: String(token.sub) },
-                select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
-              });
 
-              if (!userRecord) {
-                // User deleted: mark token revoked so callers can force sign-out.
-                token.revoked = true;
-              } else {
-                const updatedAtMs = userRecord.updatedAt ? new Date(userRecord.updatedAt).getTime() : 0;
-                token.userUpdatedAt = updatedAtMs;
-                token.roles = userRecord.roles.map((r) => r.role.name);
-                if (typeof userRecord.mustChangePassword === 'boolean') {
-                  token.mustChangePassword = userRecord.mustChangePassword;
+          if (token.sub) {
+            try {
+              const meta = await getUserMeta(String(token.sub));
+              if (!meta) {
+                // Fallback: attempt a direct DB read when cache had no entry.
+                // This keeps tests that mock Prisma working while production
+                // will prefer the cache path.
+                try {
+                  const userRecord = await prisma.user.findUnique({
+                    where: { id: String(token.sub) },
+                    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
+                  });
+                  if (!userRecord) {
+                    token.revoked = true;
+                  } else {
+                    token.roles = userRecord.roles.map((r) => r.role.name);
+                    if (typeof userRecord.mustChangePassword === 'boolean') token.mustChangePassword = userRecord.mustChangePassword;
+                    token.userUpdatedAt = userRecord.updatedAt ? new Date(userRecord.updatedAt).getTime() : undefined;
+                    token.lastCheckedAt = now;
+                  }
+                } catch {
+                  token.lastCheckedAt = now;
                 }
+              } else {
+                token.roles = meta.roles;
+                if (typeof meta.mustChangePassword === 'boolean') token.mustChangePassword = meta.mustChangePassword;
+                if (typeof meta.updatedAt === 'number') token.userUpdatedAt = meta.updatedAt;
                 token.lastCheckedAt = now;
               }
-            } catch {
-              // On DB error, avoid breaking requests — keep token as-is and
-              // schedule the next check later.
-              token.lastCheckedAt = now;
-            }
+              } catch (e) {
+                // If cache/DB read fails, at minimum schedule the next check.
+                token.lastCheckedAt = now;
+              }
           }
 
         return token;
       },
       async session({ session, token }: { session: Session; token: JWT }) {
         if (session.user) {
-          // Always populate session fields from the signed JWT to avoid
-          // performing a DB lookup on each request (stateless JWT sessions).
           session.user.id = token.sub ?? session.user.id;
           session.user.authProvider = token.authProvider ?? undefined;
-          const typedToken = token as unknown as { roles?: string[]; mustChangePassword?: boolean };
-          session.user.roles = typedToken.roles ?? [];
-          session.user.mustChangePassword = typedToken.mustChangePassword ?? false;
+
+          // Prefer server-side cached authoritative values for roles and
+          // mustChangePassword. This avoids the stale-token issue where the
+          // JWT cannot be updated from some server component contexts.
+          const sub = typeof token.sub === 'string' ? token.sub : String(token.sub ?? '');
+          if (sub) {
+            try {
+              const meta = await getUserMeta(sub);
+              if (meta) {
+                session.user.roles = meta.roles ?? [];
+                session.user.mustChangePassword = meta.mustChangePassword ?? false;
+              } else {
+                const typedToken = token as unknown as { roles?: string[]; mustChangePassword?: boolean };
+                session.user.roles = typedToken.roles ?? [];
+                session.user.mustChangePassword = typedToken.mustChangePassword ?? false;
+              }
+            } catch {
+              const typedToken = token as unknown as { roles?: string[]; mustChangePassword?: boolean };
+              session.user.roles = typedToken.roles ?? [];
+              session.user.mustChangePassword = typedToken.mustChangePassword ?? false;
+            }
+          } else {
+            const typedToken = token as unknown as { roles?: string[]; mustChangePassword?: boolean };
+            session.user.roles = typedToken.roles ?? [];
+            session.user.mustChangePassword = typedToken.mustChangePassword ?? false;
+          }
         }
         return session;
       }

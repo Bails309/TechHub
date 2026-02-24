@@ -17,12 +17,21 @@ services:
       - "3000:3000"
     env_file:
       - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
     depends_on:
       - db
+      - redis
     command: >
       sh -c "npm run prisma:push && npm run prisma:seed && npm run start"
     volumes:
       - uploads:/app/uploads
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
 
 volumes:
   pgdata:
