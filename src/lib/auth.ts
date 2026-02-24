@@ -395,28 +395,45 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           token.authProvider = user.authProvider;
         }
 
-        if (user?.roles) {
-          token.roles = user.roles;
-        }
+          if (user?.roles) {
+            token.roles = user.roles;
+          }
 
-          // If the token does not include roles (e.g., older tokens), and we have a
-          // user id, hydrate roles once here. This keeps the session callback
-          // stateless while ensuring sign-ins/refreshes populate token.roles so
-          // subsequent per-request session() does not need DB lookups.
-          if (!token.roles && (token.sub ?? null)) {
+          // Periodic, lightweight consistency check for JWTs to ensure role and
+          // mustChangePassword coherence without making every request hit the DB.
+          // We store `lastCheckedAt` (ms since epoch) and `userUpdatedAt` on the
+          // token. When `lastCheckedAt` is older than `JWT_CHECK_INTERVAL_MS`,
+          // perform a small select to compare `updatedAt`, roles, and
+          // `mustChangePassword` and refresh the token fields. This keeps sessions
+          // mostly stateless while allowing admins to revoke roles/passwords in a
+          // reasonably short timeframe.
+          const JWT_CHECK_INTERVAL_MS = Number(process.env.JWT_CHECK_INTERVAL_MS ?? 300000); // 5 minutes
+          const now = Date.now();
+          const lastChecked = typeof token.lastCheckedAt === 'number' ? token.lastCheckedAt : 0;
+
+          if (token.sub && now - lastChecked > JWT_CHECK_INTERVAL_MS) {
             try {
               const userRecord = await prisma.user.findUnique({
                 where: { id: String(token.sub) },
-                select: { roles: { include: { role: true } }, mustChangePassword: true }
+                select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
               });
-              if (userRecord) {
+
+              if (!userRecord) {
+                // User deleted: mark token revoked so callers can force sign-out.
+                token.revoked = true;
+              } else {
+                const updatedAtMs = userRecord.updatedAt ? new Date(userRecord.updatedAt).getTime() : 0;
+                token.userUpdatedAt = updatedAtMs;
                 token.roles = userRecord.roles.map((r) => r.role.name);
                 if (typeof userRecord.mustChangePassword === 'boolean') {
                   token.mustChangePassword = userRecord.mustChangePassword;
                 }
+                token.lastCheckedAt = now;
               }
             } catch {
-              // If this DB call fails here, avoid blocking auth; leave token as-is.
+              // On DB error, avoid breaking requests — keep token as-is and
+              // schedule the next check later.
+              token.lastCheckedAt = now;
             }
           }
 

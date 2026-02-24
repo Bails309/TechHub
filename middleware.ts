@@ -45,6 +45,15 @@ export async function middleware(request: NextRequest) {
 
   if (!isAllowed) {
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+
+    // If the token was marked revoked by the periodic JWT check, force
+    // the user to sign in again.
+    if (token?.revoked) {
+      const signInUrl = request.nextUrl.clone();
+      signInUrl.pathname = '/auth/signin';
+      return NextResponse.redirect(signInUrl);
+    }
+
     if (token?.mustChangePassword && token?.authProvider === 'credentials') {
       const url = request.nextUrl.clone();
       // If this is an API request, return a JSON 403 so callers (fetch/Postman)
