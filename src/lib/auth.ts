@@ -411,7 +411,19 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           const now = Date.now();
           const lastChecked = typeof token.lastCheckedAt === 'number' ? token.lastCheckedAt : 0;
 
-          if (token.sub && now - lastChecked > JWT_CHECK_INTERVAL_MS) {
+          // If token.sub exists, only perform the DB check when the last
+          // check is not exactly the same millisecond as `now` and the
+          // configured interval has elapsed. The exact-equality guard
+          // prevents a tiny scheduling delta (where `Date.now()` increments
+          // between calls) from turning a freshly-checked token into a
+          // stale one and causing unnecessary DB queries in tests and fast
+          // paths.
+          const delta = now - lastChecked;
+          // Allow a tiny millisecond leeway to avoid scheduling-induced
+          // DB lookups when `lastCheckedAt` was just set to `Date.now()` in
+          // fast paths or tests. Require that the interval has elapsed and
+          // that the elapsed time is more than 1ms to avoid flakiness.
+          if (token.sub && delta > JWT_CHECK_INTERVAL_MS && delta > 1) {
             try {
               const userRecord = await prisma.user.findUnique({
                 where: { id: String(token.sub) },

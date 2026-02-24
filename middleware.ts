@@ -34,14 +34,20 @@ export async function middleware(request: NextRequest) {
   }
 
   const pathname = request.nextUrl.pathname;
-  const allowlist = [
+  const exactPaths = [
     '/auth/signin',
     '/auth/post-login',
     '/auth/change-password',
-    '/api/auth',
     '/api/health'
   ];
-  const isAllowed = allowlist.some((path) => pathname.startsWith(path));
+
+  const apiDirectories = [
+    '/api/auth'
+  ];
+
+  const isExactAllowed = exactPaths.includes(pathname);
+  const isApiAllowed = apiDirectories.some((dir) => pathname === dir || pathname.startsWith(dir + '/'));
+  const isAllowed = isExactAllowed || isApiAllowed;
 
   if (!isAllowed) {
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
