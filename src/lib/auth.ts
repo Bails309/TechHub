@@ -199,8 +199,18 @@ function buildCredentialsProvider() {
       }
 
       const remoteAddr = extractRemoteAddr(req);
-      const rateKey = getRateLimitKey(req?.headers, parsed.data.email, remoteAddr);
-      await assertRateLimit(rateKey);
+      const clientIp = getClientIp(req?.headers, remoteAddr);
+      const emailKey = parsed.data.email.toLowerCase();
+
+      // Enforce IP-based rate limit first (prevents password spraying from one IP)
+      if (clientIp) {
+        await assertRateLimit(`ip:${clientIp}`);
+        // If IP rate limit passed, enforce per-user rate limit
+        await assertRateLimit(`user:${emailKey}`);
+      } else {
+        // No client IP available: fall back to per-user rate limiting
+        await assertRateLimit(`user:${emailKey}`);
+      }
 
       const user = await prisma.user.findUnique({
         where: { email: parsed.data.email },
