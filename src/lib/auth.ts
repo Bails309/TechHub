@@ -203,13 +203,19 @@ function buildCredentialsProvider() {
       const emailKey = parsed.data.email.toLowerCase();
 
       // Enforce IP-based rate limit first (prevents password spraying from one IP)
-      if (clientIp) {
-        await assertRateLimit(`ip:${clientIp}`);
-        // If IP rate limit passed, enforce per-user rate limit
-        await assertRateLimit(`user:${emailKey}`);
-      } else {
-        // No client IP available: fall back to per-user rate limiting
-        await assertRateLimit(`user:${emailKey}`);
+      try {
+        if (clientIp) {
+          await assertRateLimit(`ip:${clientIp}`);
+          // If IP rate limit passed, enforce per-user rate limit
+          await assertRateLimit(`user:${emailKey}`);
+        } else {
+          // No client IP available: fall back to per-user rate limiting
+          await assertRateLimit(`user:${emailKey}`);
+        }
+      } catch (e) {
+        // Convert rate-limiter rejections into a safe, user-facing error so
+        // NextAuth does not surface internal rate limiter details or a 500.
+        throw new Error('Rate limit exceeded. Please try again later.');
       }
 
       const user = await prisma.user.findUnique({
