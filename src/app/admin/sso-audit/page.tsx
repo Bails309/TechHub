@@ -18,6 +18,15 @@ export default async function SsoAuditPage() {
 
   const audits = await prisma.ssoAudit.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
 
+  // Resolve actor names/emails for better readability in the UI
+  const actorIds = Array.from(
+    new Set(audits.map((a) => a.actorId).filter((id): id is string => id !== null && id !== undefined))
+  );
+  const actors = actorIds.length
+    ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true } })
+    : [];
+  const actorMap = new Map(actors.map((u) => [u.id, u]));
+
   return (
     <div className="px-6 md:px-12 py-12">
       <section className="glass rounded-[36px] p-8">
@@ -35,7 +44,7 @@ export default async function SsoAuditPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-semibold">{audit.provider} — {audit.action}</p>
-                    <p className="text-xs text-ink-400">Actor: {audit.actorId ?? 'system'}</p>
+                    <p className="text-xs text-ink-400">Actor: {audit.actorId ? (actorMap.get(audit.actorId)?.name ?? actorMap.get(audit.actorId)?.email ?? audit.actorId) : 'system'}</p>
                     <p className="text-xs text-ink-400">When: {audit.createdAt.toISOString()}</p>
                   </div>
                 </div>
