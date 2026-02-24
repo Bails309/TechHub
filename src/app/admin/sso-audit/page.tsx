@@ -1,5 +1,5 @@
-import { prisma } from '@/lib/prisma';
-import { getServerAuthSession } from '@/lib/auth';
+import { prisma } from '../../lib/prisma';
+import { getServerAuthSession } from '../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 

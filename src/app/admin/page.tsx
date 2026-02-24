@@ -1,17 +1,17 @@
-import { prisma } from '@/lib/prisma';
+import { prisma } from '../../lib/prisma';
 // SSO audit type removed (not used in this view)
 import { randomUUID } from 'crypto';
-import { getServerAuthSession } from '@/lib/auth';
-import { decryptSecret, hasSecretKey } from '@/lib/crypto';
-import DeleteAppForm from '@/components/DeleteAppForm';
-import EditAppForm from '@/components/EditAppForm';
-import NewAppForm from '@/components/NewAppForm';
-import SsoConfigForm from '@/components/SsoConfigForm';
-import CreateLocalUserForm from '@/components/CreateLocalUserForm';
-import LinkSsoAccountForm from '@/components/LinkSsoAccountForm';
-import UsersList from '@/components/UsersList';
-import AdminActionForm from '@/components/AdminActionForm';
-import DeleteUserForm from '@/components/DeleteUserForm';
+import { getServerAuthSession } from '../../lib/auth';
+import { decryptSecret, hasSecretKey } from '../../lib/crypto';
+import DeleteAppForm from '../../components/DeleteAppForm';
+import EditAppForm from '../../components/EditAppForm';
+import NewAppForm from '../../components/NewAppForm';
+import SsoConfigForm from '../../components/SsoConfigForm';
+import CreateLocalUserForm from '../../components/CreateLocalUserForm';
+import LinkSsoAccountForm from '../../components/LinkSsoAccountForm';
+import UsersList from '../../components/UsersList';
+import AdminActionForm from '../../components/AdminActionForm';
+import DeleteUserForm from '../../components/DeleteUserForm';
 import {
   createApp,
   deleteApp,

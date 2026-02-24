@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import path from 'path';
-import { saveIcon as storageSaveIcon, deleteIcon as storageDeleteIcon } from '@/lib/storage';
+import { saveIcon as storageSaveIcon, deleteIcon as storageDeleteIcon } from '../../lib/storage';
 // Importing Next runtime cache helpers at module-load can call into
 // runtime-only APIs (like `headers()`) which are unavailable in the
 // test environment and cause import-time failures. Use dynamic import
@@ -28,14 +28,14 @@ async function safeRevalidateTag(tag: string) {
     // ignore
   }
 }
-import { prisma } from '@/lib/prisma';
+import { prisma } from '../../lib/prisma';
 import { Prisma } from '@prisma/client';
-import { getServerAuthSession } from '@/lib/auth';
+import { getServerAuthSession } from '../../lib/auth';
 import { invalidateUserMeta } from '../../lib/userCache';
-import { encryptSecret, hasSecretKey } from '@/lib/crypto';
+import { encryptSecret, hasSecretKey } from '../../lib/crypto';
 // SSO rotation removed: previously used rotateSsoSecrets utilities
-import { hashPassword, validatePasswordComplexity } from '@/lib/password';
-import { getPasswordPolicy } from '@/lib/passwordPolicy';
+import { hashPassword, validatePasswordComplexity } from '../../lib/password';
+import { getPasswordPolicy } from '../../lib/passwordPolicy';
 import { lookup } from 'dns/promises';
 import https from 'https';
 import ipaddr from 'ipaddr.js';

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
-import { getServerAuthSession } from '@/lib/auth';
+import { prisma } from '../../../lib/prisma';
+import { getServerAuthSession } from '../../../lib/auth';
 
 const payloadSchema = z.object({
   order: z.array(z.string().min(1))

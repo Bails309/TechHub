@@ -1,6 +1,6 @@
 import NextAuth from 'next-auth';
 import type { NextRequest } from 'next/server';
-import { getAuthOptions } from '@/lib/auth';
+import { getAuthOptions } from '../../../lib/auth';
 
 const handler = async (
 	request: NextRequest,

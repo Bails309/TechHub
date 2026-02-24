@@ -1,10 +1,10 @@
 'use server';
 
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
-import { getServerAuthSession } from '@/lib/auth';
-import { hashPassword, verifyPassword, validatePasswordComplexity } from '@/lib/password';
-import { getPasswordPolicy } from '@/lib/passwordPolicy';
+import { prisma } from '../../../lib/prisma';
+import { getServerAuthSession } from '../../../lib/auth';
+import { hashPassword, verifyPassword, validatePasswordComplexity } from '../../../lib/password';
+import { getPasswordPolicy } from '../../../lib/passwordPolicy';
 
 export type ChangePasswordState = {
   status: 'idle' | 'success' | 'error';

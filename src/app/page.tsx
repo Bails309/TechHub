@@ -1,8 +1,8 @@
-import { getServerAuthSession } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { getServerAuthSession } from '../lib/auth';
+import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
-import PortalView from '@/components/PortalView';
-import StatsStrip from '@/components/StatsStrip';
+import PortalView from '../components/PortalView';
+import StatsStrip from '../components/StatsStrip';
 
 export const dynamic = 'force-dynamic';
 

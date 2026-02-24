@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import { headers } from 'next/headers';
 import './globals.css';
-import TopNav from '@/components/TopNav';
-import Providers from '@/components/Providers';
+import TopNav from '../components/TopNav';
+import Providers from '../components/Providers';
 
 export const metadata: Metadata = {
   title: 'TechHub',
