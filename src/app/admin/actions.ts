@@ -613,6 +613,19 @@ export async function linkSsoAccount(
       prisma.passwordHistory.deleteMany({
         where: { userId: user.id }
       })
+        ,
+        prisma.ssoAudit.create({
+          data: {
+            provider: payload.data.provider,
+            action: 'link',
+            actorId: session?.user?.id ?? null,
+            changes: {
+              userId: user.id,
+              providerAccountId: payload.data.providerAccountId,
+              email: user.email
+            }
+          }
+        })
     ]);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -621,25 +634,7 @@ export async function linkSsoAccount(
     throw error;
   }
 
-  // Record an audit entry for the SSO link action
-  try {
-    await prisma.ssoAudit.create({
-      data: {
-        provider: payload.data.provider,
-        action: 'link',
-        actorId: session?.user?.id ?? null,
-        changes: {
-          userId: user.id,
-          providerAccountId: payload.data.providerAccountId,
-          email: user.email
-        }
-      }
-    });
-  } catch (err) {
-    // best-effort audit: don't block the main flow if audit logging fails
-    // eslint-disable-next-line no-console
-    console.warn('Failed to write SSO audit record', err);
-  }
+
 
   revalidatePath('/admin');
   return { status: 'success', message: 'SSO account linked' };

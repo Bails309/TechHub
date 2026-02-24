@@ -19,12 +19,19 @@ const loadSsoConfigs = unstable_cache(
 );
 
 export async function getSsoConfigMap() {
+  return getSsoConfigMapWithDeps(loadSsoConfigs, decryptSecret);
+}
+
+export async function getSsoConfigMapWithDeps(
+  loadFn: () => Promise<Array<{ provider: string; enabled: boolean; config: unknown; clientSecretEnc: string | null }>> = loadSsoConfigs,
+  decryptFn: (enc: string) => string | null = decryptSecret
+) {
   if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD) {
     return new Map();
   }
   let rows: Array<{ provider: string; enabled: boolean; config: unknown; clientSecretEnc: string | null }> = [];
   try {
-    rows = await loadSsoConfigs();
+    rows = await loadFn();
   } catch {
     return new Map();
   }
@@ -35,11 +42,12 @@ export async function getSsoConfigMap() {
     let clientSecret: string | null = null;
     if (row.clientSecretEnc) {
       try {
-        clientSecret = decryptSecret(row.clientSecretEnc);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'unknown error';
-        console.warn(`SSO secret decrypt failed for provider: ${row.provider} (${message})`);
-        clientSecret = null;
+        clientSecret = decryptFn(row.clientSecretEnc);
+      } catch (e) {
+        throw new Error('FATAL: Failed to decrypt SSO secrets. Check SSO_MASTER_KEY.');
+      }
+      if (!clientSecret) {
+        throw new Error('FATAL: Failed to decrypt SSO secrets. Check SSO_MASTER_KEY.');
       }
     }
     map.set(provider, {

@@ -391,28 +391,38 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           token.roles = user.roles;
         }
 
+          // If the token does not include roles (e.g., older tokens), and we have a
+          // user id, hydrate roles once here. This keeps the session callback
+          // stateless while ensuring sign-ins/refreshes populate token.roles so
+          // subsequent per-request session() does not need DB lookups.
+          if (!token.roles && (token.sub ?? null)) {
+            try {
+              const userRecord = await prisma.user.findUnique({
+                where: { id: String(token.sub) },
+                select: { roles: { include: { role: true } }, mustChangePassword: true }
+              });
+              if (userRecord) {
+                token.roles = userRecord.roles.map((r) => r.role.name);
+                if (typeof userRecord.mustChangePassword === 'boolean') {
+                  token.mustChangePassword = userRecord.mustChangePassword;
+                }
+              }
+            } catch {
+              // If this DB call fails here, avoid blocking auth; leave token as-is.
+            }
+          }
+
         return token;
       },
       async session({ session, token }: { session: Session; token: JWT }) {
         if (session.user) {
-          const userId = token.sub ?? '';
-          session.user.id = userId;
+          // Always populate session fields from the signed JWT to avoid
+          // performing a DB lookup on each request (stateless JWT sessions).
+          session.user.id = token.sub ?? session.user.id;
           session.user.authProvider = token.authProvider ?? undefined;
-
-          if (userId) {
-            const userRecord = await prisma.user.findUnique({
-              where: { id: userId },
-              select: {
-                mustChangePassword: true,
-                roles: { include: { role: true } }
-              }
-            });
-            session.user.roles = userRecord?.roles.map((item) => item.role.name) ?? [];
-            session.user.mustChangePassword = userRecord?.mustChangePassword ?? false;
-          } else {
-            session.user.roles = token.roles ?? [];
-            session.user.mustChangePassword = token.mustChangePassword ?? false;
-          }
+          const typedToken = token as unknown as { roles?: string[]; mustChangePassword?: boolean };
+          session.user.roles = typedToken.roles ?? [];
+          session.user.mustChangePassword = typedToken.mustChangePassword ?? false;
         }
         return session;
       }
