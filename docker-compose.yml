@@ -33,13 +33,13 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    # Bind Redis to localhost and require a password to avoid unauthenticated exposure.
-    # Set a strong `REDIS_PASSWORD` in your .env (do NOT commit secrets).
-    ports:
-      - "127.0.0.1:6379:6379"
+    # Internal-only Redis (no published ports). App reads `REDIS_URL` to connect
+    # so external Redis can be used by overriding `REDIS_URL`/`REDIS_PASSWORD`.
+    # To enable Redis auth for the internal container, set `REDIS_PASSWORD` in
+    # your `.env`. If unset, Redis starts without a password (useful for local dev).
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-change_me}
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-change_me}"]
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    command: sh -c 'if [ -n "${REDIS_PASSWORD}" ]; then exec redis-server --requirepass "${REDIS_PASSWORD}"; else exec redis-server; fi'
 
 volumes:
   pgdata:
