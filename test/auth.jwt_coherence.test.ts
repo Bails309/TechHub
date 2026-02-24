@@ -5,24 +5,23 @@ describe('JWT coherence (periodic DB validation)', () => {
     vi.resetModules();
     // Force check on every jwt callback invocation
     process.env.JWT_CHECK_INTERVAL_MS = '0';
+    // Mock PrismaAdapter globally for these tests
+    vi.doMock('@next-auth/prisma-adapter', () => ({ PrismaAdapter: () => ({}) }));
   });
 
   it('refreshes token fields when user exists', async () => {
-    vi.mock('../src/lib/sso', () => ({ getSsoConfigMap: async () => new Map() }));
+    vi.doMock('../src/lib/sso', () => ({ getSsoConfigMap: async () => new Map() }));
+    // Stub the PrismaAdapter import used by auth module to avoid adapter side-effects
+    vi.doMock('@next-auth/prisma-adapter', () => ({ PrismaAdapter: () => ({}) }));
 
-    let returned = {
+    const returned = {
       roles: [{ role: { name: 'admin' } }],
       mustChangePassword: true,
       updatedAt: new Date().toISOString()
     };
 
-    vi.mock('../src/lib/prisma', () => ({
-      prisma: {
-        user: {
-          findUnique: async () => returned
-        }
-      }
-    }));
+    const findUnique = vi.fn(async () => returned);
+    vi.doMock('../src/lib/prisma', () => ({ prisma: { user: { findUnique } } }));
 
     const { getAuthOptions } = await import('../src/lib/auth');
     const opts = await getAuthOptions();
@@ -38,15 +37,10 @@ describe('JWT coherence (periodic DB validation)', () => {
   });
 
   it('marks token revoked when user is deleted', async () => {
-    vi.mock('../src/lib/sso', () => ({ getSsoConfigMap: async () => new Map() }));
+    vi.doMock('../src/lib/sso', () => ({ getSsoConfigMap: async () => new Map() }));
 
-    vi.mock('../src/lib/prisma', () => ({
-      prisma: {
-        user: {
-          findUnique: async () => null
-        }
-      }
-    }));
+    const findUnique = vi.fn(async () => null);
+    vi.doMock('../src/lib/prisma', () => ({ prisma: { user: { findUnique } } }));
 
     const { getAuthOptions } = await import('../src/lib/auth');
     const opts = await getAuthOptions();
@@ -58,15 +52,10 @@ describe('JWT coherence (periodic DB validation)', () => {
   });
 
   it('does not crash if DB throws; schedules next check', async () => {
-    vi.mock('../src/lib/sso', () => ({ getSsoConfigMap: async () => new Map() }));
+    vi.doMock('../src/lib/sso', () => ({ getSsoConfigMap: async () => new Map() }));
 
-    vi.mock('../src/lib/prisma', () => ({
-      prisma: {
-        user: {
-          findUnique: async () => { throw new Error('db down'); }
-        }
-      }
-    }));
+    const findUnique = vi.fn(async () => { throw new Error('db down'); });
+    vi.doMock('../src/lib/prisma', () => ({ prisma: { user: { findUnique } } }));
 
     const { getAuthOptions } = await import('../src/lib/auth');
     const opts = await getAuthOptions();
@@ -79,11 +68,11 @@ describe('JWT coherence (periodic DB validation)', () => {
 
   it('skips DB lookup when lastCheckedAt is fresh', async () => {
     vi.resetModules();
-    vi.mock('../src/lib/sso', () => ({ getSsoConfigMap: async () => new Map() }));
+    vi.doMock('../src/lib/sso', () => ({ getSsoConfigMap: async () => new Map() }));
 
     // spyable mock that would fail the test if called
     const findUnique = vi.fn(async () => { throw new Error('should not be called'); });
-    vi.mock('../src/lib/prisma', () => ({ prisma: { user: { findUnique } } }));
+    vi.doMock('../src/lib/prisma', () => ({ prisma: { user: { findUnique } } }));
 
     const { getAuthOptions } = await import('../src/lib/auth');
     const opts = await getAuthOptions();

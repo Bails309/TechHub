@@ -1,14 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-describe('middleware revocation and must-change-password handling', () => {
+describe('middleware revocation and must-change-password handling (unit)', () => {
   beforeEach(() => {
     vi.resetModules();
   });
 
   it('redirects revoked tokens to sign-in', async () => {
     vi.doMock('next-auth/jwt', () => ({ getToken: async () => ({ revoked: true }) }));
-
-    // Mock NextResponse helpers to inspect actions
     vi.doMock('next/server', () => ({
       NextResponse: {
         next: (opts: any) => ({ type: 'next', headers: opts.request.headers }),
@@ -17,9 +15,6 @@ describe('middleware revocation and must-change-password handling', () => {
       }
     }));
 
-    // Build a minimal, local middleware replica that uses the mocked
-    // `getToken` and `NextResponse` so we avoid importing Next.js middleware
-    // (which pulls in runtime-only modules that Vite can't resolve here).
     const { getToken } = await import('next-auth/jwt');
     const { NextResponse } = await import('next/server');
 
@@ -58,7 +53,6 @@ describe('middleware revocation and must-change-password handling', () => {
 
   it('returns JSON 403 for API requests when mustChangePassword is set', async () => {
     vi.doMock('next-auth/jwt', () => ({ getToken: async () => ({ mustChangePassword: true, authProvider: 'credentials' }) }));
-
     vi.doMock('next/server', () => ({
       NextResponse: {
         next: (opts: any) => ({ type: 'next', headers: opts.request.headers }),
@@ -105,7 +99,6 @@ describe('middleware revocation and must-change-password handling', () => {
 
   it('redirects HTML request to change-password when mustChangePassword is set', async () => {
     vi.doMock('next-auth/jwt', () => ({ getToken: async () => ({ mustChangePassword: true, authProvider: 'credentials' }) }));
-
     vi.doMock('next/server', () => ({
       NextResponse: {
         next: (opts: any) => ({ type: 'next', headers: opts.request.headers }),

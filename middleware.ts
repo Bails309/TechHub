@@ -18,7 +18,7 @@ function buildCsp(nonce: string) {
 }
 
 export async function middleware(request: NextRequest) {
-  const nonce = crypto.randomUUID();
+  const nonce = (globalThis as any)?.crypto?.randomUUID?.() ?? String(Date.now());
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
 
