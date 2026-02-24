@@ -69,18 +69,6 @@ jobs:
   docker-build:
     runs-on: ubuntu-latest
     needs: build-and-test
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: techhub
-          POSTGRES_PASSWORD: techhub
-          POSTGRES_DB: techhub
-        options: >-
-          --health-cmd "pg_isready -U techhub"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -91,15 +79,23 @@ jobs:
           push: false
           load: true
           tags: techhub:ci
+      - name: Start Postgres container for smoke test
+        run: |
+          docker run -d --name ci-postgres -e POSTGRES_USER=techhub -e POSTGRES_PASSWORD=techhub -e POSTGRES_DB=techhub -p 5432:5432 postgres:16
+          for i in {1..30}; do
+            docker exec ci-postgres pg_isready -U techhub && break || sleep 1
+          done
       - name: Run container from built image and smoke-check health endpoint
         run: |
-          docker run -d --name techhub-ci --link postgres:postgres -e DATABASE_URL=postgres://techhub:techhub@postgres:5432/techhub techhub:ci
-          for i in {1..30}; do
+          docker run -d --name techhub-ci --link ci-postgres:postgres -e DATABASE_URL=postgres://techhub:techhub@postgres:5432/techhub -p 3000:3000 techhub:ci
+          for i in {1..60}; do
             if curl -sSf http://localhost:3000/api/health >/dev/null 2>&1; then
               echo "health ok"; break
             fi
             sleep 1
           done
-      - name: Tear down container
+      - name: Tear down containers
         if: always()
-        run: docker rm -f techhub-ci || true
+        run: |
+          docker rm -f techhub-ci || true
+          docker rm -f ci-postgres || true
