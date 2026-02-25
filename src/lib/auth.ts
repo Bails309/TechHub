@@ -417,7 +417,14 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           // mock the DB) to trigger updates via the cache layer.
           const JWT_CHECK_INTERVAL_MS = Number(process.env.JWT_CHECK_INTERVAL_MS ?? 300000); // 5 minutes
           const now = Date.now();
-          const lastChecked = typeof token.lastCheckedAt === 'number' ? token.lastCheckedAt : 0;
+          // Accept numeric or numeric-string `lastCheckedAt` values so tests
+          // and different runtimes that may serialize JWTs do not trigger
+          // unnecessary DB lookups. Fall back to 0 on parse failure.
+          let lastChecked = 0;
+          if (token.lastCheckedAt != null) {
+            const parsed = Number(token.lastCheckedAt);
+            lastChecked = Number.isFinite(parsed) ? parsed : 0;
+          }
           const delta = now - lastChecked;
 
           if (token.sub && delta > JWT_CHECK_INTERVAL_MS) {

@@ -76,8 +76,18 @@ jobs:
       - name: Lint
         run: npm run lint --if-present
 
-      - name: Run tests
-        run: npm test -- --run
+      - name: Run tests (builder image)
+        run: |
+          # Build the Dockerfile 'builder' stage and run the test suite inside
+          # the resulting image. Use host networking so the container can reach
+          # the service containers started by the job (Postgres/Redis) via
+          # localhost:5432 and localhost:6379.
+          docker build --target builder -t techhub-tests .
+          docker run --rm --network host \
+            -e DATABASE_URL="postgres://techhub:techhub@localhost:5432/techhub" \
+            -e REDIS_URL="redis://localhost:6379" \
+            -e RATE_LIMIT_STORE=redis \
+            techhub-tests sh -lc "CI=true npm test -- --run"
 
       - name: Build Next.js
         run: npm run build
