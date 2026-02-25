@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import SelectField, { SelectOption } from './SelectField';
+import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
 
 interface EditAppFormProps {
   app: {
@@ -77,6 +78,7 @@ export default function EditAppForm({
   return (
     <form
       action={(formData) => {
+        formData.set('csrfToken', getCsrfTokenFromCookie());
         setStatusMessage(null);
         setStatusTone(null);
         startTransition(() => {
@@ -103,6 +105,7 @@ export default function EditAppForm({
       encType="multipart/form-data"
       className="grid gap-3 md:grid-cols-2"
     >
+      <HiddenCsrfInput />
       <input type="hidden" name="id" value={app.id} />
       <input
         name="name"

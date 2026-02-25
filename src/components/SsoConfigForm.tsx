@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { useFormState } from 'react-dom';
 import { updateSsoConfig } from '@/app/admin/actions';
+import HiddenCsrfInput from './HiddenCsrfInput';
 
 export type SsoFormConfig = {
   enabled: boolean;
@@ -151,6 +152,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
           Tenant ID only. Do not paste the OpenID discovery URL.
         </p>
         <form action={azureAction} className="space-y-4">
+          <HiddenCsrfInput />
           <input type="hidden" name="provider" value="azure-ad" />
           <label className="flex items-center gap-2 text-sm text-ink-200">
             <input
@@ -247,6 +249,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
           Issuer base URL only (no <span className="text-ink-100">/.well-known/openid-configuration</span>).
         </p>
         <form action={keycloakAction} className="space-y-4">
+          <HiddenCsrfInput />
           <input type="hidden" name="provider" value="keycloak" />
           <label className="flex items-center gap-2 text-sm text-ink-200">
             <input
@@ -332,6 +335,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
         source={credentials?.source}
       >
         <form action={credentialsAction} className="space-y-4">
+          <HiddenCsrfInput />
           <input type="hidden" name="provider" value="credentials" />
           <label className="flex items-center gap-2 text-sm text-ink-200">
             <input

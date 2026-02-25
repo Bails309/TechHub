@@ -2,6 +2,8 @@ import { vi, describe, it, expect } from 'vitest';
 
 // Mock modules used by the server action
 vi.mock('@/lib/auth', () => ({ getServerAuthSession: async () => ({ user: { id: 'user1' } }) }));
+vi.mock('@/lib/csrf', () => ({ validateCsrf: async () => true }));
+vi.mock('../src/lib/csrf', () => ({ validateCsrf: async () => true }));
 vi.mock('@/lib/password', () => ({
   hashPassword: async (p: string) => `hashed:${p}`,
   verifyPassword: async (p: string, h: string) => h === `hashed:${p}`,

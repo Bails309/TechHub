@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
+import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
 
 export default function DeleteAppForm({
   id,
@@ -78,6 +79,7 @@ export default function DeleteAppForm({
               </button>
               <form
                 action={(formData) => {
+                  formData.set('csrfToken', getCsrfTokenFromCookie());
                   startTransition(() => {
                       void (async () => {
                         try {
@@ -101,6 +103,7 @@ export default function DeleteAppForm({
                   setIsOpen(false);
                 }}
               >
+                <HiddenCsrfInput />
                 <input type="hidden" name="id" value={id} />
                 <button
                   type="submit"

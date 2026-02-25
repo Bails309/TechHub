@@ -3,6 +3,7 @@
 import { useFormState } from 'react-dom';
 import type { Role } from '@prisma/client';
 import type { CreateLocalUserState } from '@/app/admin/actions';
+import HiddenCsrfInput from './HiddenCsrfInput';
 
 type CreateLocalUserFormProps = {
   createLocalUser: (
@@ -19,6 +20,7 @@ export default function CreateLocalUserForm({ createLocalUser, roles }: CreateLo
 
   return (
     <form action={formAction} className="grid gap-3 md:grid-cols-2">
+      <HiddenCsrfInput />
       <input
         name="name"
         placeholder="Full name"

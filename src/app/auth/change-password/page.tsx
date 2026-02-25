@@ -5,6 +5,7 @@ import { useFormState } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { changePassword, ChangePasswordState } from './actions';
+import HiddenCsrfInput from '@/components/HiddenCsrfInput';
 
 const initialState: ChangePasswordState = { status: 'idle', message: '' };
 
@@ -32,6 +33,7 @@ export default function ChangePasswordPage() {
         </div>
 
         <form action={formAction} className="space-y-4">
+          <HiddenCsrfInput />
           <div>
             <label className="text-sm text-ink-200" htmlFor="currentPassword">
               Current password

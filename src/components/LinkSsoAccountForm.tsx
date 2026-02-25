@@ -4,6 +4,7 @@ import { useFormState } from 'react-dom';
 import { useState } from 'react';
 import SelectField from './SelectField';
 import type { LinkSsoAccountState } from '@/app/admin/actions';
+import HiddenCsrfInput from './HiddenCsrfInput';
 
 const initialState: LinkSsoAccountState = { status: 'idle', message: '' };
 
@@ -64,6 +65,7 @@ export default function LinkSsoAccountForm({ linkSsoAccount }: LinkSsoAccountFor
 
   return (
     <form action={formAction} className="grid gap-3 md:grid-cols-2">
+      <HiddenCsrfInput />
       <input
         name="email"
         placeholder="User email"

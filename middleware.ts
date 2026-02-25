@@ -17,6 +17,12 @@ function buildCsp(nonce: string) {
   ].join('; ');
 }
 
+function generateCsrfToken() {
+  const crypto = (globalThis as any)?.crypto;
+  if (crypto?.randomUUID) return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export async function middleware(request: NextRequest) {
   const nonce = (globalThis as any)?.crypto?.randomUUID?.();
   const requestHeaders = new Headers(request.headers);
@@ -31,6 +37,24 @@ export async function middleware(request: NextRequest) {
   const accept = request.headers.get('accept') ?? '';
   if (accept.includes('text/html')) {
     response.headers.set('Content-Security-Policy', buildCsp(nonce));
+  }
+
+  // Ensure a CSRF cookie is present for navigation and RSC requests,
+  // including client-side transitions that do not return full HTML.
+  if (request.method === 'GET') {
+    const csrfCookie = request.cookies.get('XSRF-TOKEN')?.value;
+    if (!csrfCookie) {
+      const forwardedProto = request.headers.get('x-forwarded-proto');
+      const isSecure = forwardedProto === 'https' || request.nextUrl.protocol === 'https:';
+      response.cookies.set({
+        name: 'XSRF-TOKEN',
+        value: generateCsrfToken(),
+        httpOnly: false,
+        sameSite: 'lax',
+        secure: isSecure,
+        path: '/'
+      });
+    }
   }
 
   const pathname = request.nextUrl.pathname;

@@ -29,6 +29,8 @@ async function safeRevalidateTag(tag: string) {
   }
 }
 import { prisma } from '../../lib/prisma';
+import { validateCsrf } from '../../lib/csrf';
+import { cookies } from 'next/headers';
 import { Prisma } from '@prisma/client';
 import { getServerAuthSession } from '../../lib/auth';
 import { invalidateUserMeta } from '../../lib/userCache';
@@ -118,6 +120,7 @@ async function safeDeleteIcon(iconPath?: string) {
 }
 
 export async function createApp(formData: FormData) {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as const;
   let session;
   try {
     // Attempt to get a real server session. In test environments the
@@ -219,6 +222,17 @@ export async function createApp(formData: FormData) {
 }
 
 export async function deleteApp(formData: FormData) {
+  const csrfToken = String(formData.get('csrfToken') ?? '');
+  let csrfCookie = '';
+  try {
+    const jar = await cookies();
+    csrfCookie = jar?.get ? jar.get('XSRF-TOKEN')?.value ?? '' : '';
+  } catch {
+    csrfCookie = '';
+  }
+  if (!csrfToken) return { status: 'error', message: 'Missing CSRF token' } as const;
+  if (!csrfCookie) return { status: 'error', message: 'Missing CSRF cookie' } as const;
+  if (csrfToken !== csrfCookie) return { status: 'error', message: 'Invalid CSRF token' } as const;
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' } as const;
@@ -257,6 +271,7 @@ export async function deleteApp(formData: FormData) {
 }
 
 export async function updateApp(formData: FormData) {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as const;
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' } as const;
@@ -361,6 +376,7 @@ const userRoleSchema = z.object({
 });
 
 export async function updateUserRoles(formData: FormData): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -457,6 +473,7 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
 }
 
 export async function deleteUser(formData: FormData): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const sessionCheck = await getServerAuthSession();
   if (!sessionCheck?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -530,6 +547,7 @@ const roleSchema = z.object({
 });
 
 export async function createRole(formData: FormData): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -561,6 +579,7 @@ export async function createRole(formData: FormData): Promise<AdminActionState> 
 }
 
 export async function deleteRole(formData: FormData): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -620,6 +639,7 @@ export async function createLocalUser(
   _prevState: CreateLocalUserState,
   formData: FormData
 ): Promise<CreateLocalUserState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -722,6 +742,7 @@ export async function linkSsoAccount(
   _prevState: LinkSsoAccountState,
   formData: FormData
 ): Promise<LinkSsoAccountState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -833,6 +854,7 @@ const passwordPolicySchema = z.object({
 });
 
 export async function updatePasswordPolicy(formData: FormData): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as AdminActionState;
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' } as AdminActionState;
@@ -1081,6 +1103,7 @@ export async function updateSsoConfig(
   _prevState: SsoActionState,
   formData: FormData
 ): Promise<SsoActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };

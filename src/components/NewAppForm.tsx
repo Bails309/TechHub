@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import SelectField, { SelectOption } from './SelectField';
+import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
 
 interface NewAppFormProps {
   categorySelectOptions: SelectOption[];
@@ -61,6 +62,7 @@ export default function NewAppForm({
   return (
     <form
       action={(formData) => {
+        formData.set('csrfToken', getCsrfTokenFromCookie());
         setStatusMessage(null);
         setStatusTone(null);
         startTransition(() => {
@@ -87,6 +89,7 @@ export default function NewAppForm({
       encType="multipart/form-data"
       className="grid gap-4 md:grid-cols-2"
     >
+      <HiddenCsrfInput />
       <input
         name="name"
         placeholder="App name"
