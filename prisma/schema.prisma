@@ -138,6 +138,7 @@ model AuditLog {
   targetId  String?
   provider  String?
   ip        String?
+  latency   Int?     // milliseconds
   details   Json?
   createdAt DateTime @default(now())
 

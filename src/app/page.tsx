@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import PortalView from '../components/PortalView';
 import StatsStrip from '../components/StatsStrip';
+import { getAverageLatency } from '../lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,13 +39,19 @@ export default async function Home() {
 
   const appOrder = session?.user?.id
     ? await prisma.userAppOrder.findUnique({
-        where: { userId: session.user.id }
-      })
+      where: { userId: session.user.id }
+    })
     : null;
+
+  const averageLatency = await getAverageLatency() ?? '< 1s';
 
   return (
     <div className="px-6 md:px-12 py-12 space-y-12">
-      <StatsStrip appCount={apps.length} categories={categories.length} />
+      <StatsStrip
+        appCount={apps.length}
+        categories={categories.length}
+        averageLatency={averageLatency}
+      />
 
       <PortalView
         apps={apps.map((app) => ({

@@ -2,10 +2,12 @@ import { Zap, LayoutGrid } from 'lucide-react';
 
 export default function StatsStrip({
   appCount,
-  categories
+  categories,
+  averageLatency
 }: {
   appCount: number;
   categories: number;
+  averageLatency: number | string;
 }) {
   const items = [
     {
@@ -16,7 +18,7 @@ export default function StatsStrip({
     {
       icon: Zap,
       label: 'Launch latency',
-      value: '< 1s'
+      value: typeof averageLatency === 'number' ? `${averageLatency}ms` : averageLatency
     }
   ];
 

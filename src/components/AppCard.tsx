@@ -50,9 +50,8 @@ export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
       onDragEnd={handleDragEnd}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      className={`glass rounded-3xl p-5 flex flex-col gap-3 hover:shadow-glow transition ${
-        isDragging ? 'opacity-60' : ''
-      }`}
+      className={`glass rounded-3xl p-5 flex flex-col gap-3 hover:shadow-glow transition ${isDragging ? 'opacity-60' : ''
+        }`}
     >
       <div className="flex items-start justify-between">
         <div>
@@ -81,10 +80,11 @@ export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
         <p className="text-sm text-ink-200 leading-relaxed">{app.description}</p>
       ) : null}
       <Link
-        href={app.url}
+        href={`/api/launch/${app.id}`}
         target="_blank"
         className="launch-button mt-auto inline-flex items-center justify-between rounded-2xl px-4 py-2 text-sm transition"
         draggable={false}
+        prefetch={false}
       >
         Launch
         <span className="text-ink-400">↗</span>
