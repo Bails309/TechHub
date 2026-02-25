@@ -194,6 +194,8 @@ Security and production hardening
 ## Recommended production checklist
 
 - Provide secrets to the runtime via a secrets manager (do NOT commit secrets to `.env` in the repo).
+ - Provide secrets to the runtime via a secrets manager (do NOT commit secrets to `.env` in the repo).
+ - Database credentials: do NOT use the default `techhub/techhub` credentials in production. Set `POSTGRES_USER` and `POSTGRES_PASSWORD` to strong, unique values via your orchestrator or secret store. The runtime will refuse to start in production if these values are left as the insecure defaults.
 - Set `REQUIRE_PREPROVISIONED_USERS=true` to avoid SSO self-registration.
 - Use an external, managed Redis with strong auth and TLS; set `REDIS_URL` and `REDIS_PASSWORD` in production.
 - Set `RATE_LIMIT_STORE=redis` for a distributed rate limiter.

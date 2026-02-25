@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN npm install -g npm@11.10.1
 COPY package.json package-lock.json* ./
- RUN npm install --legacy-peer-deps --prefer-offline --no-audit --no-fund
+ RUN npm install --prefer-offline --no-audit --no-fund
 
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
