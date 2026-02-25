@@ -28,11 +28,16 @@ ENV NODE_ENV=production
 ENV PORT=3000
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/src ./src
 RUN mkdir -p /app/uploads
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/test ./test
+	# The Next.js build output in `/.next` contains the compiled server code.
+	# Copying the `src` directory into the runtime image is unnecessary when
+	# using the standard Next build output. If you switch to Next's
+	# `output: 'standalone'` mode, prefer copying `/.next/standalone` and
+	# `/.next/static` instead and omit `src` entirely.
+	# COPY --from=builder /app/src ./src
+	RUN mkdir -p /app/uploads
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/next-env.d.ts ./next-env.d.ts
