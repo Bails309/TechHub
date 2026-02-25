@@ -204,15 +204,27 @@ function buildCredentialsProvider() {
       const emailKey = parsed.data.email.toLowerCase();
 
       // Enforce IP-based rate limit first (prevents password spraying from one IP)
+      // If we cannot determine the client IP, log diagnostic details and
+      // reject the attempt rather than falling back to a shared 'unknown'
+      // bucket which would enable easy DoS/password-spray amplification.
+      if (!clientIp) {
+        console.warn(
+          'auth: missing client IP for credentials login; remoteAddr=%s trustProxy=%s trustedProxies=%s',
+          remoteAddr ?? 'undefined',
+          trustProxy,
+          trustedProxiesEnv
+        );
+        // Surface a safe, non-detailed rate-limit-style error so callers do
+        // not receive internal diagnostics while still blocking the request.
+        const err = new Error('Rate limit exceeded. Please try again later.');
+        err.name = 'RateLimitError';
+        throw err;
+      }
+
       try {
-        if (clientIp) {
-          await assertRateLimit(`ip:${clientIp}`);
-          // If IP rate limit passed, enforce per-user rate limit
-          await assertRateLimit(`user:${emailKey}`);
-        } else {
-          // No client IP available: fall back to per-user rate limiting
-          await assertRateLimit(`user:${emailKey}`);
-        }
+        await assertRateLimit(`ip:${clientIp}`);
+        // If IP rate limit passed, enforce per-user rate limit
+        await assertRateLimit(`user:${emailKey}`);
       } catch {
         // Convert rate-limiter rejections into a safe, user-facing error so
         // NextAuth does not surface internal rate limiter details or a 500.
