@@ -31,6 +31,18 @@ Notes about the test setup
 - A small re-export `src/test-exports.ts` exposes convenience exports used in tests (helps with module resolution when running inside built Docker image).
 - Tests mock external services (Redis via `ioredis-mock`, Prisma via local mocks) where needed to avoid network dependencies.
 
+Test-mode authentication guard
+
+- For safety, the codebase no longer grants an implicit admin session whenever `NODE_ENV === 'test'`.
+- If you need a lightweight test-only fallback for `getServerAuthSession`, set the explicit guard `UNSAFE_TEST_AUTH=true` in your test environment. Example (not recommended for CI unless you understand the risk):
+
+```bash
+# Local run enabling the unsafe test fallback
+UNSAFE_TEST_AUTH=true npm test
+```
+
+- Prefer dependency injection or explicit mocks in tests instead of relying on the unsafe fallback. This helps ensure tests exercise authentication logic and prevents accidental elevation in CI or shared environments.
+
 Debugging failures
 
 - If tests can't import `@/` aliases locally, ensure `vitest.config.ts` is used by running `npx vitest` (Vitest auto-loads this file).
