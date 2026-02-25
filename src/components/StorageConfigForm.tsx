@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useFormState } from 'react-dom';
 import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
 import { updateStorageConfig } from '@/app/admin/actions';
+import SelectField from './SelectField';
 
 export type StorageFormConfig = {
   enabled: boolean;
@@ -100,7 +101,7 @@ export default function StorageConfigForm({
 
   const [azureForm, setAzureForm] = useState(() => ({
     enabled: azure?.enabled ?? false,
-    container: azure?.container ?? 'uploads',
+    container: azure?.container ?? '',
     endpoint: azure?.endpoint ?? '',
     authMode: azure?.authMode ?? 'account-key',
     account: azure?.account ?? '',
@@ -136,7 +137,7 @@ export default function StorageConfigForm({
   useEffect(() => {
     setAzureForm({
       enabled: azure?.enabled ?? false,
-      container: azure?.container ?? 'uploads',
+      container: azure?.container ?? '',
       endpoint: azure?.endpoint ?? '',
       authMode: azure?.authMode ?? 'account-key',
       account: azure?.account ?? '',
@@ -182,27 +183,30 @@ export default function StorageConfigForm({
       </div>
       <div className="rounded-2xl border border-ink-800 px-4 py-3">
         <label className="text-xs uppercase tracking-[0.2em] text-ink-400">Active provider</label>
-        <select
-          value={selectedProvider}
-          onChange={(event) => {
-            const next = event.target.value as 'local' | 's3' | 'azure';
-            setSelectedProvider(next);
-            if (next === 'local') {
-              setLocalForm((current) => ({ ...current, enabled: true }));
-            }
-            if (next === 's3') {
-              setS3Form((current) => ({ ...current, enabled: true }));
-            }
-            if (next === 'azure') {
-              setAzureForm((current) => ({ ...current, enabled: true }));
-            }
-          }}
-          className="input-surface mt-2 w-full rounded-2xl px-4 py-2 text-sm text-ink-100"
-        >
-          <option value="local">Local filesystem</option>
-          <option value="s3">S3 / S3-compatible</option>
-          <option value="azure">Azure Blob Storage</option>
-        </select>
+        <div className="mt-2">
+          <SelectField
+            name="activeProvider"
+            defaultValue={selectedProvider}
+            options={[
+              { value: 'local', label: 'Local filesystem' },
+              { value: 's3', label: 'S3 / S3-compatible' },
+              { value: 'azure', label: 'Azure Blob Storage' }
+            ]}
+            onChange={(value) => {
+              const next = value as 'local' | 's3' | 'azure';
+              setSelectedProvider(next);
+              if (next === 'local') {
+                setLocalForm((current) => ({ ...current, enabled: true }));
+              }
+              if (next === 's3') {
+                setS3Form((current) => ({ ...current, enabled: true }));
+              }
+              if (next === 'azure') {
+                setAzureForm((current) => ({ ...current, enabled: true }));
+              }
+            }}
+          />
+        </div>
         <p className="mt-2 text-xs text-ink-400">
           Pick a provider, update its settings, then save to apply. The selected provider will be enabled and others disabled.
         </p>
@@ -388,20 +392,20 @@ export default function StorageConfigForm({
               Enable Azure Blob uploads
             </label>
             <div className="grid gap-3 md:grid-cols-2">
-              <select
+              <SelectField
                 name="authMode"
-                value={azureForm.authMode}
-                onChange={(event) =>
+                defaultValue={azureForm.authMode}
+                options={[
+                  { value: 'connection-string', label: 'Connection string' },
+                  { value: 'account-key', label: 'Account name + key' }
+                ]}
+                onChange={(value) =>
                   setAzureForm((current) => ({
                     ...current,
-                    authMode: event.target.value as 'connection-string' | 'account-key'
+                    authMode: value as 'connection-string' | 'account-key'
                   }))
                 }
-                className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
-              >
-                <option value="connection-string">Connection string</option>
-                <option value="account-key">Account name + key</option>
-              </select>
+              />
               <input
                 name="container"
                 placeholder="Container (e.g. uploads)"
