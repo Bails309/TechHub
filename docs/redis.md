@@ -23,10 +23,18 @@ REDIS_URL=redis://:password@redis.example.com:6379
 - Optionally set `REDIS_PASSWORD` and `REDIS_TLS=true` if your provider requires separate password/TLS flags. The app will pass TLS options to `ioredis` when `REDIS_TLS=true`.
 
 - Ensure `RATE_LIMIT_STORE=redis` is set in your production environment to enable the Redis-backed rate limiter.
+ - Ensure `RATE_LIMIT_STORE=redis` is set in your production environment to enable the Redis-backed rate limiter.
+ 
+Note: As of recent hardening changes the application now enforces a centralized rate limiter in production. If the process is running with `NODE_ENV=production` and `RATE_LIMIT_STORE` is not set to `redis`, the application will refuse to start (fail fast) to avoid insecure memory-based rate limiting across multiple instances. Use the in-memory store only for single-process local testing.
 
 ### Failure and behavior
 
 - The application treats Redis as the authoritative store for user metadata and (when `RATE_LIMIT_STORE=redis`) for rate limiting. There is no silent in-memory fallback in this mode. If `RATE_LIMIT_STORE=redis` and `REDIS_URL` is not set or Redis cannot be reached, the application will fail fast. This prevents TOCTOU/inconsistency issues and enforces production parity during development and CI.
+ - The application treats Redis as the authoritative store for user metadata and (when `RATE_LIMIT_STORE=redis`) for rate limiting. There is no silent in-memory fallback in this mode. If `RATE_LIMIT_STORE=redis` and `REDIS_URL` is not set or Redis cannot be reached, the application will fail fast. This prevents TOCTOU/inconsistency issues and enforces production parity during development and CI.
+
+Operational guidance:
+- For production, provide a highly available Redis (clustered or managed service) and point `REDIS_URL` at it. Configure `REDIS_PASSWORD`/`REDIS_TLS` as needed.
+- If you must run without Redis in development, set `RATE_LIMIT_STORE=memory` locally, but do not use this in any multi-host environment.
 
 - For local development run `docker compose up --build` — the included compose file starts a `redis` service and the app will default to `REDIS_URL=redis://redis:6379`. In CI and production ensure `REDIS_URL` points to a reachable Redis endpoint (TLS/password support available via `rediss://` and `REDIS_PASSWORD`).
 

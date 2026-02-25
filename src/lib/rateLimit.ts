@@ -53,9 +53,10 @@ async function ensureLimiter() {
   limiterInitPromise = (async () => {
     const store = (process.env.RATE_LIMIT_STORE || 'memory') as 'memory' | 'redis';
     if (process.env.NODE_ENV === 'production' && store !== 'redis') {
-      // eslint-disable-next-line no-console
-      console.warn(
-        'SECURITY: RATE_LIMIT_STORE is not set to "redis" in production. Memory-based rate limiting is ineffective in serverless/distributed environments.'
+      // In production we must require a centralized rate limiter (Redis)
+      // to avoid bypass in multi-instance or serverless deployments.
+      throw new Error(
+        'SECURITY: RATE_LIMIT_STORE must be set to "redis" in production to ensure centralized rate limiting.'
       );
     }
 

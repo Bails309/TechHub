@@ -197,6 +197,8 @@ Security and production hardening
 - Set `REQUIRE_PREPROVISIONED_USERS=true` to avoid SSO self-registration.
 - Use an external, managed Redis with strong auth and TLS; set `REDIS_URL` and `REDIS_PASSWORD` in production.
 - Set `RATE_LIMIT_STORE=redis` for a distributed rate limiter.
+ - Set `RATE_LIMIT_STORE=redis` for a distributed rate limiter.
+ - NOTE: In production the application enforces a centralized rate limiter. If `RATE_LIMIT_STORE` is not set to `redis` the app will fail fast to avoid insecure in-memory rate limiting across multiple instances.
 - Set `TRUST_PROXY=true` and `TRUSTED_PROXIES` to your proxy CIDRs if you run behind proxies or load balancers.
 - Ensure `NEXTAUTH_URL` reflects the external URL (https://...)
 - Ensure `NEXTAUTH_SECRET` is a long random value and rotated securely.
