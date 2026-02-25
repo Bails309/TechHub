@@ -42,5 +42,7 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/next-env.d.ts ./next-env.d.ts
 COPY --from=builder /app/eslint.config.cjs ./eslint.config.cjs
+# Include utility scripts required at runtime (prestart checks, healthchecks)
+COPY --from=builder /app/scripts ./scripts
 EXPOSE 3000
 CMD ["npm", "start"]

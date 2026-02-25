@@ -61,6 +61,12 @@ Core variables (short list — see `.env` for full set):
 - `ADMIN_EMAIL` — seeded admin email
 - `ADMIN_PASSWORD` — leave blank to force generated one-time password at seed time
 
+- `NODE_ENV` — Controls runtime mode. The runtime image sets `NODE_ENV=production` by default
+  (see `Dockerfile`), and the app runs a prestart security check that will refuse to start
+  in production if insecure database credentials (e.g. `techhub/techhub` or a missing/short
+  password) are detected. For local development set `NODE_ENV=development` in your
+  host `.env` or via `docker-compose` to avoid the production-only fatal check.
+
 Security notes
 - Never commit secrets to git. Use host secret stores or your orchestrator's secret manager.
 - Keep `SSO_MASTER_KEY` offline/secure; losing it can make stored SSO secrets unrecoverable.
@@ -70,6 +76,9 @@ Security notes
 ## Local development
 
 1. Copy `.env.example` to `.env` and set values for local dev. Leave `DOMAIN` empty for local runs.
+    - Ensure `NODE_ENV=development` is present in your local `.env` (the repository's `Dockerfile`
+      sets `NODE_ENV=production` in the runtime image; overriding in `.env` or `docker-compose.yml`
+      ensures the prestart checks only warn instead of failing during local development).
 2. Install dependencies:
 
 ```bash
