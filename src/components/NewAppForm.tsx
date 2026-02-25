@@ -94,13 +94,13 @@ export default function NewAppForm({
         name="name"
         placeholder="App name"
         required
-        className="rounded-2xl border border-ink-700 bg-transparent px-4 py-3"
+        className="input-field"
       />
       <input
         name="url"
         placeholder="https://"
         required
-        className="rounded-2xl border border-ink-700 bg-transparent px-4 py-3"
+        className="input-field"
       />
       <div className="space-y-2">
         <label className="text-xs uppercase tracking-[0.2em] text-ink-400">Category</label>
@@ -113,7 +113,7 @@ export default function NewAppForm({
         <input
           name="categoryNew"
           placeholder="Type a new category"
-          className="input-surface w-full rounded-full px-5 py-3 text-ink-100 shadow-glow/30 focus:outline-none focus:ring-2 focus:ring-ocean-400/60"
+          className="input-field"
         />
       </div>
       <SelectField
@@ -146,7 +146,7 @@ export default function NewAppForm({
       <textarea
         name="description"
         placeholder="Short description"
-        className="rounded-2xl border border-ink-700 bg-transparent px-4 py-3 md:col-span-2"
+        className="input-field md:col-span-2"
         rows={3}
       />
       <div className="md:col-span-2">
@@ -166,7 +166,7 @@ export default function NewAppForm({
             }
             setPreviewUrl(URL.createObjectURL(file));
           }}
-          className="input-surface mt-2 w-full rounded-full px-4 py-2 text-xs text-ink-100"
+          className="input-field mt-2 py-2 text-xs"
         />
         {safePreviewUrl ? (
           <div className="mt-3 flex items-center gap-3">
@@ -181,7 +181,7 @@ export default function NewAppForm({
       <button
         type="submit"
         disabled={isPending}
-        className="md:col-span-2 rounded-full bg-ocean-500 px-5 py-3 text-sm font-semibold text-white hover:bg-ocean-400 transition disabled:opacity-60"
+        className="btn-primary md:col-span-2 disabled:opacity-60"
       >
         {isPending ? 'Creating…' : 'Create app'}
       </button>

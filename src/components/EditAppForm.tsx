@@ -111,13 +111,13 @@ export default function EditAppForm({
         name="name"
         defaultValue={app.name}
         required
-        className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
+        className="input-field"
       />
       <input
         name="url"
         defaultValue={app.url}
         required
-        className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
+        className="input-field"
       />
       <SelectField
         name="categorySelect"
@@ -127,7 +127,7 @@ export default function EditAppForm({
       <input
         name="categoryNew"
         placeholder="New category"
-        className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
+        className="input-field"
       />
       <SelectField
         name="audience"
@@ -160,7 +160,7 @@ export default function EditAppForm({
       <textarea
         name="description"
         defaultValue={app.description ?? ''}
-        className="input-surface rounded-2xl px-4 py-3 text-sm text-ink-100 md:col-span-2"
+        className="input-field md:col-span-2"
         rows={2}
       />
       <div className="md:col-span-2">
@@ -180,7 +180,7 @@ export default function EditAppForm({
             }
             setPreviewUrl(URL.createObjectURL(file));
           }}
-          className="input-surface mt-2 w-full rounded-full px-4 py-2 text-xs text-ink-100"
+          className="input-field mt-2 py-2 text-xs"
         />
         {safeDisplayIcon ? (
           <div className="mt-3 flex items-center gap-3">
@@ -199,7 +199,7 @@ export default function EditAppForm({
       <button
         type="submit"
         disabled={isPending}
-        className="md:col-span-2 rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition disabled:opacity-60"
+        className="btn-primary md:col-span-2 disabled:opacity-60"
       >
         {isPending ? 'Saving…' : 'Save changes'}
       </button>

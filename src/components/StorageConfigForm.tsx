@@ -246,7 +246,7 @@ export default function StorageConfigForm({
                 type="submit"
                 name="intent"
                 value="save"
-                className="rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
+                className="btn-primary btn-small"
               >
                 Save settings
               </button>
@@ -288,14 +288,14 @@ export default function StorageConfigForm({
                 placeholder="Bucket"
                 value={s3Form.bucket}
                 onChange={(event) => setS3Form((current) => ({ ...current, bucket: event.target.value }))}
-                className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+                className="input-field"
               />
               <input
                 name="region"
                 placeholder="Region"
                 value={s3Form.region}
                 onChange={(event) => setS3Form((current) => ({ ...current, region: event.target.value }))}
-                className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+                className="input-field"
               />
             </div>
             <div className="grid gap-3 md:grid-cols-2">
@@ -304,14 +304,14 @@ export default function StorageConfigForm({
                 placeholder="Endpoint (optional)"
                 value={s3Form.endpoint}
                 onChange={(event) => setS3Form((current) => ({ ...current, endpoint: event.target.value }))}
-                className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+                className="input-field"
               />
               <input
                 name="accessKeyId"
                 placeholder="Access key ID"
                 value={s3Form.accessKeyId}
                 onChange={(event) => setS3Form((current) => ({ ...current, accessKeyId: event.target.value }))}
-                className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+                className="input-field"
               />
             </div>
             <input
@@ -347,7 +347,7 @@ export default function StorageConfigForm({
                 type="submit"
                 name="intent"
                 value="save"
-                className="rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
+                className="btn-primary btn-small"
               >
                 Save settings
               </button>
@@ -355,7 +355,7 @@ export default function StorageConfigForm({
                 type="submit"
                 name="intent"
                 value="test"
-                className="rounded-full border border-ink-600 px-4 py-2 text-xs font-semibold text-ink-100 hover:border-ink-300 transition"
+                className="btn-secondary btn-small"
               >
                 Test connection
               </button>
@@ -411,7 +411,7 @@ export default function StorageConfigForm({
                 placeholder="Container (e.g. uploads)"
                 value={azureForm.container}
                 onChange={(event) => setAzureForm((current) => ({ ...current, container: event.target.value }))}
-                className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+                className="input-field"
               />
             </div>
             <div className="grid gap-3 md:grid-cols-2">
@@ -420,7 +420,7 @@ export default function StorageConfigForm({
                 placeholder="Endpoint (optional)"
                 value={azureForm.endpoint}
                 onChange={(event) => setAzureForm((current) => ({ ...current, endpoint: event.target.value }))}
-                className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+                className="input-field"
               />
               <input
                 name="sasTtlMinutes"
@@ -434,7 +434,7 @@ export default function StorageConfigForm({
                     sasTtlMinutes: event.target.value ? Number(event.target.value) : null
                   }))
                 }
-                className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+                className="input-field"
               />
             </div>
             {azureForm.authMode === 'connection-string' ? (
@@ -444,7 +444,7 @@ export default function StorageConfigForm({
                 placeholder={azure?.hasSecret ? 'Connection string (saved)' : 'Connection string'}
                 value={azureForm.connectionString}
                 onChange={(event) => setAzureForm((current) => ({ ...current, connectionString: event.target.value }))}
-                className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+                className="input-field"
               />
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
@@ -453,7 +453,7 @@ export default function StorageConfigForm({
                   placeholder="Storage account"
                   value={azureForm.account}
                   onChange={(event) => setAzureForm((current) => ({ ...current, account: event.target.value }))}
-                  className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+                  className="input-field"
                 />
                 <input
                   name="accountKey"
@@ -461,7 +461,7 @@ export default function StorageConfigForm({
                   placeholder={azure?.hasSecret ? 'Account key (saved)' : 'Account key'}
                   value={azureForm.accountKey}
                   onChange={(event) => setAzureForm((current) => ({ ...current, accountKey: event.target.value }))}
-                  className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+                  className="input-field"
                 />
               </div>
             )}
@@ -480,7 +480,7 @@ export default function StorageConfigForm({
                 type="submit"
                 name="intent"
                 value="save"
-                className="rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
+                className="btn-primary btn-small"
               >
                 Save settings
               </button>
@@ -488,14 +488,14 @@ export default function StorageConfigForm({
                 type="submit"
                 name="intent"
                 value="test"
-                className="rounded-full border border-ink-600 px-4 py-2 text-xs font-semibold text-ink-100 hover:border-ink-300 transition"
+                className="btn-secondary btn-small"
               >
                 Test connection
               </button>
               <button
                 type="button"
                 onClick={handleSasRequest}
-                className="rounded-full border border-ink-600 px-4 py-2 text-xs font-semibold text-ink-100 hover:border-ink-300 transition"
+                className="btn-secondary btn-small"
               >
                 Generate SAS token
               </button>

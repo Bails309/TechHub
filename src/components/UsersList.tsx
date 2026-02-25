@@ -57,11 +57,8 @@ export default function UsersList({ users }: { users: UserListItem[] }) {
               key={item.key}
               type="button"
               onClick={() => setFilter(item.key)}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition border ${
-                filter === item.key
-                  ? 'bg-ocean-500 text-white border-ocean-500'
-                  : 'border-ink-700 text-ink-200 hover:border-ink-400'
-              }`}
+              className={`btn-small ${filter === item.key ? 'btn-primary' : 'btn-secondary'
+                }`}
             >
               {item.label}
             </button>

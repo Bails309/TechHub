@@ -49,7 +49,7 @@ export default async function UsersPage({
 
     return (
         <div className="px-6 md:px-12 py-12 space-y-8">
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel md:p-8">
                 <h1 className="font-serif text-3xl">User management</h1>
                 <p className="text-ink-200 mt-2">
                     Create users, assign roles, and manage access.
@@ -61,7 +61,7 @@ export default async function UsersPage({
                 ) : null}
             </section>
 
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel md:p-8">
                 <h2 className="font-serif text-2xl mb-6">Create local user</h2>
                 <CreateLocalUserForm createLocalUser={createLocalUser} roles={rolesList} />
                 <p className="text-xs text-ink-300 mt-3">
@@ -70,7 +70,7 @@ export default async function UsersPage({
                 </p>
             </section>
 
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel md:p-8">
                 <h2 className="font-serif text-2xl mb-6">User access</h2>
                 <p className="text-sm text-ink-200 mb-6">
                     Signed-in users see public + authenticated apps. Assign roles below to unlock
@@ -97,7 +97,7 @@ export default async function UsersPage({
                                         </div>
                                         <button
                                             type="submit"
-                                            className="rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
+                                            className="btn-primary btn-small"
                                         >
                                             Save roles
                                         </button>
@@ -131,7 +131,7 @@ export default async function UsersPage({
                 </div>
             </section>
 
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel md:p-8">
                 <h2 className="font-serif text-2xl mb-6">Users</h2>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-xs text-ink-300">
                     <span>
@@ -141,12 +141,12 @@ export default async function UsersPage({
                         {prevPage ? (
                             <a
                                 href={`/admin/users?page=${prevPage}`}
-                                className="rounded-full border border-ink-700 px-3 py-1 text-xs text-ink-200 hover:border-ink-400 transition"
+                                className="btn-secondary btn-small"
                             >
                                 Previous
                             </a>
                         ) : (
-                            <span className="rounded-full border border-ink-800 px-3 py-1 text-xs text-ink-500">
+                            <span className="btn-secondary btn-small opacity-50 cursor-not-allowed">
                                 Previous
                             </span>
                         )}
@@ -156,12 +156,12 @@ export default async function UsersPage({
                         {nextPage ? (
                             <a
                                 href={`/admin/users?page=${nextPage}`}
-                                className="rounded-full border border-ink-700 px-3 py-1 text-xs text-ink-200 hover:border-ink-400 transition"
+                                className="btn-secondary btn-small"
                             >
                                 Next
                             </a>
                         ) : (
-                            <span className="rounded-full border border-ink-800 px-3 py-1 text-xs text-ink-500">
+                            <span className="btn-secondary btn-small opacity-50 cursor-not-allowed">
                                 Next
                             </span>
                         )}

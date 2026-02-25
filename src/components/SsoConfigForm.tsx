@@ -128,7 +128,7 @@ export default function SsoConfigForm({
             save SSO secrets. Generate one with:
           </p>
           <pre className="mt-2 rounded-xl bg-black/30 px-3 py-2 text-xs text-amber-50">
-node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&apos;base64&apos;))&quot;
+            node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&apos;base64&apos;))&quot;
           </pre>
           <p className="mt-2 text-xs text-amber-100">
             Then restart the app after updating <span className="text-amber-50">.env</span>.
@@ -174,7 +174,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               onChange={(event) =>
                 setAzureForm((current) => ({ ...current, clientId: event.target.value }))
               }
-              className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+              className="input-field"
             />
             <input
               name="tenantId"
@@ -183,7 +183,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               onChange={(event) =>
                 setAzureForm((current) => ({ ...current, tenantId: event.target.value }))
               }
-              className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+              className="input-field"
             />
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -195,7 +195,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               onChange={(event) =>
                 setAzureForm((current) => ({ ...current, clientSecret: event.target.value }))
               }
-              className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+              className="input-field"
             />
             <label className="flex items-center gap-2 text-xs text-ink-300">
               <input
@@ -215,7 +215,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               type="submit"
               name="intent"
               value="save"
-              className="rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
+              className="btn-primary btn-small"
             >
               Save settings
             </button>
@@ -223,7 +223,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               type="submit"
               name="intent"
               value="test"
-              className="rounded-full border border-ink-600 px-4 py-2 text-xs font-semibold text-ink-100 hover:border-ink-300 transition"
+              className="btn-secondary btn-small"
             >
               Test connection
             </button>
@@ -271,7 +271,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               onChange={(event) =>
                 setKeycloakForm((current) => ({ ...current, clientId: event.target.value }))
               }
-              className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+              className="input-field"
             />
             <input
               name="issuer"
@@ -280,7 +280,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               onChange={(event) =>
                 setKeycloakForm((current) => ({ ...current, issuer: event.target.value }))
               }
-              className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+              className="input-field"
             />
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -292,7 +292,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               onChange={(event) =>
                 setKeycloakForm((current) => ({ ...current, clientSecret: event.target.value }))
               }
-              className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+              className="input-field"
             />
             <label className="flex items-center gap-2 text-xs text-ink-300">
               <input
@@ -312,7 +312,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               type="submit"
               name="intent"
               value="save"
-              className="rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
+              className="btn-primary btn-small"
             >
               Save settings
             </button>
@@ -320,7 +320,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               type="submit"
               name="intent"
               value="test"
-              className="rounded-full border border-ink-600 px-4 py-2 text-xs font-semibold text-ink-100 hover:border-ink-300 transition"
+              className="btn-secondary btn-small"
             >
               Test connection
             </button>

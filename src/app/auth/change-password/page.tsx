@@ -23,7 +23,7 @@ export default function ChangePasswordPage() {
 
   return (
     <div className="px-6 md:px-12 py-12">
-      <div className="max-w-xl mx-auto glass rounded-[36px] p-10 space-y-6">
+      <div className="max-w-xl mx-auto card-panel md:p-10 space-y-6">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-ink-300">Security</p>
           <h1 className="font-serif text-3xl">Update your password</h1>
@@ -35,7 +35,7 @@ export default function ChangePasswordPage() {
         <form action={formAction} className="space-y-4">
           <HiddenCsrfInput />
           <div>
-            <label className="text-sm text-ink-200" htmlFor="currentPassword">
+            <label className="form-label" htmlFor="currentPassword">
               Current password
             </label>
             <input
@@ -43,11 +43,11 @@ export default function ChangePasswordPage() {
               name="currentPassword"
               type="password"
               required
-              className="mt-2 w-full rounded-2xl border border-ink-700 bg-transparent px-4 py-3 text-ink-100"
+              className="input-field"
             />
           </div>
           <div>
-            <label className="text-sm text-ink-200" htmlFor="newPassword">
+            <label className="form-label" htmlFor="newPassword">
               New password
             </label>
             <input
@@ -55,11 +55,11 @@ export default function ChangePasswordPage() {
               name="newPassword"
               type="password"
               required
-              className="mt-2 w-full rounded-2xl border border-ink-700 bg-transparent px-4 py-3 text-ink-100"
+              className="input-field"
             />
           </div>
           <div>
-            <label className="text-sm text-ink-200" htmlFor="confirmPassword">
+            <label className="form-label" htmlFor="confirmPassword">
               Confirm new password
             </label>
             <input
@@ -67,13 +67,13 @@ export default function ChangePasswordPage() {
               name="confirmPassword"
               type="password"
               required
-              className="mt-2 w-full rounded-2xl border border-ink-700 bg-transparent px-4 py-3 text-ink-100"
+              className="input-field"
             />
           </div>
           <button
             type="submit"
             disabled={state.pending}
-            className="w-full rounded-full bg-bronze-500 px-5 py-3 text-sm font-semibold text-white hover:bg-bronze-400 transition disabled:opacity-60"
+            className="btn-primary w-full"
           >
             {state.pending ? 'Updating…' : 'Update password'}
           </button>

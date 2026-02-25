@@ -119,14 +119,14 @@ export default async function SettingsPage() {
 
     return (
         <div className="px-6 md:px-12 py-12 space-y-8">
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel md:p-8">
                 <h1 className="font-serif text-3xl">Settings</h1>
                 <p className="text-ink-200 mt-2">
                     Manage roles, password policy, and upload storage configuration.
                 </p>
             </section>
 
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel md:p-8">
                 <h2 className="font-serif text-2xl mb-6">Roles</h2>
                 <div className="grid gap-6 md:grid-cols-2">
                     <AdminActionForm
@@ -140,11 +140,11 @@ export default async function SettingsPage() {
                         <input
                             name="name"
                             placeholder="role name"
-                            className="input-surface w-full rounded-full px-4 py-2 text-sm text-ink-100"
+                            className="input-field"
                         />
                         <button
                             type="submit"
-                            className="rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
+                            className="btn-primary btn-small"
                         >
                             Create role
                         </button>
@@ -164,7 +164,7 @@ export default async function SettingsPage() {
                                     <button
                                         type="submit"
                                         disabled={role.name === 'admin'}
-                                        className="ml-auto rounded-full border border-ink-700 px-3 py-1 text-xs text-ink-200 hover:border-ink-400 transition disabled:opacity-50"
+                                        className="btn-secondary btn-small ml-auto"
                                     >
                                         Delete
                                     </button>
@@ -178,7 +178,7 @@ export default async function SettingsPage() {
                 </div>
             </section>
 
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel md:p-8">
                 <h2 className="font-serif text-2xl mb-6">Password policy</h2>
                 <AdminActionForm
                     action={updatePasswordPolicy}
@@ -196,7 +196,7 @@ export default async function SettingsPage() {
                                 min={8}
                                 max={64}
                                 defaultValue={passwordPolicy?.minLength ?? 12}
-                                className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
+                                className="input-field"
                             />
                         </div>
                         <div className="space-y-2">
@@ -209,7 +209,7 @@ export default async function SettingsPage() {
                                 min={0}
                                 max={20}
                                 defaultValue={passwordPolicy?.historyCount ?? 5}
-                                className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
+                                className="input-field"
                             />
                         </div>
                     </div>
@@ -253,14 +253,14 @@ export default async function SettingsPage() {
                     </div>
                     <button
                         type="submit"
-                        className="rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
+                        className="btn-primary btn-small"
                     >
                         Save policy
                     </button>
                 </AdminActionForm>
             </section>
 
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel md:p-8">
                 <h2 className="font-serif text-2xl mb-6">Upload storage</h2>
                 <StorageConfigForm
                     activeProvider={activeStorageProvider}

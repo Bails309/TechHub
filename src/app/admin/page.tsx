@@ -114,7 +114,7 @@ export default async function AdminDashboard() {
               recentAudits.map((audit: any) => {
                 const actorName = audit.actorId ? actorMap.get(audit.actorId) ?? audit.actorId : 'System';
                 return (
-                  <div key={audit.id} className="flex items-center justify-between gap-4 rounded-2xl border border-ink-800/50 bg-[#0A0A0A]/50 px-5 py-3">
+                  <div key={audit.id} className="flex items-center justify-between gap-4 rounded-2xl border border-ink-800/50 bg-ink-900/50 px-5 py-3">
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-ink-100 text-sm">{audit.action}</p>
                       <p className="text-xs text-ink-400 mt-1 truncate">

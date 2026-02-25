@@ -109,7 +109,7 @@ export default async function AuditPage(props: {
 
     return (
         <div className="px-6 md:px-12 py-12 space-y-8 max-w-7xl mx-auto">
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel md:p-8">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
                         <h1 className="font-serif text-3xl">Audit Log</h1>
@@ -118,15 +118,15 @@ export default async function AuditPage(props: {
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        <a href="/admin/audit" className={`px-4 py-2 rounded-full text-sm font-medium transition ${!categoryFilter ? 'bg-ocean-500 text-white' : 'bg-ink-800 text-ink-300 hover:bg-ink-700 hover:text-ink-100'}`}>All</a>
-                        <a href="/admin/audit?category=auth" className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition ${categoryFilter === 'auth' ? 'bg-ocean-500 text-white' : 'bg-ink-800 text-ink-300 hover:bg-ink-700 hover:text-ink-100'}`}><KeyRound size={16} /> Auth</a>
-                        <a href="/admin/audit?category=admin" className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition ${categoryFilter === 'admin' ? 'bg-purple-500 text-white' : 'bg-ink-800 text-ink-300 hover:bg-ink-700 hover:text-ink-100'}`}><Shield size={16} /> Admin</a>
-                        <a href="/admin/audit?category=config" className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition ${categoryFilter === 'config' ? 'bg-amber-500 text-white' : 'bg-ink-800 text-ink-300 hover:bg-ink-700 hover:text-ink-100'}`}><Settings size={16} /> Config</a>
+                        <a href="/admin/audit" className={`btn-small ${!categoryFilter ? 'btn-primary' : 'btn-secondary'}`}>All</a>
+                        <a href="/admin/audit?category=auth" className={`flex items-center gap-2 btn-small ${categoryFilter === 'auth' ? 'btn-primary' : 'btn-secondary'}`}><KeyRound size={16} /> Auth</a>
+                        <a href="/admin/audit?category=admin" className={`flex items-center gap-2 btn-small ${categoryFilter === 'admin' ? 'btn-primary' : 'btn-secondary'}`}><Shield size={16} /> Admin</a>
+                        <a href="/admin/audit?category=config" className={`flex items-center gap-2 btn-small ${categoryFilter === 'config' ? 'btn-primary' : 'btn-secondary'}`}><Settings size={16} /> Config</a>
                     </div>
                 </div>
             </section>
 
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel md:p-8">
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="font-serif text-2xl">Recent events</h2>
                     <span className="rounded-full bg-ink-800 px-3 py-1 text-xs text-ink-300">
@@ -184,7 +184,7 @@ export default async function AuditPage(props: {
                                             <span className="transition [details[open]>&]:rotate-90">▶</span>
                                             View details
                                         </summary>
-                                        <div className="mt-2 bg-[#0A0A0A] border border-ink-800/50 rounded-xl overflow-hidden">
+                                        <div className="mt-2 bg-ink-900 border border-ink-800/50 rounded-xl overflow-hidden">
                                             <pre className="overflow-x-auto p-4 textxs text-ink-200 font-mono">
                                                 {JSON.stringify(audit.details, null, 2)}
                                             </pre>

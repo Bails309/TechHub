@@ -56,7 +56,7 @@ export default function TopNav() {
 
   return (
     <header className="px-6 md:px-12 pt-6">
-      <div className="glass rounded-3xl px-6 py-4 flex items-center justify-between shadow-glow">
+      <div className="card-panel py-4 flex flex-wrap md:flex-nowrap items-center justify-between shadow-glow gap-4 md:gap-0">
         <div className="flex items-center gap-3">
           <div className="h-10 w-24">
             <img
@@ -95,7 +95,7 @@ export default function TopNav() {
             <button
               type="button"
               onClick={toggleHeadings}
-              className="rounded-full border border-ink-600 px-4 py-2 text-xs text-ink-200 hover:border-ink-300 transition"
+              className="btn-secondary btn-small"
             >
               Toggle headings
             </button>
@@ -105,7 +105,7 @@ export default function TopNav() {
               {isLocalUser ? (
                 <Link
                   href="/auth/change-password"
-                  className="rounded-full border border-ink-600 px-4 py-2 text-xs text-ink-200 hover:border-ink-300 transition"
+                  className="btn-secondary btn-small"
                 >
                   Change password
                 </Link>
@@ -113,7 +113,7 @@ export default function TopNav() {
               <button
                 type="button"
                 onClick={() => signOut({ callbackUrl: '/auth/signin' })}
-                className="flex items-center gap-2 rounded-full border border-ink-600 px-4 py-2 text-ink-100 hover:border-ink-300 transition"
+                className="btn-secondary btn-small flex items-center gap-2"
               >
                 <ShieldCheck size={16} />
                 Sign out
@@ -125,7 +125,7 @@ export default function TopNav() {
           ) : (
             <Link
               href="/auth/signin"
-              className="flex items-center gap-2 rounded-full border border-ink-600 px-4 py-2 text-ink-100 hover:border-ink-300 transition"
+              className="btn-secondary btn-small flex items-center gap-2"
             >
               <LogIn size={16} />
               Sign in

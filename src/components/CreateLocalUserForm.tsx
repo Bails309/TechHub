@@ -24,21 +24,21 @@ export default function CreateLocalUserForm({ createLocalUser, roles }: CreateLo
       <input
         name="name"
         placeholder="Full name"
-        className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
+        className="input-field"
       />
       <input
         name="email"
         placeholder="Email"
         type="email"
         required
-        className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
+        className="input-field"
       />
       <input
         name="password"
         placeholder="Temporary password"
         type="password"
         required
-        className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
+        className="input-field"
       />
       <div className="md:col-span-2 space-y-2">
         <p className="text-xs uppercase tracking-[0.2em] text-ink-400">Assign roles</p>
@@ -53,7 +53,7 @@ export default function CreateLocalUserForm({ createLocalUser, roles }: CreateLo
       </div>
       <button
         type="submit"
-        className="md:col-span-2 rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
+        className="btn-primary btn-small md:col-span-2"
       >
         Create local user
       </button>
