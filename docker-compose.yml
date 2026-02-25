@@ -13,8 +13,9 @@ services:
       - pgdata:/var/lib/postgresql/data
   app:
     build: .
-    ports:
-      - "3000:3000"
+    # Do not publish the app port to the host. The app is proxied via the
+    # `proxy` service (nginx) and should not be directly reachable on the
+    # host to avoid bypassing the reverse proxy.
     env_file:
       - .env
     environment:
@@ -28,14 +29,41 @@ services:
     command: >
       sh -c "npm run prisma:push && npm run prisma:seed && npm run start"
     volumes:
-      - uploads:/app/uploads
+      - ./uploads:/app/uploads
+
+  proxy:
+    build: ./nginx
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:rw
+      - ./nginx/init-cert.sh:/usr/local/bin/init-cert.sh:ro
+      - ./nginx/proxy-healthcheck.sh:/usr/local/bin/proxy-healthcheck.sh:ro
+      - nginx_logs:/var/log/nginx
+    command: ["/bin/sh", "-c", "apk add --no-cache openssl && /usr/local/bin/init-cert.sh && exec nginx -g 'daemon off;'" ]
+    depends_on:
+      - app
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/local/bin/proxy-healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
 
 volumes:
   pgdata:
-  uploads:
+  nginx_logs:

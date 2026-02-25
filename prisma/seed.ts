@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 const SALT_ROUNDS = 12;
 
@@ -19,7 +20,15 @@ async function main() {
   });
 
   const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@techhub.local';
-  const adminPassword = process.env.ADMIN_PASSWORD ?? 'ChangeMeNow!';
+  let adminPassword = process.env.ADMIN_PASSWORD;
+  // If no ADMIN_PASSWORD provided, generate a secure one-time password and
+  // print it to stdout exactly once during seeding. Do NOT commit defaults.
+  if (!adminPassword) {
+    // Generate a URL-safe base64 password
+    const raw = crypto.randomBytes(16).toString('base64');
+    adminPassword = raw.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+    console.log(`SEED: Generated admin password for ${adminEmail}: ${adminPassword}`);
+  }
 
   const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });
   const adminUser = existingAdmin

@@ -487,12 +487,19 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
 export async function getServerAuthSession() {
   // In test environments the Next runtime APIs used by `getServerSession`
-  // (which call `headers()`) are not available. Provide a lightweight
-  // test-only fallback so unit tests can call server actions without
-  // requiring a full Next request context.
+  // (which call `headers()`) are not available. A test-only fallback
+  // increases risk if accidentally enabled in CI or local runs. Require a
+  // strict explicit guard to enable the fallback so tests must opt-in.
   if (process.env.NODE_ENV === 'test') {
-    // Minimal session resembling an admin user used by tests.
-    return { user: { id: 'admin', roles: ['admin'], authProvider: 'credentials', mustChangePassword: false } } as any;
+    if (process.env.UNSAFE_TEST_AUTH === 'true') {
+      // Minimal session resembling an admin user used only when the
+      // UNSAFE_TEST_AUTH guard is explicitly set. Tests should prefer
+      // dependency injection or mocks instead of this fallback.
+      return { user: { id: 'admin', roles: ['admin'], authProvider: 'credentials', mustChangePassword: false } } as any;
+    }
+    throw new Error(
+      'getServerAuthSession: test fallback disabled. For a fallback set UNSAFE_TEST_AUTH=true in your test environment, or use dependency injection/mocks.'
+    );
   }
 
   const options = await getAuthOptions();
