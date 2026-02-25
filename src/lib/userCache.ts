@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import Redis, { RedisOptions } from 'ioredis';
 import { prisma } from './prisma';
 
 type UserMeta = { roles: string[]; mustChangePassword: boolean; updatedAt?: number };
@@ -19,7 +19,10 @@ async function initRedisClient(): Promise<Redis | null> {
 
   redisInitPromise = (async () => {
     try {
-      const client = REDIS_URL ? new Redis(REDIS_URL) : new Redis();
+      const opts: RedisOptions = {};
+      if (process.env.REDIS_PASSWORD) opts.password = process.env.REDIS_PASSWORD;
+      if (process.env.REDIS_TLS === 'true') opts.tls = {} as RedisOptions['tls'];
+      const client = REDIS_URL ? new Redis(REDIS_URL, opts) : new Redis(opts);
       client.on('error', () => {});
       await client.ping();
       redis = client;
