@@ -12,6 +12,7 @@ import { assertRateLimit } from './rateLimit';
 import { getServerSession } from 'next-auth';
 import { getUserMeta } from './userCache';
 import { getSsoConfigMap } from './sso';
+import { writeAuditLog } from './audit';
 import ipaddr from 'ipaddr.js';
 
 const credentialsSchema = z.object({
@@ -239,11 +240,25 @@ function buildCredentialsProvider() {
       });
 
       if (!user?.passwordHash) {
+        writeAuditLog({
+          category: 'auth',
+          action: 'login_failure',
+          provider: 'credentials',
+          ip: clientIp,
+          details: { email: emailKey, reason: 'invalid_credentials' },
+        });
         return null;
       }
 
       const valid = await verifyPassword(parsed.data.password, user.passwordHash);
       if (!valid) {
+        writeAuditLog({
+          category: 'auth',
+          action: 'login_failure',
+          provider: 'credentials',
+          ip: clientIp,
+          details: { email: emailKey, reason: 'invalid_credentials' },
+        });
         return null;
       }
 
@@ -349,6 +364,12 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
       async signIn({ user, account, profile }) {
         if (account?.provider && account.provider !== 'credentials') {
           if (!user?.email) {
+            writeAuditLog({
+              category: 'auth',
+              action: 'login_failure',
+              provider: account.provider,
+              details: { reason: 'no_email' },
+            });
             return false;
           }
 
@@ -358,16 +379,22 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
           const accountExists = account?.providerAccountId
             ? await prisma.account.findUnique({
-                where: {
-                  provider_providerAccountId: {
-                    provider: account.provider,
-                    providerAccountId: account.providerAccountId
-                  }
+              where: {
+                provider_providerAccountId: {
+                  provider: account.provider,
+                  providerAccountId: account.providerAccountId
                 }
-              })
+              }
+            })
             : null;
 
           if (requirePreprovisionedUsers && !existing) {
+            writeAuditLog({
+              category: 'auth',
+              action: 'login_failure',
+              provider: account.provider,
+              details: { email: user.email, reason: 'not_preprovisioned' },
+            });
             return false;
           }
 
@@ -378,6 +405,12 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           // Do NOT auto-link SSO accounts to existing local users by email.
           // Linking must be performed explicitly by an admin via the UI.
           if (!accountExists && existing) {
+            writeAuditLog({
+              category: 'auth',
+              action: 'login_failure',
+              provider: account.provider,
+              details: { email: user.email, reason: 'account_not_linked' },
+            });
             return false;
           }
         }
@@ -400,67 +433,73 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           token.mustChangePassword = user.mustChangePassword;
         }
 
-          if (account?.provider) {
+        if (account?.provider) {
           token.authProvider = account.provider;
         }
 
-          if (!token.authProvider && user?.authProvider) {
+        if (!token.authProvider && user?.authProvider) {
           token.authProvider = user.authProvider;
         }
 
-          if (user?.roles) {
-            token.roles = user.roles;
-          }
+        if (user?.roles) {
+          token.roles = user.roles;
+        }
 
-          // Periodic consistency check using the server-side cache. This keeps
-          // the jwt callback lightweight while still allowing tests (which
-          // mock the DB) to trigger updates via the cache layer.
-          const JWT_CHECK_INTERVAL_MS = Number(process.env.JWT_CHECK_INTERVAL_MS ?? 300000); // 5 minutes
-          const now = Date.now();
-          // Accept numeric or numeric-string `lastCheckedAt` values so tests
-          // and different runtimes that may serialize JWTs do not trigger
-          // unnecessary DB lookups. Fall back to 0 on parse failure.
-          let lastChecked = 0;
-          if (token.lastCheckedAt != null) {
-            const parsed = Number(token.lastCheckedAt);
-            lastChecked = Number.isFinite(parsed) ? parsed : 0;
-          }
-          const delta = now - lastChecked;
+        // Periodic consistency check using the server-side cache. This keeps
+        // the jwt callback lightweight while still allowing tests (which
+        // mock the DB) to trigger updates via the cache layer.
+        const JWT_CHECK_INTERVAL_MS = Number(process.env.JWT_CHECK_INTERVAL_MS ?? 300000); // 5 minutes
+        const now = Date.now();
+        // Accept numeric or numeric-string `lastCheckedAt` values so tests
+        // and different runtimes that may serialize JWTs do not trigger
+        // unnecessary DB lookups. Fall back to 0 on parse failure.
+        let lastChecked = 0;
+        if (token.lastCheckedAt != null) {
+          const parsed = Number(token.lastCheckedAt);
+          lastChecked = Number.isFinite(parsed) ? parsed : 0;
+        }
+        const delta = now - lastChecked;
 
-          if (token.sub && delta > JWT_CHECK_INTERVAL_MS) {
-            try {
-              const meta = await getUserMeta(String(token.sub));
-              if (!meta) {
-                // Fallback: attempt a direct DB read when cache had no entry.
-                // This keeps tests that mock Prisma working while production
-                // will prefer the cache path.
-                try {
-                  const userRecord = await prisma.user.findUnique({
-                    where: { id: String(token.sub) },
-                    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
+        if (token.sub && delta > JWT_CHECK_INTERVAL_MS) {
+          try {
+            const meta = await getUserMeta(String(token.sub));
+            if (!meta) {
+              // Fallback: attempt a direct DB read when cache had no entry.
+              // This keeps tests that mock Prisma working while production
+              // will prefer the cache path.
+              try {
+                const userRecord = await prisma.user.findUnique({
+                  where: { id: String(token.sub) },
+                  select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
+                });
+                if (!userRecord) {
+                  token.revoked = true;
+                  writeAuditLog({
+                    category: 'auth',
+                    action: 'session_terminated',
+                    targetId: String(token.sub),
+                    details: { reason: 'user_deleted' },
                   });
-                  if (!userRecord) {
-                    token.revoked = true;
-                  } else {
-                    token.roles = userRecord.roles.map((r) => r.role.name);
-                    if (typeof userRecord.mustChangePassword === 'boolean') token.mustChangePassword = userRecord.mustChangePassword;
-                    token.userUpdatedAt = userRecord.updatedAt ? new Date(userRecord.updatedAt).getTime() : undefined;
-                    token.lastCheckedAt = now;
-                  }
-                } catch {
+                } else {
+                  token.roles = userRecord.roles.map((r) => r.role.name);
+                  if (typeof userRecord.mustChangePassword === 'boolean') token.mustChangePassword = userRecord.mustChangePassword;
+                  token.userUpdatedAt = userRecord.updatedAt ? new Date(userRecord.updatedAt).getTime() : undefined;
                   token.lastCheckedAt = now;
                 }
-              } else {
-                token.roles = meta.roles;
-                if (typeof meta.mustChangePassword === 'boolean') token.mustChangePassword = meta.mustChangePassword;
-                if (typeof meta.updatedAt === 'number') token.userUpdatedAt = meta.updatedAt;
+              } catch {
                 token.lastCheckedAt = now;
               }
-            } catch {
-              // If cache/DB read fails, at minimum schedule the next check.
+            } else {
+              token.roles = meta.roles;
+              if (typeof meta.mustChangePassword === 'boolean') token.mustChangePassword = meta.mustChangePassword;
+              if (typeof meta.updatedAt === 'number') token.userUpdatedAt = meta.updatedAt;
               token.lastCheckedAt = now;
             }
+          } catch {
+            // If cache/DB read fails, at minimum schedule the next check.
+            token.lastCheckedAt = now;
           }
+        }
 
         return token;
       },
@@ -497,6 +536,24 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         }
         return session;
       }
+    },
+    events: {
+      async signIn({ user, account }) {
+        writeAuditLog({
+          category: 'auth',
+          action: 'login_success',
+          actorId: user?.id ?? null,
+          provider: account?.provider ?? null,
+          details: { email: user?.email ?? null },
+        });
+      },
+      async signOut({ token }) {
+        writeAuditLog({
+          category: 'auth',
+          action: 'logout',
+          actorId: (token as JWT)?.sub ?? null,
+        });
+      },
     },
     pages: {
       signIn: '/auth/signin'

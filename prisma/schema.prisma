@@ -130,13 +130,21 @@ model SsoConfig {
   updatedAt       DateTime @updatedAt
 }
 
-model SsoAudit {
+model AuditLog {
   id        String   @id @default(cuid())
-  provider  String
+  category  String   // auth | admin | config
   action    String
   actorId   String?
-  changes   Json?
+  targetId  String?
+  provider  String?
+  ip        String?
+  details   Json?
   createdAt DateTime @default(now())
+
+  @@index([category])
+  @@index([action])
+  @@index([actorId])
+  @@index([createdAt])
 }
 
 model StorageConfig {

@@ -12,7 +12,7 @@
     "test": "vitest",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:push": "prisma db push",
+    "prisma:push": "prisma db push --accept-data-loss",
     "prisma:seed": "prisma db seed"
   },
   "prisma": {

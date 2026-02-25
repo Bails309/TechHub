@@ -29,6 +29,7 @@ async function safeRevalidateTag(tag: string) {
   }
 }
 import { prisma } from '../../lib/prisma';
+import { writeAuditLog } from '../../lib/audit';
 import { validateCsrf } from '../../lib/csrf';
 import { cookies } from 'next/headers';
 import { Prisma } from '@prisma/client';
@@ -200,7 +201,7 @@ export async function createApp(formData: FormData) {
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
     return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
   }
-  
+
 
   const payload = appSchema.safeParse({
     name: formData.get('name'),
@@ -271,6 +272,13 @@ export async function createApp(formData: FormData) {
     throw err;
   }
 
+  writeAuditLog({
+    category: 'admin',
+    action: 'app_created',
+    actorId: session.user.id,
+    details: { name: parsed.data.name, url: parsed.data.url },
+  });
+
   await safeRevalidatePath('/admin');
   await safeRevalidatePath('/');
   return { status: 'success', message: 'App created' } as const;
@@ -295,7 +303,7 @@ export async function deleteApp(formData: FormData) {
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
     return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
   }
-  
+
 
   const id = String(formData.get('id') ?? '');
   if (!id) {
@@ -319,6 +327,14 @@ export async function deleteApp(formData: FormData) {
       // ignore
     }
   }
+
+  writeAuditLog({
+    category: 'admin',
+    action: 'app_deleted',
+    actorId: session.user.id,
+    targetId: id,
+    details: { name: app?.name },
+  });
 
   await safeRevalidatePath('/admin');
   await safeRevalidatePath('/');
@@ -439,20 +455,20 @@ export async function updateStorageConfig(
   const config: Prisma.InputJsonValue | Prisma.NullTypes.JsonNull = enabled
     ? provider.data === 's3'
       ? {
-          bucket,
-          region: region || null,
-          endpoint: endpoint || null,
-          accessKeyId: accessKeyId || null,
-          forcePathStyle
-        }
+        bucket,
+        region: region || null,
+        endpoint: endpoint || null,
+        accessKeyId: accessKeyId || null,
+        forcePathStyle
+      }
       : provider.data === 'azure'
         ? {
-            authMode: authMode.data,
-            container,
-            account: account || null,
-            endpoint: endpoint || null,
-            sasTtlMinutes: sasTtlMinutes || null
-          }
+          authMode: authMode.data,
+          container,
+          account: account || null,
+          endpoint: endpoint || null,
+          sasTtlMinutes: sasTtlMinutes || null
+        }
         : {}
     : Prisma.JsonNull;
 
@@ -495,6 +511,14 @@ export async function updateStorageConfig(
     })
   ]);
 
+  writeAuditLog({
+    category: 'config',
+    action: 'storage_config_saved',
+    actorId: session.user.id,
+    provider: provider.data,
+    details: { enabled, config },
+  });
+
   await safeRevalidateTag('storage-config');
   await safeRevalidatePath('/admin');
   return { status: 'success', message: enabled ? 'Storage settings saved' : 'Storage disabled' };
@@ -509,7 +533,7 @@ export async function updateApp(formData: FormData) {
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
     return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
   }
-  
+
 
   const parsed = updateSchema.safeParse({
     id: formData.get('id'),
@@ -578,7 +602,7 @@ export async function updateApp(formData: FormData) {
         });
       }
     });
-    } catch (err) {
+  } catch (err) {
     // If update failed, and we uploaded a new icon, remove it to avoid orphaned files
     if (iconPath && existingApp?.icon !== iconPath) {
       await safeDeleteIcon(iconPath);
@@ -594,6 +618,14 @@ export async function updateApp(formData: FormData) {
       await safeDeleteIcon(existingApp.icon);
     }
   }
+
+  writeAuditLog({
+    category: 'admin',
+    action: 'app_updated',
+    actorId: session.user.id,
+    targetId: parsed.data.id,
+    details: { name: parsed.data.name, url: parsed.data.url },
+  });
 
   await safeRevalidatePath('/admin');
   await safeRevalidatePath('/');
@@ -674,7 +706,7 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
           });
         }
       });
-      } catch (err) {
+    } catch (err) {
       if ((err as Error).message === 'last-admin') {
         return { status: 'error', message: 'last-admin' };
       }
@@ -696,6 +728,33 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
     await invalidateUserMeta(parsed.data.userId);
   } catch {
     // ignore cache invalidation failures
+  }
+
+  // Audit role changes
+  const allRoles = await prisma.role.findMany({ select: { id: true, name: true } });
+  const roleNameMap = new Map(allRoles.map((r) => [r.id, r.name]));
+  const previousRoleIds = new Set(formData.getAll('previousRoles').map(String).filter(Boolean));
+  for (const roleId of nextRoles) {
+    if (!previousRoleIds.has(roleId)) {
+      writeAuditLog({
+        category: 'admin',
+        action: 'role_assigned',
+        actorId: session.user.id,
+        targetId: parsed.data.userId,
+        details: { roleName: roleNameMap.get(roleId) ?? roleId },
+      });
+    }
+  }
+  for (const roleId of previousRoleIds) {
+    if (!nextRoles.includes(roleId)) {
+      writeAuditLog({
+        category: 'admin',
+        action: 'role_removed',
+        actorId: session.user.id,
+        targetId: parsed.data.userId,
+        details: { roleName: roleNameMap.get(roleId) ?? roleId },
+      });
+    }
   }
 
   await safeRevalidatePath('/admin');
@@ -767,6 +826,14 @@ export async function deleteUser(formData: FormData): Promise<AdminActionState> 
     // ignore
   }
 
+  writeAuditLog({
+    category: 'admin',
+    action: 'user_deleted',
+    actorId: sessionCheck.user.id,
+    targetId: userId,
+    details: { email: target.email },
+  });
+
   await safeRevalidatePath('/admin');
   await safeRevalidatePath('/');
   return { status: 'success', message: 'User deleted' };
@@ -803,6 +870,13 @@ export async function createRole(formData: FormData): Promise<AdminActionState> 
   } catch (err) {
     return { status: 'error', message: err instanceof Error ? err.message : 'Failed to create role' };
   }
+
+  writeAuditLog({
+    category: 'admin',
+    action: 'role_created',
+    actorId: session.user.id,
+    details: { name: payload.data.name },
+  });
 
   await safeRevalidatePath('/admin');
   return { status: 'success', message: 'Role created' };
@@ -843,6 +917,14 @@ export async function deleteRole(formData: FormData): Promise<AdminActionState> 
   } catch (err) {
     return { status: 'error', message: err instanceof Error ? err.message : 'Failed to delete role' };
   }
+
+  writeAuditLog({
+    category: 'admin',
+    action: 'role_deleted',
+    actorId: session.user.id,
+    targetId: roleId,
+    details: { name: role.name },
+  });
 
   await safeRevalidatePath('/admin');
   return { status: 'success', message: 'Role deleted' };
@@ -958,6 +1040,14 @@ export async function createLocalUser(
     // ignore cache errors
   }
 
+  writeAuditLog({
+    category: 'admin',
+    action: 'user_created',
+    actorId: session.user.id,
+    targetId: createdUserId ?? undefined,
+    details: { email: payload.data.email, roles: roleIds },
+  });
+
   await safeRevalidatePath('/admin');
   return { status: 'success', message: 'Local user created' };
 }
@@ -1035,19 +1125,18 @@ export async function linkSsoAccount(
       });
 
       await tx.passwordHistory.deleteMany({ where: { userId: user.id } });
+    });
 
-      await tx.ssoAudit.create({
-        data: {
-          provider: payload.data.provider,
-          action: 'link',
-          actorId: session?.user?.id ?? null,
-          changes: {
-            userId: user.id,
-            providerAccountId: payload.data.providerAccountId,
-            email: user.email
-          }
-        }
-      });
+    writeAuditLog({
+      category: 'config',
+      action: 'sso_account_linked',
+      actorId: session?.user?.id ?? null,
+      targetId: user.id,
+      provider: payload.data.provider,
+      details: {
+        providerAccountId: payload.data.providerAccountId,
+        email: user.email
+      },
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -1115,6 +1204,13 @@ export async function updatePasswordPolicy(formData: FormData): Promise<AdminAct
   } catch (err) {
     return { status: 'error', message: err instanceof Error ? err.message : 'Failed to update policy' } as AdminActionState;
   }
+
+  writeAuditLog({
+    category: 'config',
+    action: 'password_policy_updated',
+    actorId: session.user.id,
+    details: payload.data,
+  });
 
   await safeRevalidatePath('/admin');
   return { status: 'success', message: 'Password policy updated' } as AdminActionState;
@@ -1369,13 +1465,12 @@ export async function updateSsoConfig(
       update: { enabled, config: Prisma.JsonNull, clientSecretEnc: null },
       create: { provider: 'credentials', enabled, config: Prisma.JsonNull }
     });
-    await prisma.ssoAudit.create({
-      data: {
-        provider: 'credentials',
-        action: 'save',
-        actorId: session.user.id,
-        changes: { enabled }
-      }
+    writeAuditLog({
+      category: 'config',
+      action: 'sso_config_saved',
+      actorId: session.user.id,
+      provider: 'credentials',
+      details: { enabled },
     });
     await safeRevalidateTag('sso-config');
     await safeRevalidatePath('/admin');
@@ -1490,17 +1585,16 @@ export async function updateSsoConfig(
       }
     });
 
-    await prisma.ssoAudit.create({
-      data: {
-        provider: 'azure-ad',
-        action: 'save',
-        actorId: session.user.id,
-        changes: {
-          enabled: payload.enabled,
-          config,
-          secretUpdated: Boolean(payload.clientSecret) || payload.clearSecret
-        }
-      }
+    writeAuditLog({
+      category: 'config',
+      action: 'sso_config_saved',
+      actorId: session.user.id,
+      provider: 'azure-ad',
+      details: {
+        enabled: payload.enabled,
+        config,
+        secretUpdated: Boolean(payload.clientSecret) || payload.clearSecret
+      },
     });
 
     await safeRevalidateTag('sso-config');
@@ -1562,17 +1656,16 @@ export async function updateSsoConfig(
     }
   });
 
-  await prisma.ssoAudit.create({
-    data: {
-      provider: 'keycloak',
-      action: 'save',
-      actorId: session.user.id,
-      changes: {
-        enabled: payload.enabled,
-        config,
-        secretUpdated: Boolean(payload.clientSecret) || payload.clearSecret
-      }
-    }
+  writeAuditLog({
+    category: 'config',
+    action: 'sso_config_saved',
+    actorId: session.user.id,
+    provider: 'keycloak',
+    details: {
+      enabled: payload.enabled,
+      config,
+      secretUpdated: Boolean(payload.clientSecret) || payload.clearSecret
+    },
   });
 
   await safeRevalidateTag('sso-config');

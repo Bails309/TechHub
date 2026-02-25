@@ -6,6 +6,7 @@ import { getServerAuthSession } from '../../../lib/auth';
 import { validateCsrf } from '../../../lib/csrf';
 import { hashPassword, verifyPassword, validatePasswordComplexity } from '../../../lib/password';
 import { getPasswordPolicy } from '../../../lib/passwordPolicy';
+import { writeAuditLog } from '../../../lib/audit';
 
 export type ChangePasswordState = {
   status: 'idle' | 'success' | 'error';
@@ -108,6 +109,14 @@ export async function changePassword(
     if (excess.length) {
       await tx.passwordHistory.deleteMany({ where: { id: { in: excess.map((e) => e.id) } } });
     }
+  });
+
+  writeAuditLog({
+    category: 'admin',
+    action: 'password_changed',
+    actorId: session.user.id,
+    targetId: session.user.id,
+    details: { forced: user.mustChangePassword },
   });
 
   return { status: 'success', message: 'Password updated' };
