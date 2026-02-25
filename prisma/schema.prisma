@@ -139,6 +139,16 @@ model SsoAudit {
   createdAt DateTime @default(now())
 }
 
+model StorageConfig {
+  id        String   @id @default(cuid())
+  provider  String   @unique
+  enabled   Boolean  @default(false)
+  config    Json?
+  secretEnc String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model PasswordPolicy {
   id        String   @id @default(cuid())
   minLength Int      @default(12)

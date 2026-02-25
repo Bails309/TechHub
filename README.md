@@ -61,6 +61,11 @@ Core variables (short list — see `.env` for full set):
 - `ADMIN_EMAIL` — seeded admin email
 - `ADMIN_PASSWORD` — leave blank to force generated one-time password at seed time
 
+- `STORAGE_PROVIDER` — upload backend: `local` (default), `s3`, or `azure`
+  - S3: `S3_BUCKET`, `S3_REGION`, and standard AWS credentials
+  - Azure: `AZURE_STORAGE_CONNECTION_STRING` (preferred) or
+    `AZURE_STORAGE_ACCOUNT` + `AZURE_STORAGE_KEY`, plus `AZURE_BLOB_CONTAINER`
+
 - `NODE_ENV` — Controls runtime mode. The runtime image sets `NODE_ENV=production` by default
   (see `Dockerfile`), and the app runs a prestart security check that will refuse to start
   in production if insecure database credentials (e.g. `techhub/techhub` or a missing/short
@@ -70,6 +75,29 @@ Core variables (short list — see `.env` for full set):
 Security notes
 - Never commit secrets to git. Use host secret stores or your orchestrator's secret manager.
 - Keep `SSO_MASTER_KEY` offline/secure; losing it can make stored SSO secrets unrecoverable.
+## Upload storage (local, S3, Azure Blob)
+
+By default, uploads are saved to the local filesystem under `/uploads` in the app container.
+For multi-host or HA environments, configure object storage.
+
+Azure Blob Storage
+- Set `STORAGE_PROVIDER=azure`
+- Provide either `AZURE_STORAGE_CONNECTION_STRING` or `AZURE_STORAGE_ACCOUNT` + `AZURE_STORAGE_KEY`
+- Set `AZURE_BLOB_CONTAINER` (e.g. `uploads`)
+- Optional: `AZURE_BLOB_ENDPOINT` for emulators/private endpoints
+- Optional: `AZURE_SAS_TTL_MINUTES` to control SAS expiry for admin-issued tokens
+
+Admin UI
+- The admin page includes a storage panel with a provider dropdown (local, S3, Azure).
+- Secrets saved via the UI are encrypted using `SSO_MASTER_KEY`.
+
+S3-compatible
+- Set `STORAGE_PROVIDER=s3`
+- Set `S3_BUCKET`, `S3_REGION`, and AWS credentials via environment
+- Optional: `S3_ENDPOINT` and `S3_FORCE_PATH_STYLE` for S3-compatible services
+
+See [docs/azure-blob.md](docs/azure-blob.md) for Azure examples, SAS token usage, and best practices.
+
 
 ---
 

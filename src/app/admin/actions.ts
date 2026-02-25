@@ -34,13 +34,15 @@ import { cookies } from 'next/headers';
 import { Prisma } from '@prisma/client';
 import { getServerAuthSession } from '../../lib/auth';
 import { invalidateUserMeta } from '../../lib/userCache';
-import { encryptSecret, hasSecretKey } from '../../lib/crypto';
+import { decryptSecret, encryptSecret, hasSecretKey } from '../../lib/crypto';
 // SSO rotation removed: previously used rotateSsoSecrets utilities
 import { hashPassword, validatePasswordComplexity } from '../../lib/password';
 import { getPasswordPolicy } from '../../lib/passwordPolicy';
 import { lookup } from 'dns/promises';
 import https from 'https';
 import ipaddr from 'ipaddr.js';
+import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
+import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 
 export type AdminActionState = { status: 'idle' | 'success' | 'error'; message: string };
 
@@ -103,6 +105,10 @@ const uploadSchema = z
     return ALLOWED_ICON_EXTENSIONS.has(extension) && ALLOWED_ICON_MIME_TYPES.has(file.type);
   }, { message: 'Invalid file type' });
 
+const storageProviderSchema = z.enum(['local', 's3', 'azure']);
+const storageIntentSchema = z.enum(['save', 'test']);
+const storageAuthSchema = z.enum(['connection-string', 'account-key']);
+
 async function saveIcon(file: File) {
   const parsed = uploadSchema.safeParse(file);
   if (!parsed.success) return undefined;
@@ -117,6 +123,55 @@ async function safeDeleteIcon(iconPath?: string) {
     // eslint-disable-next-line no-console
     console.warn('Failed to delete old icon', iconPath, err);
   }
+}
+
+function parseAzureConnectionString(raw: string) {
+  const accountMatch = raw.match(/AccountName=([^;]+)/i);
+  const keyMatch = raw.match(/AccountKey=([^;]+)/i);
+  if (!accountMatch || !keyMatch) return null;
+  return { account: accountMatch[1], key: keyMatch[1] };
+}
+
+async function testAzureStorageConnection(args: {
+  authMode: 'connection-string' | 'account-key';
+  connectionString?: string;
+  account?: string;
+  accountKey?: string;
+  container: string;
+  endpoint?: string;
+}) {
+  let client: BlobServiceClient | null = null;
+  if (args.authMode === 'connection-string') {
+    if (!args.connectionString) throw new Error('Connection string is required');
+    client = BlobServiceClient.fromConnectionString(args.connectionString);
+  } else {
+    if (!args.account || !args.accountKey) throw new Error('Account name and key are required');
+    const endpoint = args.endpoint || `https://${args.account}.blob.core.windows.net`;
+    const credential = new StorageSharedKeyCredential(args.account, args.accountKey);
+    client = new BlobServiceClient(endpoint, credential);
+  }
+
+  const containerClient = client.getContainerClient(args.container);
+  await containerClient.getProperties();
+}
+
+async function testS3StorageConnection(args: {
+  bucket: string;
+  region?: string;
+  endpoint?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  forcePathStyle?: boolean;
+}) {
+  const client = new S3Client({
+    region: args.region || process.env.S3_REGION,
+    endpoint: args.endpoint || process.env.S3_ENDPOINT,
+    forcePathStyle: args.forcePathStyle ?? (process.env.S3_FORCE_PATH_STYLE === 'true'),
+    credentials: args.accessKeyId && args.secretAccessKey
+      ? { accessKeyId: args.accessKeyId, secretAccessKey: args.secretAccessKey }
+      : undefined
+  });
+  await client.send(new HeadBucketCommand({ Bucket: args.bucket }));
 }
 
 export async function createApp(formData: FormData) {
@@ -268,6 +323,181 @@ export async function deleteApp(formData: FormData) {
   await safeRevalidatePath('/admin');
   await safeRevalidatePath('/');
   return { status: 'success', message: 'App deleted' } as const;
+}
+
+export async function updateStorageConfig(
+  _prevState: AdminActionState,
+  formData: FormData
+): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
+
+  const provider = storageProviderSchema.safeParse(String(formData.get('provider') ?? ''));
+  if (!provider.success) return { status: 'error', message: 'Unknown provider' };
+
+  const intent = storageIntentSchema.safeParse(String(formData.get('intent') ?? 'save'));
+  if (!intent.success) return { status: 'error', message: 'Invalid action' };
+
+  const enabled = formData.get('enabled') === 'on';
+  const authMode = storageAuthSchema.safeParse(String(formData.get('authMode') ?? 'account-key'));
+  if (!authMode.success) return { status: 'error', message: 'Invalid auth mode' };
+
+  const container = String(formData.get('container') ?? '').trim();
+  const endpoint = String(formData.get('endpoint') ?? '').trim();
+  const account = String(formData.get('account') ?? '').trim();
+  const connectionString = String(formData.get('connectionString') ?? '').trim();
+  const accountKey = String(formData.get('accountKey') ?? '').trim();
+  const sasTtlMinutes = Number(formData.get('sasTtlMinutes') ?? 0) || null;
+  const clearSecret = formData.get('clearSecret') === 'on';
+  const bucket = String(formData.get('bucket') ?? '').trim();
+  const region = String(formData.get('region') ?? '').trim();
+  const accessKeyId = String(formData.get('accessKeyId') ?? '').trim();
+  const secretAccessKey = String(formData.get('secretAccessKey') ?? '').trim();
+  const forcePathStyle = formData.get('forcePathStyle') === 'on';
+
+  const existing = await prisma.storageConfig.findUnique({ where: { provider: provider.data } });
+  const existingSecret = existing?.secretEnc ? true : false;
+
+  if (intent.data === 'test') {
+    try {
+      if (provider.data === 'local') {
+        // Local storage requires no network test.
+      } else if (provider.data === 's3') {
+        if (!bucket) return { status: 'error', message: 'Bucket is required to test' };
+        const secret = secretAccessKey || (existing?.secretEnc ? decryptSecret(existing.secretEnc) : '');
+        await testS3StorageConnection({
+          bucket,
+          region: region || undefined,
+          endpoint: endpoint || undefined,
+          accessKeyId: accessKeyId || undefined,
+          secretAccessKey: secret || undefined,
+          forcePathStyle
+        });
+      } else {
+        if (!container) return { status: 'error', message: 'Container is required to test' };
+        if (authMode.data === 'connection-string') {
+          const secret = connectionString || (existing?.secretEnc ? decryptSecret(existing.secretEnc) : '');
+          await testAzureStorageConnection({
+            authMode: 'connection-string',
+            connectionString: secret,
+            container
+          });
+        } else {
+          const secret = accountKey || (existing?.secretEnc ? decryptSecret(existing.secretEnc) : '');
+          await testAzureStorageConnection({
+            authMode: 'account-key',
+            account,
+            accountKey: secret,
+            container,
+            endpoint: endpoint || undefined
+          });
+        }
+      }
+    } catch (error) {
+      return { status: 'error', message: error instanceof Error ? error.message : 'Connection test failed' };
+    }
+    await safeRevalidateTag('storage-config');
+    await safeRevalidatePath('/admin');
+    return { status: 'success', message: 'Storage test succeeded' };
+  }
+
+  if (enabled) {
+    if (provider.data === 'local') {
+      // no-op
+    } else if (provider.data === 's3') {
+      if (!bucket) return { status: 'error', message: 'Bucket is required' };
+      if (!secretAccessKey && !existingSecret && !clearSecret) {
+        return { status: 'error', message: 'Secret access key is required' };
+      }
+      if (!accessKeyId && !existingSecret && !clearSecret) {
+        return { status: 'error', message: 'Access key ID is required' };
+      }
+    } else {
+      if (!container) {
+        return { status: 'error', message: 'Container name is required' };
+      }
+      if (authMode.data === 'connection-string') {
+        if (!connectionString && !existingSecret && !clearSecret) {
+          return { status: 'error', message: 'Connection string is required' };
+        }
+      } else {
+        if (!account) return { status: 'error', message: 'Account name is required' };
+        if (!accountKey && !existingSecret && !clearSecret) {
+          return { status: 'error', message: 'Account key is required' };
+        }
+      }
+    }
+  }
+
+  if (!hasSecretKey() && (connectionString || accountKey || secretAccessKey)) {
+    return { status: 'error', message: 'SSO_MASTER_KEY is required to save secrets' };
+  }
+
+  const config: Prisma.InputJsonValue | Prisma.NullTypes.JsonNull = enabled
+    ? provider.data === 's3'
+      ? {
+          bucket,
+          region: region || null,
+          endpoint: endpoint || null,
+          accessKeyId: accessKeyId || null,
+          forcePathStyle
+        }
+      : provider.data === 'azure'
+        ? {
+            authMode: authMode.data,
+            container,
+            account: account || null,
+            endpoint: endpoint || null,
+            sasTtlMinutes: sasTtlMinutes || null
+          }
+        : {}
+    : Prisma.JsonNull;
+
+  const updateData: {
+    enabled: boolean;
+    config: Prisma.InputJsonValue | Prisma.NullTypes.JsonNull;
+    secretEnc?: string | null;
+  } = {
+    enabled,
+    config
+  };
+
+  if (clearSecret) {
+    updateData.secretEnc = null;
+  }
+  if (connectionString) {
+    updateData.secretEnc = encryptSecret(connectionString);
+  }
+  if (accountKey) {
+    updateData.secretEnc = encryptSecret(accountKey);
+  }
+  if (secretAccessKey) {
+    updateData.secretEnc = encryptSecret(secretAccessKey);
+  }
+
+  await prisma.$transaction([
+    prisma.storageConfig.upsert({
+      where: { provider: provider.data },
+      update: updateData,
+      create: {
+        provider: provider.data,
+        enabled,
+        config,
+        secretEnc: updateData.secretEnc ?? null
+      }
+    }),
+    prisma.storageConfig.updateMany({
+      where: { provider: { in: ['local', 's3', 'azure'], not: provider.data } },
+      data: { enabled: false, config: Prisma.JsonNull }
+    })
+  ]);
+
+  await safeRevalidateTag('storage-config');
+  await safeRevalidatePath('/admin');
+  return { status: 'success', message: enabled ? 'Storage settings saved' : 'Storage disabled' };
 }
 
 export async function updateApp(formData: FormData) {

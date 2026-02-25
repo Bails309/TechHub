@@ -7,6 +7,7 @@ import DeleteAppForm from '../../components/DeleteAppForm';
 import EditAppForm from '../../components/EditAppForm';
 import NewAppForm from '../../components/NewAppForm';
 import SsoConfigForm from '../../components/SsoConfigForm';
+import StorageConfigForm from '../../components/StorageConfigForm';
 import CreateLocalUserForm from '../../components/CreateLocalUserForm';
 import LinkSsoAccountForm from '../../components/LinkSsoAccountForm';
 import UsersList from '../../components/UsersList';
@@ -73,6 +74,7 @@ export default async function AdminPage({
     rolesList,
     categories,
     ssoConfigs,
+    storageConfigs,
     users,
     passwordPolicy,
     totalUsers,
@@ -94,6 +96,7 @@ export default async function AdminPage({
       orderBy: { category: 'asc' }
     }),
     prisma.ssoConfig.findMany(),
+    prisma.storageConfig.findMany(),
     prisma.user.findMany({
       include: { roles: { include: { role: true } }, accounts: true },
       orderBy: { email: 'asc' },
@@ -107,12 +110,16 @@ export default async function AdminPage({
     ]);
 
   const ssoMap = new Map(ssoConfigs.map((item) => [item.provider, item]));
+  const storageMap = new Map(storageConfigs.map((item) => [item.provider, item]));
 
   // ssoAudit entries (recent) are returned from the query above
 
   const azureConfig = ssoMap.get('azure-ad');
   const keycloakConfig = ssoMap.get('keycloak');
   const credentialsConfig = ssoMap.get('credentials');
+  const azureStorageConfig = storageMap.get('azure');
+  const s3StorageConfig = storageMap.get('s3');
+  const localStorageConfig = storageMap.get('local');
   const defaultClientId = randomUUID();
 
   const azureSource: 'db' | 'env' | null = azureConfig
@@ -148,6 +155,28 @@ export default async function AdminPage({
       ? (() => {
           try {
             decryptSecret(keycloakConfig.clientSecretEnc);
+            return true;
+          } catch {
+            return false;
+          }
+        })()
+      : null;
+  const azureStorageSecretValid =
+    azureStorageConfig?.secretEnc && canValidateSecrets
+      ? (() => {
+          try {
+            decryptSecret(azureStorageConfig.secretEnc);
+            return true;
+          } catch {
+            return false;
+          }
+        })()
+      : null;
+  const s3StorageSecretValid =
+    s3StorageConfig?.secretEnc && canValidateSecrets
+      ? (() => {
+          try {
+            decryptSecret(s3StorageConfig.secretEnc);
             return true;
           } catch {
             return false;
@@ -195,6 +224,76 @@ export default async function AdminPage({
         source: credentialsSource
       }
     : null;
+
+  const azureStorageSource: 'db' | 'env' | null = azureStorageConfig
+    ? 'db'
+    : process.env.AZURE_STORAGE_CONNECTION_STRING ||
+      (process.env.AZURE_STORAGE_ACCOUNT && process.env.AZURE_STORAGE_KEY && process.env.AZURE_BLOB_CONTAINER)
+      ? 'env'
+      : null;
+
+  const s3EnvConfigured = Boolean(process.env.S3_BUCKET);
+  const s3StorageSource: 'db' | 'env' | null = s3StorageConfig
+    ? 'db'
+    : s3EnvConfigured
+      ? 'env'
+      : null;
+
+  const localStorageSource: 'db' | 'env' | null = localStorageConfig
+    ? 'db'
+    : process.env.STORAGE_PROVIDER === 'local' || !process.env.STORAGE_PROVIDER
+      ? 'env'
+      : null;
+
+  const azureStorageConfigPayload = azureStorageConfig
+    ? {
+        enabled: azureStorageConfig.enabled,
+        container: (azureStorageConfig.config as Record<string, unknown> | null)?.container as string | undefined,
+        account: (azureStorageConfig.config as Record<string, unknown> | null)?.account as string | undefined,
+        endpoint: (azureStorageConfig.config as Record<string, unknown> | null)?.endpoint as string | undefined,
+        authMode: (azureStorageConfig.config as Record<string, unknown> | null)?.authMode as
+          | 'connection-string'
+          | 'account-key'
+          | undefined,
+        sasTtlMinutes: (azureStorageConfig.config as Record<string, unknown> | null)?.sasTtlMinutes as number | undefined,
+        hasSecret: Boolean(azureStorageConfig.secretEnc),
+        secretValid: azureStorageSecretValid,
+        updatedAt: azureStorageConfig.updatedAt.toISOString(),
+        source: azureStorageSource
+      }
+    : null;
+
+  const s3StorageConfigPayload = s3StorageConfig
+    ? {
+        enabled: s3StorageConfig.enabled,
+        bucket: (s3StorageConfig.config as Record<string, unknown> | null)?.bucket as string | undefined,
+        region: (s3StorageConfig.config as Record<string, unknown> | null)?.region as string | undefined,
+        endpoint: (s3StorageConfig.config as Record<string, unknown> | null)?.endpoint as string | undefined,
+        accessKeyId: (s3StorageConfig.config as Record<string, unknown> | null)?.accessKeyId as string | undefined,
+        forcePathStyle: (s3StorageConfig.config as Record<string, unknown> | null)?.forcePathStyle as boolean | undefined,
+        hasSecret: Boolean(s3StorageConfig.secretEnc),
+        secretValid: s3StorageSecretValid,
+        updatedAt: s3StorageConfig.updatedAt.toISOString(),
+        source: s3StorageSource
+      }
+    : null;
+
+  const localStorageConfigPayload = localStorageConfig
+    ? {
+        enabled: localStorageConfig.enabled,
+        hasSecret: false,
+        updatedAt: localStorageConfig.updatedAt.toISOString(),
+        source: localStorageSource
+      }
+    : null;
+
+  const activeStorageProvider: 'local' | 's3' | 'azure' = storageMap.get('s3')?.enabled
+    ? 's3'
+    : storageMap.get('azure')?.enabled
+      ? 'azure'
+      : storageMap.get('local')?.enabled
+        ? 'local'
+        : (process.env.STORAGE_PROVIDER as 'local' | 's3' | 'azure') || 'local';
 
   const categoryOptions = categories
     .map((item) => item.category)
@@ -262,8 +361,19 @@ export default async function AdminPage({
           azure={azureConfigPayload}
           keycloak={keycloakConfigPayload}
           credentials={credentialsConfigPayload}
-          hasMasterKey={hasSecretKey()}
+          hasMasterKey={canValidateSecrets}
           defaultClientId={defaultClientId}
+        />
+      </section>
+
+      <section className="glass rounded-[36px] p-8">
+        <h2 className="font-serif text-2xl mb-6">Upload storage</h2>
+        <StorageConfigForm
+          activeProvider={activeStorageProvider}
+          local={localStorageConfigPayload}
+          s3={s3StorageConfigPayload}
+          azure={azureStorageConfigPayload}
+          hasMasterKey={canValidateSecrets}
         />
       </section>
 
