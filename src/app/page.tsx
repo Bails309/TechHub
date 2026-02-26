@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import PortalView from '../components/PortalView';
 import StatsStrip from '../components/StatsStrip';
 import { getAverageLatency } from '../lib/audit';
+import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,7 +61,7 @@ export default async function Home() {
           url: app.url,
           description: app.description,
           category: app.category,
-          icon: app.icon
+          icon: sanitizeIconUrl(app.icon, process.env.NEXTAUTH_URL || 'http://localhost:3000')
         }))}
         isAuthenticated={Boolean(session)}
         initialOrder={Array.isArray(appOrder?.order) ? (appOrder?.order as string[]) : []}

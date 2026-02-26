@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import SelectField, { SelectOption } from './SelectField';
 import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
+import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 
 interface EditAppFormProps {
   app: {
@@ -46,26 +47,7 @@ export default function EditAppForm({
 
   const existingIcon = app.icon ?? null;
   const displayIcon = useMemo(() => previewUrl ?? existingIcon, [existingIcon, previewUrl]);
-  const safeDisplayIcon = useMemo(() => {
-    if (!displayIcon) {
-      return null;
-    }
-    try {
-      if (displayIcon.startsWith('blob:')) {
-        return displayIcon;
-      }
-      const url = new URL(displayIcon, window.location.origin);
-      if (url.origin !== window.location.origin) {
-        return null;
-      }
-      if (!url.pathname.startsWith('/uploads/')) {
-        return null;
-      }
-      return url.toString();
-    } catch {
-      return null;
-    }
-  }, [displayIcon]);
+  const safeDisplayIcon = useMemo(() => sanitizeIconUrl(displayIcon), [displayIcon]);
 
   useEffect(() => {
     return () => {

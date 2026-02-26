@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import SelectField, { SelectOption } from './SelectField';
 import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
+import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 
 interface NewAppFormProps {
   categorySelectOptions: SelectOption[];
@@ -24,26 +25,7 @@ export default function NewAppForm({
   const [statusTone, setStatusTone] = useState<'success' | 'error' | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [audience, setAudience] = useState('AUTHENTICATED');
-  const safePreviewUrl = useMemo(() => {
-    if (!previewUrl) {
-      return null;
-    }
-    try {
-      if (previewUrl.startsWith('blob:')) {
-        return previewUrl;
-      }
-      const url = new URL(previewUrl, window.location.origin);
-      if (url.origin !== window.location.origin) {
-        return null;
-      }
-      if (!url.pathname.startsWith('/uploads/')) {
-        return null;
-      }
-      return url.toString();
-    } catch {
-      return null;
-    }
-  }, [previewUrl]);
+  const safePreviewUrl = useMemo(() => sanitizeIconUrl(previewUrl), [previewUrl]);
 
   const handleAudienceChange = (value: string) => {
     if (value === 'PUBLIC' || value === 'AUTHENTICATED' || value === 'ROLE' || value === 'USER') {

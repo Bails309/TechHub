@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ExternalLink, LayoutGrid } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 
 export interface AppCardProps {
   app: {
@@ -18,6 +19,7 @@ export interface AppCardProps {
 export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [iconError, setIconError] = useState(false);
+  const safeIcon = useMemo(() => sanitizeIconUrl(app.icon), [app.icon]);
 
   const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
     event.dataTransfer.setData('text/plain', app.id);
@@ -60,9 +62,9 @@ export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
           </p>
           <div className="mt-2 flex items-center gap-3">
             <div className="h-10 w-10 rounded-2xl bg-white/10 flex items-center justify-center">
-              {app.icon && !iconError ? (
+              {safeIcon && !iconError ? (
                 <img
-                  src={app.icon}
+                  src={safeIcon}
                   alt=""
                   className="h-8 w-8 object-contain"
                   onError={() => setIconError(true)}
