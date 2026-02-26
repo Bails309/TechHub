@@ -16,8 +16,11 @@ export default function ChangePasswordPage() {
 
   useEffect(() => {
     if (state.status === 'success') {
-      void update({ user: { mustChangePassword: false } as { mustChangePassword: boolean } });
-      router.replace('/');
+      const finish = async () => {
+        await update({ user: { mustChangePassword: false } as { mustChangePassword: boolean } });
+        router.replace('/');
+      };
+      void finish();
     }
   }, [state.status, update, router]);
 

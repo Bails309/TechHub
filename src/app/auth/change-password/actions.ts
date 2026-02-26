@@ -6,6 +6,7 @@ import { getServerAuthSession } from '../../../lib/auth';
 import { validateCsrf } from '../../../lib/csrf';
 import { hashPassword, verifyPassword, validatePasswordComplexity } from '../../../lib/password';
 import { getPasswordPolicy } from '../../../lib/passwordPolicy';
+import { invalidateUserMeta } from '../../../lib/userCache';
 import { writeAuditLog } from '../../../lib/audit';
 
 export type ChangePasswordState = {
@@ -110,6 +111,8 @@ export async function changePassword(
       await tx.passwordHistory.deleteMany({ where: { id: { in: excess.map((e) => e.id) } } });
     }
   });
+
+  await invalidateUserMeta(user.id);
 
   writeAuditLog({
     category: 'admin',

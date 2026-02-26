@@ -1044,6 +1044,78 @@ export async function createLocalUser(
   return { status: 'success', message: 'Local user created' };
 }
 
+export type ForcePasswordResetState = {
+  status: 'idle' | 'success' | 'error';
+  message: string;
+  generatedPassword?: string;
+};
+
+export async function forcePasswordReset(
+  _prevState: ForcePasswordResetState,
+  formData: FormData
+): Promise<ForcePasswordResetState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
+  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
+    return { status: 'error', message: 'Unauthorized: must_change_password' };
+  }
+
+  const userId = String(formData.get('userId') ?? '').trim();
+  if (!userId) {
+    return { status: 'error', message: 'User ID is required' };
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.passwordHash) {
+    return { status: 'error', message: 'User not found or is not a local account' };
+  }
+
+  // Generate a secure 16-character random password
+  const { randomBytes } = await import('crypto');
+  const generatedPassword = randomBytes(12).toString('base64'); // ~16 chars
+
+  const passwordHash = await hashPassword(generatedPassword);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash,
+          mustChangePassword: true
+        }
+      });
+
+      await tx.passwordHistory.create({
+        data: { userId, hash: passwordHash }
+      });
+    });
+  } catch (error) {
+    console.error('[Admin] Error forcing password reset:', error);
+    return { status: 'error', message: 'Failed to reset password' };
+  }
+
+  try {
+    await invalidateUserMeta(userId);
+  } catch {
+    // ignore cache errors
+  }
+
+  writeAuditLog({
+    category: 'admin',
+    action: 'user_password_reset',
+    actorId: session.user.id,
+    targetId: userId,
+    details: { email: user.email }
+  });
+
+  await safeRevalidatePath('/admin');
+  return { status: 'success', message: 'Password reset successfully', generatedPassword };
+}
+
 const linkSsoAccountSchema = z.object({
   email: z.string().email(),
   provider: z.enum(['azure-ad', 'keycloak']),

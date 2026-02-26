@@ -137,5 +137,5 @@ export async function middleware(request: NextRequest) {
 export const config = {
   // Run middleware for API routes as well so server endpoints can be protected
   // when a user must change their password. Static/_next assets remain excluded.
-  matcher: ['/((?!_next/static|_next/image|_next/data|favicon.ico|theme-init.js|uploads/).*)']
+  matcher: ['/((?!_next/static|_next/image|_next/data|favicon.ico|theme-init.js|uploads/|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)']
 };

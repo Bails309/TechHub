@@ -57,7 +57,7 @@ export default function TopNav() {
   return (
     <header className="px-6 md:px-12 pt-6">
       <div className="card-panel py-4 flex flex-wrap md:flex-nowrap items-center justify-between shadow-glow gap-4 md:gap-0">
-        <div className="flex items-center gap-3">
+        <Link href="/" className="flex items-center gap-3 group">
           <div className="h-10 w-24">
             <img
               src={theme === 'dark' ? '/capita-logo-dark.png' : '/capita-logo.png'}
@@ -66,10 +66,10 @@ export default function TopNav() {
             />
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-ink-300">TechHub</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-ink-300 group-hover:text-white transition-colors">TechHub</p>
             <p className="font-serif text-lg">Launch point for platforms, tools, and environments</p>
           </div>
-        </div>
+        </Link>
         <nav className="flex items-center gap-4 text-sm">
           <Link href="/" className="text-ink-200 hover:text-white transition">
             Portal

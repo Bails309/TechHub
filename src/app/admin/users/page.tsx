@@ -3,6 +3,7 @@ import CreateLocalUserForm from '../../../components/CreateLocalUserForm';
 import AdminActionForm from '../../../components/AdminActionForm';
 import DeleteUserForm from '../../../components/DeleteUserForm';
 import UsersList from '../../../components/UsersList';
+import ForcePasswordResetForm from '../../../components/ForcePasswordResetForm';
 import {
     updateUserRoles,
     createLocalUser,
@@ -121,6 +122,10 @@ export default async function UsersPage({
                                         Confirm granting admin role (required when adding admin)
                                     </label>
                                 </AdminActionForm>
+
+                                {user.passwordHash && (
+                                    <ForcePasswordResetForm userId={user.id} />
+                                )}
 
                                 <div className="flex justify-end">
                                     <DeleteUserForm action={deleteUser} userId={user.id} userEmail={user.email} />

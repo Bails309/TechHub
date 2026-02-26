@@ -119,10 +119,11 @@ export function getClientIp(headers: HeaderSource, remoteAddr?: string) {
   // Prefer immediate remote address when available
   const remoteNormalized = normalizeIp(remoteAddr ?? undefined);
 
-  // If TRUST_PROXY is enabled and the immediate remote is a trusted proxy,
+  // If TRUST_PROXY is enabled and the immediate remote is a trusted proxy
+  // (or the framework hides the immediate remote TCP socket entirely),
   // accept proxy-supplied headers (but only from configured trusted proxies).
   if (trustProxy) {
-    if (remoteNormalized && isFromTrustedProxy(remoteNormalized)) {
+    if (!remoteNormalized || isFromTrustedProxy(remoteNormalized)) {
       const trustedClientIp = normalizeIp(readHeader(headers, 'x-client-ip'));
       if (trustedClientIp) return trustedClientIp;
 
