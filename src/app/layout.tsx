@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import './globals.css';
 import TopNav from '../components/TopNav';
 import Providers from '../components/Providers';
+import SessionGuard from '../components/SessionGuard';
 
 export const metadata: Metadata = {
   title: 'TechHub',
@@ -27,6 +28,7 @@ export default async function RootLayout({
         <Providers>
           <TopNav />
           <main>{children}</main>
+          <SessionGuard />
         </Providers>
       </body>
     </html>

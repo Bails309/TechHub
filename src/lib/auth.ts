@@ -35,6 +35,10 @@ const allowEmailLinking = false;
 const trustProxy = process.env.TRUST_PROXY === 'true';
 const trustedProxiesEnv = String(process.env.TRUSTED_PROXIES ?? '').trim();
 
+// Session lifetime (OWASP baseline: 8-hour absolute, 20-minute idle)
+const SESSION_MAX_AGE_S = Number(process.env.SESSION_MAX_AGE_SECONDS ?? 28800);     // 8 hours
+const SESSION_IDLE_TIMEOUT_MS = Number(process.env.SESSION_IDLE_TIMEOUT_MS ?? 1200000); // 20 minutes
+
 // Parse TRUSTED_PROXIES into CIDR tuples using ipaddr.js
 let trustedProxyCidrs: Array<[ipaddr.IPv4 | ipaddr.IPv6, number]> = [];
 if (trustedProxiesEnv) {
@@ -363,7 +367,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
   return {
     adapter,
     secret: process.env.NEXTAUTH_SECRET,
-    session: { strategy: 'jwt' },
+    session: { strategy: 'jwt', maxAge: SESSION_MAX_AGE_S },
     providers,
     callbacks: {
       async signIn({ user, account, profile }) {
@@ -505,6 +509,37 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             token.lastCheckedAt = now;
           }
         }
+
+        // Absolute timeout: revoke the token if it has exceeded the maximum
+        // session lifetime (OWASP default: 8 hours). NextAuth's built-in
+        // maxAge handles the JWT expiry silently; this pre-empts it so we
+        // get an audit log entry before the token is rejected.
+        const issuedAt = Number(token.iat ?? 0);
+        if (issuedAt > 0 && (now - issuedAt * 1000) > SESSION_MAX_AGE_S * 1000) {
+          token.revoked = true;
+          writeAuditLog({
+            category: 'auth',
+            action: 'session_terminated',
+            targetId: String(token.sub),
+            details: { reason: 'absolute_timeout' },
+          });
+          return token;
+        }
+
+        // Idle timeout: revoke the token if the user has been inactive for
+        // longer than SESSION_IDLE_TIMEOUT_MS (OWASP default: 20 minutes).
+        const lastActivity = Number(token.lastActivity ?? 0);
+        if (lastActivity > 0 && (now - lastActivity) > SESSION_IDLE_TIMEOUT_MS) {
+          token.revoked = true;
+          writeAuditLog({
+            category: 'auth',
+            action: 'session_terminated',
+            targetId: String(token.sub),
+            details: { reason: 'idle_timeout' },
+          });
+          return token;
+        }
+        token.lastActivity = now;
 
         return token;
       },
