@@ -5,9 +5,11 @@ describe('credentials provider rate limit handling', () => {
     vi.resetModules();
   });
 
-  it('throws a safe error message when rate limiter rejects', async () => {
+  it('returns null when rate limiter rejects', async () => {
     // prevent SSO loader from running during auth options build
     vi.mock('../src/lib/sso', () => ({ getSsoConfigMap: async () => new Map() }));
+    // Mock audit logger so the rate-limit path doesn't crash
+    vi.mock('../src/lib/audit', () => ({ writeAuditLog: vi.fn() }));
 
     // Mock rate limiter to always reject (simulate exceeded limit)
     vi.mock('../src/lib/rateLimit', () => ({

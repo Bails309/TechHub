@@ -215,11 +215,13 @@ function buildCredentialsProvider() {
           trustProxy,
           trustedProxiesEnv
         );
-        // Surface a safe, non-detailed rate-limit-style error so callers do
-        // not receive internal diagnostics while still blocking the request.
-        const err = new Error('Rate limit exceeded. Please try again later.');
-        err.name = 'RateLimitError';
-        throw err;
+        writeAuditLog({
+          category: 'auth',
+          action: 'login_failure',
+          provider: 'credentials',
+          details: { reason: 'missing_client_ip' },
+        });
+        return null;
       }
 
       try {
@@ -227,11 +229,14 @@ function buildCredentialsProvider() {
         // If IP rate limit passed, enforce per-user rate limit
         await assertRateLimit(`user:${emailKey}`);
       } catch {
-        // Convert rate-limiter rejections into a safe, user-facing error so
-        // NextAuth does not surface internal rate limiter details or a 500.
-        const err = new Error('Rate limit exceeded. Please try again later.');
-        err.name = 'RateLimitError';
-        throw err;
+        writeAuditLog({
+          category: 'auth',
+          action: 'login_failure',
+          provider: 'credentials',
+          ip: clientIp,
+          details: { email: emailKey, reason: 'rate_limited' },
+        });
+        return null;
       }
 
       const user = await prisma.user.findUnique({

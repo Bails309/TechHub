@@ -25,7 +25,10 @@ function buildCsp(nonce: string) {
 function generateCsrfToken() {
   const crypto = (globalThis as any)?.crypto;
   if (crypto?.randomUUID) return crypto.randomUUID();
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  // Secure fallback using getRandomValues
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 export async function middleware(request: NextRequest) {
@@ -55,7 +58,7 @@ export async function middleware(request: NextRequest) {
         name: 'XSRF-TOKEN',
         value: generateCsrfToken(),
         httpOnly: false,
-        sameSite: 'lax',
+        sameSite: 'strict',
         secure: isSecure,
         path: '/'
       });
