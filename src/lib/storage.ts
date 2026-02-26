@@ -1,7 +1,7 @@
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { writeFile, mkdir } from 'fs/promises';
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { writeFile, mkdir, readdir, stat, unlink } from 'fs/promises';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import {
   BlobServiceClient,
   StorageSharedKeyCredential,
@@ -66,10 +66,49 @@ async function deleteLocal(iconPath?: string) {
   if (relativeToUploads.startsWith('..') || path.isAbsolute(relativeToUploads)) return;
 
   try {
-    await import('fs/promises').then((fs) => fs.unlink(resolved)).catch(() => null);
+    await unlink(resolved).catch(() => null);
   } catch {
     // ignore
   }
+}
+
+async function cleanupLocalIcons(validIconPaths: string[]): Promise<number> {
+  const uploadsDirName = 'uploads';
+  const uploadDir = path.join(process.cwd(), uploadsDirName);
+
+  // Define valid file names (so we don't have to resolve paths repeatedly)
+  const validFileNames = new Set(
+    validIconPaths
+      .filter((p) => p.startsWith('/uploads/') || p.startsWith('uploads/'))
+      .map((p) => path.basename(p))
+  );
+
+  let deletedCount = 0;
+  const oneHourAgoMs = Date.now() - 60 * 60 * 1000;
+
+  try {
+    const files = await readdir(uploadDir);
+    for (const file of files) {
+      if (validFileNames.has(file)) continue;
+
+      const filePath = path.join(uploadDir, file);
+      try {
+        const fileStat = await stat(filePath);
+        if (fileStat.isFile() && fileStat.mtimeMs < oneHourAgoMs) {
+          await unlink(filePath);
+          deletedCount++;
+        }
+      } catch {
+        // file might be deleted already or inaccessible, skip
+      }
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn('Failed to read local uploads directory during cleanup', err);
+    }
+  }
+
+  return deletedCount;
 }
 
 // S3 implementation
@@ -149,6 +188,58 @@ async function deleteS3(iconPath?: string) {
   }
   const s3 = getS3Client(config ?? undefined);
   await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })).catch(() => null);
+}
+
+async function cleanupS3Icons(validIconPaths: string[]): Promise<number> {
+  const config = await resolveS3Config();
+  const bucket = config?.bucket || process.env.S3_BUCKET;
+  if (!bucket) return 0;
+
+  const validKeys = new Set<string>();
+  for (const iconPath of validIconPaths) {
+    let key = iconPath;
+    if (iconPath.startsWith('/')) key = iconPath.slice(1);
+    try {
+      const url = new URL(iconPath, 'https://example.com');
+      key = url.pathname.replace(/^\//, '');
+    } catch {
+      // not a URL
+    }
+    validKeys.add(key);
+  }
+
+  const s3 = getS3Client(config ?? undefined);
+  let deletedCount = 0;
+  let isTruncated = true;
+  let continuationToken: string | undefined = undefined;
+  const oneHourAgoMs = Date.now() - 60 * 60 * 1000;
+
+  try {
+    let resp;
+    while (isTruncated) {
+      resp = await s3.send(new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: 'uploads/',
+        ContinuationToken: continuationToken
+      }));
+
+      for (const obj of resp.Contents || []) {
+        if (!obj.Key || validKeys.has(obj.Key)) continue;
+
+        if (obj.LastModified && obj.LastModified.getTime() < oneHourAgoMs) {
+          await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: obj.Key })).catch(() => null);
+          deletedCount++;
+        }
+      }
+
+      isTruncated = resp.IsTruncated ?? false;
+      continuationToken = resp.NextContinuationToken;
+    }
+  } catch (err) {
+    console.warn('Failed to cleanup S3 icons', err);
+  }
+
+  return deletedCount;
 }
 
 // Azure Blob implementation
@@ -309,6 +400,54 @@ export async function createAzureUploadSas(
   };
 }
 
+async function cleanupAzureIcons(validIconPaths: string[]): Promise<number> {
+  const config = await resolveAzureConfig();
+  if (!config) return 0;
+
+  const containerClient = getAzureContainerClient(config);
+  const container = containerClient.containerName;
+  if (!container) return 0;
+
+  const validKeys = new Set<string>();
+  for (const iconPath of validIconPaths) {
+    let key = iconPath;
+    if (iconPath.startsWith('/')) key = iconPath.slice(1);
+    try {
+      const url = new URL(iconPath);
+      const pathName = url.pathname.replace(/^\//, '');
+      key = pathName.startsWith(`${container}/`) ? pathName.slice(container.length + 1) : pathName;
+    } catch {
+      // not a URL
+    }
+    validKeys.add(key);
+  }
+
+  let deletedCount = 0;
+  const oneHourAgoMs = Date.now() - 60 * 60 * 1000;
+
+  try {
+    for await (const blob of containerClient.listBlobsFlat({ prefix: 'uploads/' })) {
+      if (validKeys.has(blob.name)) continue;
+
+      if (blob.properties.lastModified && blob.properties.lastModified.getTime() < oneHourAgoMs) {
+        await containerClient.deleteBlob(blob.name).catch(() => null);
+        deletedCount++;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to cleanup Azure icons', err);
+  }
+
+  return deletedCount;
+}
+
+export async function cleanupOrphanedIcons(validIconPaths: string[]): Promise<number> {
+  const provider = await resolveStorageProvider();
+  if (provider === 's3') return cleanupS3Icons(validIconPaths);
+  if (provider === 'azure') return cleanupAzureIcons(validIconPaths);
+  return cleanupLocalIcons(validIconPaths);
+}
+
 export async function saveIcon(file: File) {
   const provider = await resolveStorageProvider();
   if (provider === 's3') return saveS3(file);
@@ -321,4 +460,9 @@ export async function deleteIcon(iconPath?: string) {
   if (provider === 's3') return deleteS3(iconPath);
   if (provider === 'azure') return deleteAzure(iconPath);
   return deleteLocal(iconPath);
+}
+
+export function invalidateStorageClients() {
+  s3ClientInstance = null;
+  azureClientInstance = null;
 }

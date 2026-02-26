@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import path from 'path';
-import { saveIcon as storageSaveIcon, deleteIcon as storageDeleteIcon } from '../../lib/storage';
+import { saveIcon as storageSaveIcon, deleteIcon as storageDeleteIcon, cleanupOrphanedIcons } from '../../lib/storage';
 // Importing Next runtime cache helpers at module-load can call into
 // runtime-only APIs (like `headers()`) which are unavailable in the
 // test environment and cause import-time failures. Use dynamic import
@@ -42,6 +42,8 @@ import { getPasswordPolicy } from '../../lib/passwordPolicy';
 import { lookup } from 'dns/promises';
 import https from 'https';
 import ipaddr from 'ipaddr.js';
+import { getStorageConfigMapWithDeps, StorageProviderId } from '@/lib/storageConfig';
+import { invalidateStorageClients } from '@/lib/storage';
 import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 
@@ -221,7 +223,7 @@ export async function createApp(formData: FormData) {
 
   const iconFile = formData.get('icon');
   let iconPath: string | undefined;
-  if (iconFile instanceof File) {
+  if (iconFile instanceof File && iconFile.size > 0) {
     const parsedIcon = uploadSchema.safeParse(iconFile);
     if (!parsedIcon.success) {
       return { status: 'error', message: 'Invalid file type or size' } as const;
@@ -548,7 +550,7 @@ export async function updateApp(formData: FormData) {
   let iconPath: string | undefined;
   if (iconRemove) {
     iconPath = undefined;
-  } else if (iconFile instanceof File) {
+  } else if (iconFile instanceof File && iconFile.size > 0) {
     const parsedIcon = uploadSchema.safeParse(iconFile);
     if (!parsedIcon.success) {
       return { status: 'error', message: 'Invalid file type or size' } as const;
@@ -622,6 +624,38 @@ export async function updateApp(formData: FormData) {
   await safeRevalidatePath('/admin');
   await safeRevalidatePath('/');
   return { status: 'success', message: 'App updated' } as const;
+}
+
+export async function triggerStorageCleanup(formData: FormData): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
+  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
+    return { status: 'error', message: 'Unauthorized: must_change_password' };
+  }
+
+  try {
+    const appsWithIcons = await prisma.appLink.findMany({
+      where: { icon: { not: null } },
+      select: { icon: true }
+    });
+
+    const validIconPaths = appsWithIcons.map(app => app.icon as string);
+    const deletedCount = await cleanupOrphanedIcons(validIconPaths);
+
+    writeAuditLog({
+      category: 'admin',
+      action: 'orphaned_icons_deleted',
+      actorId: session.user.id,
+      details: { count: deletedCount }
+    });
+
+    return { status: 'success', message: `Cleanup complete. Deleted ${deletedCount} orphaned icons.` };
+  } catch (err) {
+    return { status: 'error', message: err instanceof Error ? err.message : 'Failed to cleanup icons' };
+  }
 }
 
 const userRoleSchema = z.object({
@@ -823,12 +857,35 @@ export async function deleteUser(formData: FormData): Promise<AdminActionState> 
     action: 'user_deleted',
     actorId: sessionCheck.user.id,
     targetId: userId,
-    details: { email: target.email },
+    details: { email: targetEmail },
   });
 
   await safeRevalidatePath('/admin');
-  await safeRevalidatePath('/');
   return { status: 'success', message: 'User deleted' };
+}
+
+export async function searchUsers(query: string, limit: number = 10) {
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    throw new Error('Unauthorized');
+  }
+
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) return [];
+
+  const users = await prisma.user.findMany({
+    select: { id: true, name: true, email: true },
+    where: {
+      OR: [
+        { email: { contains: trimmedQuery, mode: 'insensitive' } },
+        { name: { contains: trimmedQuery, mode: 'insensitive' } }
+      ]
+    },
+    take: limit,
+    orderBy: { email: 'asc' }
+  });
+
+  return users;
 }
 
 const roleSchema = z.object({

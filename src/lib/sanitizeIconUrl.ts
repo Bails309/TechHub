@@ -11,7 +11,8 @@
  */
 export function sanitizeIconUrl(
     raw: string | null | undefined,
-    origin?: string
+    origin?: string,
+    allowedS3Hostname?: string | null
 ): string | null {
     if (!raw) return null;
 
@@ -54,12 +55,16 @@ export function sanitizeIconUrl(
             return url.pathname; // return only the path, not a full URL
         }
 
-        // S3 URLs: must be amazonaws.com and path must start with /uploads/
+        // S3 URLs: must match the EXACT configured hostname (if provided) and path must start with /uploads/
         if (
             url.hostname.endsWith('.amazonaws.com') &&
             url.protocol === 'https:' &&
             url.pathname.startsWith('/uploads/')
         ) {
+            // Security: Prevent attacker-controlled S3 bucket injection
+            if (allowedS3Hostname && url.hostname !== allowedS3Hostname) {
+                return null;
+            }
             return url.toString();
         }
 

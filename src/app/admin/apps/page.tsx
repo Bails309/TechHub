@@ -7,7 +7,9 @@ import {
     createApp,
     deleteApp,
     updateApp,
+    triggerStorageCleanup
 } from '../actions';
+import StorageCleanupForm from '../../../components/StorageCleanupForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +28,13 @@ export default async function AppsPage({
     const [apps, rolesList, categories, totalApps, users] = await Promise.all([
         prisma.appLink.findMany({
             orderBy: { createdAt: 'desc' },
-            include: { userAccesses: true },
+            include: {
+                userAccesses: {
+                    include: {
+                        user: { select: { id: true, name: true, email: true } }
+                    }
+                }
+            },
             skip: appsSkip,
             take: pageSize,
         }),
@@ -38,10 +46,7 @@ export default async function AppsPage({
             orderBy: { category: 'asc' },
         }),
         prisma.appLink.count(),
-        prisma.user.findMany({
-            select: { id: true, name: true, email: true },
-            orderBy: { email: 'asc' },
-        }),
+        prisma.appLink.count(),
     ]);
 
     const categoryOptions = categories
@@ -65,13 +70,6 @@ export default async function AppsPage({
         ...rolesList.map((role) => ({ value: role.id, label: role.name })),
     ];
 
-    const userOptions = users
-        .filter((user) => Boolean(user.email))
-        .map((user) => ({
-            value: user.id,
-            label: user.name ? `${user.name} (${user.email})` : user.email ?? user.id,
-        }));
-
     const appTotalPages = Math.max(1, Math.ceil(totalApps / pageSize));
     const prevAppPage = appPage > 1 ? appPage - 1 : null;
     const nextAppPage = appPage < appTotalPages ? appPage + 1 : null;
@@ -79,10 +77,15 @@ export default async function AppsPage({
     return (
         <div className="px-6 md:px-12 py-12 space-y-8">
             <section className="card-panel md:p-8">
-                <h1 className="font-serif text-3xl">App catalogue</h1>
-                <p className="text-ink-200 mt-2">
-                    Add, categorise, and manage apps available to users.
-                </p>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h1 className="font-serif text-3xl">App catalogue</h1>
+                        <p className="text-ink-200 mt-2">
+                            Add, categorise, and manage apps available to users.
+                        </p>
+                    </div>
+                    <StorageCleanupForm action={triggerStorageCleanup} />
+                </div>
             </section>
 
             <section className="card-panel md:p-8">
@@ -91,7 +94,6 @@ export default async function AppsPage({
                     categorySelectOptions={categorySelectOptions}
                     audienceOptions={audienceOptions}
                     roleOptions={roleOptions}
-                    userOptions={userOptions}
                     action={createApp}
                 />
             </section>
@@ -157,8 +159,7 @@ export default async function AppsPage({
                                                 categorySelectOptions={categorySelectOptions}
                                                 audienceOptions={audienceOptions}
                                                 roleOptions={roleOptions}
-                                                userOptions={userOptions}
-                                                assignedUserIds={app.userAccesses.map((item) => item.userId)}
+                                                initialUsers={app.userAccesses.map((item) => item.user)}
                                                 action={updateApp}
                                             />
                                         </div>
