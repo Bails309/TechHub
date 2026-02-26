@@ -77,7 +77,6 @@ export default async function SettingsPage() {
                 | 'connection-string'
                 | 'account-key'
                 | undefined,
-            sasTtlMinutes: (azureStorageConfig.config as Record<string, unknown> | null)?.sasTtlMinutes as number | undefined,
             hasSecret: Boolean(azureStorageConfig.secretEnc),
             secretValid: azureStorageSecretValid,
             updatedAt: azureStorageConfig.updatedAt.toISOString(),

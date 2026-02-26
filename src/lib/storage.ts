@@ -4,9 +4,7 @@ import { writeFile, mkdir, readdir, stat, unlink } from 'fs/promises';
 import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import {
   BlobServiceClient,
-  StorageSharedKeyCredential,
-  BlobSASPermissions,
-  generateBlobSASQueryParameters
+  StorageSharedKeyCredential
 } from '@azure/storage-blob';
 import { getStorageConfigMap } from './storageConfig';
 
@@ -37,7 +35,6 @@ type AzureConfig = {
   account?: string;
   endpoint?: string;
   secret?: string;
-  sasTtlMinutes?: number;
 };
 
 // Local storage implementation
@@ -112,9 +109,6 @@ async function cleanupLocalIcons(validIconPaths: string[]): Promise<number> {
 }
 
 // S3 implementation
-// Module-level S3 client singleton. Keep instance in module scope so it
-// persists across calls and reuses HTTP connections.
-let s3ClientInstance: S3Client | null = null;
 function getS3Client(config?: S3Config): S3Client {
   if (config) {
     return new S3Client({
@@ -126,11 +120,7 @@ function getS3Client(config?: S3Config): S3Client {
         : undefined
     });
   }
-  if (!s3ClientInstance) {
-    const region = process.env.S3_REGION;
-    s3ClientInstance = new S3Client({ region });
-  }
-  return s3ClientInstance;
+  return new S3Client({ region: process.env.S3_REGION });
 }
 
 async function resolveS3Config(): Promise<S3Config | null> {
@@ -243,16 +233,12 @@ async function cleanupS3Icons(validIconPaths: string[]): Promise<number> {
 }
 
 // Azure Blob implementation
-let azureClientInstance: BlobServiceClient | null = null;
 function getAzureBlobServiceClient(config?: AzureConfig): BlobServiceClient {
-  if (azureClientInstance) return azureClientInstance;
-
   const connectionString = config?.authMode === 'connection-string'
     ? config.secret
     : process.env.AZURE_STORAGE_CONNECTION_STRING;
   if (connectionString) {
-    azureClientInstance = BlobServiceClient.fromConnectionString(connectionString);
-    return azureClientInstance;
+    return BlobServiceClient.fromConnectionString(connectionString);
   }
 
   const account = config?.account || process.env.AZURE_STORAGE_ACCOUNT;
@@ -263,8 +249,7 @@ function getAzureBlobServiceClient(config?: AzureConfig): BlobServiceClient {
 
   const endpoint = config?.endpoint || process.env.AZURE_BLOB_ENDPOINT || `https://${account}.blob.core.windows.net`;
   const credential = new StorageSharedKeyCredential(account, key);
-  azureClientInstance = new BlobServiceClient(endpoint, credential);
-  return azureClientInstance;
+  return new BlobServiceClient(endpoint, credential);
 }
 
 function getAzureContainerClient(config?: AzureConfig) {
@@ -293,8 +278,7 @@ async function resolveAzureConfig(): Promise<AzureConfig | null> {
       container: String(cfg.container ?? ''),
       account: cfg.account ? String(cfg.account) : undefined,
       endpoint: cfg.endpoint ? String(cfg.endpoint) : undefined,
-      secret: entry.secret ?? undefined,
-      sasTtlMinutes: cfg.sasTtlMinutes ? Number(cfg.sasTtlMinutes) : undefined
+      secret: entry.secret ?? undefined
     };
   }
   return null;
@@ -335,70 +319,6 @@ async function deleteAzure(iconPath?: string) {
   await containerClient.deleteBlob(key).catch(() => null);
 }
 
-export async function createAzureUploadSas(
-  blobName: string,
-  contentType?: string
-): Promise<{ uploadUrl: string; blobUrl: string; expiresAt: string }> {
-  const config = await resolveAzureConfig();
-  const container = config?.container || process.env.AZURE_BLOB_CONTAINER;
-  if (!container) {
-    throw new Error('AZURE_BLOB_CONTAINER not configured');
-  }
-
-  const connectionString = config?.authMode === 'connection-string'
-    ? config?.secret
-    : process.env.AZURE_STORAGE_CONNECTION_STRING;
-  const accountName = config?.account || process.env.AZURE_STORAGE_ACCOUNT;
-  const key = config?.secret || process.env.AZURE_STORAGE_KEY;
-
-  let credential: StorageSharedKeyCredential | null = null;
-  if (connectionString) {
-    const parsed = parseAzureConnectionString(connectionString);
-    if (!parsed) throw new Error('Invalid AZURE_STORAGE_CONNECTION_STRING');
-    credential = new StorageSharedKeyCredential(parsed.account, parsed.key);
-  } else if (accountName && key) {
-    credential = new StorageSharedKeyCredential(accountName, key);
-  }
-
-  if (!credential) {
-    throw new Error('Azure storage credentials not configured');
-  }
-
-  const ttl = config?.sasTtlMinutes
-    ? Math.max(1, config.sasTtlMinutes)
-    : Number(process.env.AZURE_SAS_TTL_MINUTES ?? 10);
-  const expiresOn = new Date(Date.now() + ttl * 60 * 1000);
-  const permissions = BlobSASPermissions.parse('cw');
-  const sas = generateBlobSASQueryParameters(
-    {
-      containerName: container,
-      blobName,
-      permissions,
-      expiresOn,
-      contentType
-    },
-    credential
-  ).toString();
-
-  const endpoint = config?.endpoint
-    || (accountName ? `https://${accountName}.blob.core.windows.net` : undefined)
-    || (() => {
-      if (!connectionString) return undefined;
-      const parsed = parseAzureConnectionString(connectionString);
-      return parsed ? `https://${parsed.account}.blob.core.windows.net` : undefined;
-    })();
-
-  if (!endpoint) {
-    throw new Error('Azure blob endpoint not configured');
-  }
-
-  const blobUrl = `${endpoint}/${container}/${blobName}`;
-  return {
-    uploadUrl: `${blobUrl}?${sas}`,
-    blobUrl,
-    expiresAt: expiresOn.toISOString()
-  };
-}
 
 async function cleanupAzureIcons(validIconPaths: string[]): Promise<number> {
   const config = await resolveAzureConfig();
@@ -502,9 +422,20 @@ async function saveAzureWithBuffer(buffer: Buffer, keySuffix: string, contentTyp
   const config = await resolveAzureConfig();
   const containerClient = getAzureContainerClient(config ?? undefined);
   const blobClient = containerClient.getBlockBlobClient(key);
-  await blobClient.uploadData(buffer, {
-    blobHTTPHeaders: { blobContentType: contentType || 'application/octet-stream' },
-  });
+  try {
+    await blobClient.uploadData(buffer, {
+      blobHTTPHeaders: { blobContentType: contentType || 'application/octet-stream' },
+    });
+  } catch (err: any) {
+    console.error('[AZURE-REST-ERROR]', {
+      message: err.message,
+      code: err.code,
+      details: err.details,
+      statusCode: err.statusCode,
+      requestId: err.requestId,
+    });
+    throw err;
+  }
   return blobClient.url;
 }
 
@@ -513,11 +444,6 @@ export async function deleteIcon(iconPath?: string) {
   if (provider === 's3') return deleteS3(iconPath);
   if (provider === 'azure') return deleteAzure(iconPath);
   return deleteLocal(iconPath);
-}
-
-export function invalidateStorageClients() {
-  s3ClientInstance = null;
-  azureClientInstance = null;
 }
 
 export async function readIcon(iconPath: string): Promise<{ buffer: Uint8Array; contentType: string } | null> {

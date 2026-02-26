@@ -43,7 +43,6 @@ import { lookup } from 'dns/promises';
 import https from 'https';
 import ipaddr from 'ipaddr.js';
 import { getStorageConfigMapWithDeps, StorageProviderId } from '@/lib/storageConfig';
-import { invalidateStorageClients } from '@/lib/storage';
 import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 
@@ -363,7 +362,6 @@ export async function updateStorageConfig(
   const account = String(formData.get('account') ?? '').trim();
   const connectionString = String(formData.get('connectionString') ?? '').trim();
   const accountKey = String(formData.get('accountKey') ?? '').trim();
-  const sasTtlMinutes = Number(formData.get('sasTtlMinutes') ?? 0) || null;
   const clearSecret = formData.get('clearSecret') === 'on';
   const bucket = String(formData.get('bucket') ?? '').trim();
   const region = String(formData.get('region') ?? '').trim();
@@ -463,8 +461,7 @@ export async function updateStorageConfig(
           authMode: authMode.data,
           container,
           account: account || null,
-          endpoint: endpoint || null,
-          sasTtlMinutes: sasTtlMinutes || null
+          endpoint: endpoint || null
         }
         : {}
     : Prisma.JsonNull;
