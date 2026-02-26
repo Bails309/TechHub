@@ -26,7 +26,13 @@ export default async function AppsPage({
     const [apps, rolesList, categories, totalApps, users] = await Promise.all([
         prisma.appLink.findMany({
             orderBy: { createdAt: 'desc' },
-            include: { userAccesses: true },
+            include: {
+                userAccesses: {
+                    include: {
+                        user: { select: { id: true, name: true, email: true } }
+                    }
+                }
+            },
             skip: appsSkip,
             take: pageSize,
         }),
@@ -38,11 +44,7 @@ export default async function AppsPage({
             orderBy: { category: 'asc' },
         }),
         prisma.appLink.count(),
-        prisma.user.findMany({
-            select: { id: true, name: true, email: true },
-            orderBy: { email: 'asc' },
-            take: 100, // Limit to prevent OOM on large datasets
-        }),
+        prisma.appLink.count(),
     ]);
 
     const categoryOptions = categories
@@ -66,13 +68,6 @@ export default async function AppsPage({
         ...rolesList.map((role) => ({ value: role.id, label: role.name })),
     ];
 
-    const userOptions = users
-        .filter((user) => Boolean(user.email))
-        .map((user) => ({
-            value: user.id,
-            label: user.name ? `${user.name} (${user.email})` : user.email ?? user.id,
-        }));
-
     const appTotalPages = Math.max(1, Math.ceil(totalApps / pageSize));
     const prevAppPage = appPage > 1 ? appPage - 1 : null;
     const nextAppPage = appPage < appTotalPages ? appPage + 1 : null;
@@ -92,7 +87,6 @@ export default async function AppsPage({
                     categorySelectOptions={categorySelectOptions}
                     audienceOptions={audienceOptions}
                     roleOptions={roleOptions}
-                    userOptions={userOptions}
                     action={createApp}
                 />
             </section>
@@ -158,8 +152,7 @@ export default async function AppsPage({
                                                 categorySelectOptions={categorySelectOptions}
                                                 audienceOptions={audienceOptions}
                                                 roleOptions={roleOptions}
-                                                userOptions={userOptions}
-                                                assignedUserIds={app.userAccesses.map((item) => item.userId)}
+                                                initialUsers={app.userAccesses.map((item) => item.user)}
                                                 action={updateApp}
                                             />
                                         </div>

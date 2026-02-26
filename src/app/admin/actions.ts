@@ -825,12 +825,35 @@ export async function deleteUser(formData: FormData): Promise<AdminActionState> 
     action: 'user_deleted',
     actorId: sessionCheck.user.id,
     targetId: userId,
-    details: { email: target.email },
+    details: { email: targetEmail },
   });
 
   await safeRevalidatePath('/admin');
-  await safeRevalidatePath('/');
   return { status: 'success', message: 'User deleted' };
+}
+
+export async function searchUsers(query: string, limit: number = 10) {
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    throw new Error('Unauthorized');
+  }
+
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) return [];
+
+  const users = await prisma.user.findMany({
+    select: { id: true, name: true, email: true },
+    where: {
+      OR: [
+        { email: { contains: trimmedQuery, mode: 'insensitive' } },
+        { name: { contains: trimmedQuery, mode: 'insensitive' } }
+      ]
+    },
+    take: limit,
+    orderBy: { email: 'asc' }
+  });
+
+  return users;
 }
 
 const roleSchema = z.object({

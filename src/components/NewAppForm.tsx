@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState, useTransition } from 'react';
 import SelectField, { SelectOption } from './SelectField';
 import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
 import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
+import UserAutocomplete from './UserAutocomplete';
 
 interface NewAppFormProps {
   categorySelectOptions: SelectOption[];
   audienceOptions: SelectOption[];
   roleOptions: SelectOption[];
-  userOptions: SelectOption[];
   action: (formData: FormData) => void | Promise<{ status: 'success' | 'error'; message: string }>;
 }
 
@@ -17,7 +17,6 @@ export default function NewAppForm({
   categorySelectOptions,
   audienceOptions,
   roleOptions,
-  userOptions,
   action
 }: NewAppFormProps) {
   const [isPending, startTransition] = useTransition();
@@ -111,19 +110,7 @@ export default function NewAppForm({
         className="md:col-span-2"
       />
       {audience === 'USER' ? (
-        <div className="md:col-span-2 space-y-2">
-          <label className="text-xs uppercase tracking-[0.2em] text-ink-400">
-            Assign users (for specific user apps)
-          </label>
-          <div className="grid gap-2 md:grid-cols-2">
-            {userOptions.map((option) => (
-              <label key={option.value} className="flex items-center gap-2 text-xs text-ink-200">
-                <input type="checkbox" name="userIds" value={option.value} className="h-4 w-4" />
-                {option.label}
-              </label>
-            ))}
-          </div>
-        </div>
+        <UserAutocomplete />
       ) : null}
       <textarea
         name="description"
