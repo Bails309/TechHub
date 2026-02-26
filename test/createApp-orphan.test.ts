@@ -13,8 +13,8 @@ vi.mock('next-auth', () => ({
 
 // Provide no-op revalidation helpers so server actions can call them during tests
 vi.mock('next/cache', () => ({
-  revalidatePath: async (_: string) => {},
-  revalidateTag: async (_: string) => {},
+  revalidatePath: async (_: string) => { },
+  revalidateTag: async (_: string) => { },
   unstable_cache: (fn: any) => {
     // Return the original function (no caching) for tests
     return (...args: any[]) => fn(...args);
@@ -41,6 +41,14 @@ vi.mock('@/lib/auth', () => ({
   getServerAuthSession: async () => ({
     user: { id: 'admin', roles: ['admin'], authProvider: 'credentials', mustChangePassword: false }
   })
+}));
+
+vi.mock('@/lib/audit', () => ({
+  writeAuditLog: vi.fn()
+}));
+
+vi.mock('../src/lib/audit', () => ({
+  writeAuditLog: vi.fn()
 }));
 
 // Mock crypto helpers used by admin actions so module can load cleanly
