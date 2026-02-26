@@ -3,30 +3,26 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-function generateToken() {
-  const crypto = (globalThis as any)?.crypto;
-  if (crypto?.randomUUID) return crypto.randomUUID();
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
-export function getCsrfTokenFromCookie() {
+/**
+ * Read the XSRF-TOKEN cookie value set by the server middleware.
+ * Returns '' if no cookie is found (e.g. before the first navigation).
+ *
+ * IMPORTANT: This function is READ-ONLY. The client must never generate
+ * CSRF tokens — the server creates HMAC-signed tokens in middleware.
+ */
+export function getCsrfTokenFromCookie(): string {
   if (typeof document === 'undefined') return '';
   const parts = document.cookie.split(';').map((p) => p.trim());
+  let fallback = '';
   for (const part of parts) {
     if (part.startsWith('XSRF-TOKEN=')) {
-      return decodeURIComponent(part.slice('XSRF-TOKEN='.length));
+      const val = decodeURIComponent(part.slice('XSRF-TOKEN='.length));
+      // Stop searching if we find a valid HMAC token (has a dot)
+      if (val.includes('.')) return val;
+      fallback = val;
     }
   }
-  const next = generateToken();
-  const secure = typeof window !== 'undefined' && window.location.protocol === 'https:';
-  const cookieParts = [
-    `XSRF-TOKEN=${encodeURIComponent(next)}`,
-    'path=/',
-    'samesite=lax'
-  ];
-  if (secure) cookieParts.push('secure');
-  document.cookie = cookieParts.join('; ');
-  return next;
+  return fallback;
 }
 
 export default function HiddenCsrfInput() {

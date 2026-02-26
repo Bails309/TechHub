@@ -1,22 +1,13 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { randomUUID } from 'crypto';
 import path from 'path';
 import { getServerAuthSession } from '@/lib/auth';
 import { createAzureUploadSas } from '@/lib/storage';
+import { validateCsrfToken } from '@/lib/csrf';
 
 const MAX_ICON_BYTES = 2 * 1024 * 1024;
 const ALLOWED_ICON_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg']);
 const ALLOWED_ICON_MIME_TYPES = new Set(['image/png', 'image/jpeg']);
-
-async function readCsrfToken() {
-  try {
-    const jar = await cookies();
-    return jar?.get ? jar.get('XSRF-TOKEN')?.value ?? '' : '';
-  } catch {
-    return '';
-  }
-}
 
 export async function POST(request: Request) {
   const session = await getServerAuthSession();
@@ -24,9 +15,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Validate CSRF: compare header token against session-bound HMAC
   const csrfHeader = request.headers.get('x-csrf-token') ?? '';
-  const csrfCookie = await readCsrfToken();
-  if (!csrfHeader || !csrfCookie || csrfHeader !== csrfCookie) {
+  const sessionId = session.user.id ?? '';
+  const csrfValid = validateCsrfToken(csrfHeader, sessionId);
+  console.log('[CSRF-DEBUG] header:', csrfHeader.slice(0, 20) + '...', 'sessionId:', sessionId, 'valid:', csrfValid, 'secret-present:', !!process.env.NEXTAUTH_SECRET);
+  if (!csrfHeader || !sessionId || !csrfValid) {
     return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 });
   }
 
