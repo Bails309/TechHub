@@ -8,78 +8,140 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  * expires due to inactivity. This complements the server-side idle
  * timeout — it does NOT replace it.
  *
+ * Timeout values are passed through the NextAuth session object from
+ * the server, avoiding NEXT_PUBLIC_* build-time env var issues in Docker.
+ *
  * Behaviour:
- * 1. Tracks user activity (mouse, keyboard, touch, scroll).
- * 2. When idle for (timeout - warningBuffer), shows a warning banner.
- * 3. If the user resumes activity during the warning, the timer resets.
- * 4. If the warning expires without activity, signs the user out.
+ * 1. Reads timeout config from the session (server is source of truth).
+ * 2. Tracks user activity (click, keyboard, touch, scroll) with debouncing.
+ * 3. Polls every 10 seconds to check idle time.
+ * 4. When idle for (timeout - warningBuffer), shows a warning banner.
+ * 5. If the user resumes activity during the warning, the timer resets.
+ * 6. If the server revokes the session, signs out immediately.
+ * 7. If the warning expires without activity, writes the reason into
+ *    the JWT (via update()) and THEN signs the user out so the audit
+ *    log captures the correct event.
  */
 
-const IDLE_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MS ?? 1200000); // 20 min
-const WARNING_BEFORE_MS = 120000; // Show warning 2 minutes before expiry
+const CHECK_INTERVAL_MS = 10_000; // poll every 10s
+const FALLBACK_IDLE_MS = 20 * 60 * 1000; // 20 min fallback
+const FALLBACK_WARNING_MS = 2 * 60 * 1000; // 2 min fallback
+
+/** Persist the idle-timeout reason into the JWT, then sign out. */
+async function idleSignOut(updateFn: ReturnType<typeof useSession>['update']) {
+    try {
+        // Write the reason into the JWT cookie BEFORE calling signOut().
+        // NextAuth's signOut handler reads the raw cookie — it does NOT
+        // run the jwt callback — so this is the only way to communicate
+        // the reason to the server-side signOut event.
+        await updateFn({ logoutReason: 'idle_timeout' });
+    } catch {
+        // Even if the update fails (e.g. network issue), still sign out.
+    }
+    signOut({ callbackUrl: '/auth/signin' });
+}
 
 export default function SessionGuard() {
-    const { data: session, status } = useSession();
+    const { data: session, status, update } = useSession();
     const [showWarning, setShowWarning] = useState(false);
     const [countdown, setCountdown] = useState(0);
-    const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const warningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const countdownInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+    const lastActivityRef = useRef(Date.now());
+    const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const signingOutRef = useRef(false);
 
-    const clearAllTimers = useCallback(() => {
-        if (idleTimer.current) clearTimeout(idleTimer.current);
-        if (warningTimer.current) clearTimeout(warningTimer.current);
-        if (countdownInterval.current) clearInterval(countdownInterval.current);
-    }, []);
+    // Read timeout config from session (set by the server in the session callback)
+    const s = session as any;
+    const idleTimeoutMs = s?.idleTimeoutMs ?? FALLBACK_IDLE_MS;
+    const warningMs = s?.warningMs ?? FALLBACK_WARNING_MS;
 
-    const resetTimers = useCallback(() => {
-        clearAllTimers();
+    // React to server-side session revocation
+    useEffect(() => {
+        if (s?.revoked) {
+            signOut({ callbackUrl: '/auth/signin' });
+        }
+    }, [s?.revoked]);
+
+    // Debounced activity tracker — updates the timestamp at most once per second
+    const activityDebounceRef = useRef(false);
+    const markActivity = useCallback(() => {
+        if (activityDebounceRef.current || signingOutRef.current) return;
+        activityDebounceRef.current = true;
+        const now = Date.now();
+        lastActivityRef.current = now;
+
+        // Notify the server of activity to reset its idle timer.
+        update({ interacted: now });
+
+        // If warning is showing and user interacts, dismiss it
         setShowWarning(false);
+        if (countdownIntervalRef.current) {
+            clearInterval(countdownIntervalRef.current);
+            countdownIntervalRef.current = null;
+        }
 
-        // Start the warning timer (fires 2 min before timeout)
-        const warningDelay = Math.max(IDLE_TIMEOUT_MS - WARNING_BEFORE_MS, 0);
-        idleTimer.current = setTimeout(() => {
-            setShowWarning(true);
-            setCountdown(Math.floor(WARNING_BEFORE_MS / 1000));
-
-            // Countdown every second
-            countdownInterval.current = setInterval(() => {
-                setCountdown((prev) => {
-                    if (prev <= 1) {
-                        clearAllTimers();
-                        signOut({ callbackUrl: '/auth/signin' });
-                        return 0;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
-        }, warningDelay);
-    }, [clearAllTimers]);
+        setTimeout(() => {
+            activityDebounceRef.current = false;
+        }, 1000);
+    }, [update]);
 
     useEffect(() => {
         if (status !== 'authenticated') return;
 
-        const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
-        const handleActivity = () => {
-            // Only reset if the warning banner is not showing, OR if
-            // user interacts during the warning (which means they're back).
-            resetTimers();
-        };
+        // Initialize last activity to now
+        lastActivityRef.current = Date.now();
 
+        const activityEvents = ['mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
         activityEvents.forEach((event) => {
-            window.addEventListener(event, handleActivity, { passive: true });
+            window.addEventListener(event, markActivity, { passive: true });
         });
 
-        // Start the initial timer
-        resetTimers();
+        // Periodic check: has the user been idle too long?
+        checkIntervalRef.current = setInterval(() => {
+            if (signingOutRef.current) return;
+            const idle = Date.now() - lastActivityRef.current;
+            const warningThreshold = idleTimeoutMs - warningMs;
+
+            if (idle >= idleTimeoutMs) {
+                // Time's up — persist reason then sign out.
+                // Clear ALL intervals first to guarantee no duplicate calls.
+                signingOutRef.current = true;
+                if (checkIntervalRef.current) { clearInterval(checkIntervalRef.current); checkIntervalRef.current = null; }
+                if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); countdownIntervalRef.current = null; }
+                idleSignOut(update);
+                return;
+            }
+
+            if (idle >= warningThreshold && !countdownIntervalRef.current) {
+                // Show the warning with countdown
+                const remaining = idleTimeoutMs - idle;
+                setCountdown(Math.ceil(remaining / 1000));
+                setShowWarning(true);
+
+                countdownIntervalRef.current = setInterval(() => {
+                    if (signingOutRef.current) return;
+                    const currentIdle = Date.now() - lastActivityRef.current;
+                    const left = idleTimeoutMs - currentIdle;
+                    if (left <= 0) {
+                        signingOutRef.current = true;
+                        if (checkIntervalRef.current) { clearInterval(checkIntervalRef.current); checkIntervalRef.current = null; }
+                        if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); countdownIntervalRef.current = null; }
+                        idleSignOut(update);
+                    } else {
+                        setCountdown(Math.ceil(left / 1000));
+                    }
+                }, 1000);
+            }
+        }, CHECK_INTERVAL_MS);
 
         return () => {
-            clearAllTimers();
             activityEvents.forEach((event) => {
-                window.removeEventListener(event, handleActivity);
+                window.removeEventListener(event, markActivity);
             });
+            if (checkIntervalRef.current) clearInterval(checkIntervalRef.current);
+            if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
         };
-    }, [status, resetTimers, clearAllTimers]);
+    }, [status, markActivity, idleTimeoutMs, warningMs, update]);
 
     if (status !== 'authenticated' || !showWarning) return null;
 
@@ -105,7 +167,7 @@ export default function SessionGuard() {
                 display: 'flex',
                 flexDirection: 'column' as const,
                 gap: '0.5rem',
-                animation: 'slideIn 0.3s ease-out',
+                animation: 'sessionGuardSlideIn 0.3s ease-out',
             }}
         >
             <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
@@ -116,10 +178,10 @@ export default function SessionGuard() {
                 <strong>
                     {minutes > 0 ? `${minutes}m ` : ''}{seconds.toString().padStart(2, '0')}s
                 </strong>{' '}
-                due to inactivity. Move your mouse or press a key to stay signed in.
+                due to inactivity. Click or press a key to stay signed in.
             </div>
             <style>{`
-        @keyframes slideIn {
+        @keyframes sessionGuardSlideIn {
           from { transform: translateY(100%); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
         }

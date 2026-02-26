@@ -37,7 +37,7 @@ const trustedProxiesEnv = String(process.env.TRUSTED_PROXIES ?? '').trim();
 
 // Session lifetime (OWASP baseline: 8-hour absolute, 20-minute idle)
 const SESSION_MAX_AGE_S = Number(process.env.SESSION_MAX_AGE_SECONDS ?? 28800);     // 8 hours
-const SESSION_IDLE_TIMEOUT_MS = Number(process.env.SESSION_IDLE_TIMEOUT_MS ?? 1200000); // 20 minutes
+const SESSION_IDLE_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MS ?? process.env.SESSION_IDLE_TIMEOUT_MS ?? 1200000); // 20 minutes
 
 // Parse TRUSTED_PROXIES into CIDR tuples using ipaddr.js
 let trustedProxyCidrs: Array<[ipaddr.IPv4 | ipaddr.IPv6, number]> = [];
@@ -432,6 +432,15 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           if (typeof updatedMustChange === 'boolean') {
             token.mustChangePassword = updatedMustChange;
           }
+          // Persist logout reason from the client into the JWT so that the
+          // signOut event handler (which does NOT run the jwt callback) can
+          // read it from the decoded token and log the correct audit action.
+          // When a logoutReason is present, return immediately — the signOut
+          // event is solely responsible for the audit entry.
+          if ((session as any)?.logoutReason) {
+            token.logoutReason = (session as any).logoutReason;
+            return token;
+          }
         }
 
         if (user?.id) {
@@ -515,31 +524,30 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         // maxAge handles the JWT expiry silently; this pre-empts it so we
         // get an audit log entry before the token is rejected.
         const issuedAt = Number(token.iat ?? 0);
-        if (issuedAt > 0 && (now - issuedAt * 1000) > SESSION_MAX_AGE_S * 1000) {
+        const isAbsoluteTimeout = !token.revoked && issuedAt > 0 && (now - issuedAt * 1000) > SESSION_MAX_AGE_S * 1000;
+
+        // Idle timeout: revoke the token if the user has been inactive for
+        // longer than SESSION_IDLE_TIMEOUT_MS.
+        const lastActivity = Number(token.lastActivity ?? 0);
+        const isIdleTimeout = !token.revoked && lastActivity > 0 && (now - lastActivity) > SESSION_IDLE_TIMEOUT_MS;
+
+        if (isAbsoluteTimeout || isIdleTimeout) {
           token.revoked = true;
-          writeAuditLog({
+          await writeAuditLog({
             category: 'auth',
             action: 'session_terminated',
             targetId: String(token.sub),
-            details: { reason: 'absolute_timeout' },
+            details: { reason: isAbsoluteTimeout ? 'absolute_timeout' : 'idle_timeout' },
           });
           return token;
         }
 
-        // Idle timeout: revoke the token if the user has been inactive for
-        // longer than SESSION_IDLE_TIMEOUT_MS (OWASP default: 20 minutes).
-        const lastActivity = Number(token.lastActivity ?? 0);
-        if (lastActivity > 0 && (now - lastActivity) > SESSION_IDLE_TIMEOUT_MS) {
-          token.revoked = true;
-          writeAuditLog({
-            category: 'auth',
-            action: 'session_terminated',
-            targetId: String(token.sub),
-            details: { reason: 'idle_timeout' },
-          });
-          return token;
+        // --- Activity Tracking ---
+        // ONLY update the idle timer on initial login (user) or explicit interaction (update).
+        // Background hits (like Next.js prefetching) will no longer reset the timer.
+        if (user || (trigger === 'update' && (session as any)?.interacted)) {
+          token.lastActivity = now;
         }
-        token.lastActivity = now;
 
         return token;
       },
@@ -574,12 +582,22 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             session.user.mustChangePassword = typedToken.mustChangePassword ?? false;
           }
         }
+
+        // Expose session-timeout configuration and revocation status to the
+        // client. This avoids NEXT_PUBLIC_* build-time env var issues in
+        // Docker and keeps the server as the single source of truth.
+        (session as any).idleTimeoutMs = SESSION_IDLE_TIMEOUT_MS;
+        (session as any).warningMs = Number(process.env.NEXT_PUBLIC_SESSION_WARNING_MS ?? 120000);
+        if (token.revoked) {
+          (session as any).revoked = true;
+        }
+
         return session;
       }
     },
     events: {
       async signIn({ user, account }) {
-        writeAuditLog({
+        await writeAuditLog({
           category: 'auth',
           action: 'login_success',
           actorId: user?.id ?? null,
@@ -588,10 +606,31 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         });
       },
       async signOut({ token }) {
-        writeAuditLog({
+        // Check for an explicit logout reason set by the client (e.g.
+        // SessionGuard writes 'idle_timeout' into the JWT via update()
+        // before calling signOut). This is the ONLY reliable way to capture
+        // the reason because NextAuth's signOut handler does NOT run the
+        // jwt callback — it just decodes the raw cookie.
+        const reason = (token as any)?.logoutReason;
+        if (reason === 'idle_timeout' || reason === 'absolute_timeout') {
+          await writeAuditLog({
+            category: 'auth',
+            action: 'session_terminated',
+            targetId: (token as any)?.sub ?? null,
+            details: { reason },
+          });
+          return;
+        }
+
+        // If the token was already revoked (e.g. server-side detection),
+        // we've already logged the termination event.
+        if ((token as any)?.revoked) return;
+
+        // Normal manual logout
+        await writeAuditLog({
           category: 'auth',
           action: 'logout',
-          actorId: (token as JWT)?.sub ?? null,
+          actorId: (token as any)?.sub ?? null,
         });
       },
     },
