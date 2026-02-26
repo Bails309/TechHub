@@ -81,3 +81,9 @@ Response:
   "expiresAt": "2026-02-25T12:00:00.000Z"
 }
 ```
+## Storage Cleanup
+
+TechHub includes a built-in tool in the Admin Apps dashboard to purge orphaned blobs.
+- It identifies blobs in the `uploads/` prefix that are no longer referenced by any application in the database.
+- Blobs created within the last 60 minutes are automatically skipped to prevent interference with active uploads.
+- The tool uses `listBlobsFlat` to efficiently scan the container.

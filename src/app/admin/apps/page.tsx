@@ -7,7 +7,9 @@ import {
     createApp,
     deleteApp,
     updateApp,
+    triggerStorageCleanup
 } from '../actions';
+import StorageCleanupForm from '../../../components/StorageCleanupForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,10 +77,15 @@ export default async function AppsPage({
     return (
         <div className="px-6 md:px-12 py-12 space-y-8">
             <section className="card-panel md:p-8">
-                <h1 className="font-serif text-3xl">App catalogue</h1>
-                <p className="text-ink-200 mt-2">
-                    Add, categorise, and manage apps available to users.
-                </p>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h1 className="font-serif text-3xl">App catalogue</h1>
+                        <p className="text-ink-200 mt-2">
+                            Add, categorise, and manage apps available to users.
+                        </p>
+                    </div>
+                    <StorageCleanupForm action={triggerStorageCleanup} />
+                </div>
             </section>
 
             <section className="card-panel md:p-8">

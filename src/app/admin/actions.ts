@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import path from 'path';
-import { saveIcon as storageSaveIcon, deleteIcon as storageDeleteIcon } from '../../lib/storage';
+import { saveIcon as storageSaveIcon, deleteIcon as storageDeleteIcon, cleanupOrphanedIcons } from '../../lib/storage';
 // Importing Next runtime cache helpers at module-load can call into
 // runtime-only APIs (like `headers()`) which are unavailable in the
 // test environment and cause import-time failures. Use dynamic import
@@ -624,6 +624,38 @@ export async function updateApp(formData: FormData) {
   await safeRevalidatePath('/admin');
   await safeRevalidatePath('/');
   return { status: 'success', message: 'App updated' } as const;
+}
+
+export async function triggerStorageCleanup(formData: FormData): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
+  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
+    return { status: 'error', message: 'Unauthorized: must_change_password' };
+  }
+
+  try {
+    const appsWithIcons = await prisma.appLink.findMany({
+      where: { icon: { not: null } },
+      select: { icon: true }
+    });
+
+    const validIconPaths = appsWithIcons.map(app => app.icon as string);
+    const deletedCount = await cleanupOrphanedIcons(validIconPaths);
+
+    writeAuditLog({
+      category: 'admin',
+      action: 'orphaned_icons_deleted',
+      actorId: session.user.id,
+      details: { count: deletedCount }
+    });
+
+    return { status: 'success', message: `Cleanup complete. Deleted ${deletedCount} orphaned icons.` };
+  } catch (err) {
+    return { status: 'error', message: err instanceof Error ? err.message : 'Failed to cleanup icons' };
+  }
 }
 
 const userRoleSchema = z.object({
