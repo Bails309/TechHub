@@ -7,6 +7,8 @@ describe('JWT coherence (periodic DB validation)', () => {
     process.env.JWT_CHECK_INTERVAL_MS = '0';
     // Mock PrismaAdapter globally for these tests
     vi.doMock('@next-auth/prisma-adapter', () => ({ PrismaAdapter: () => ({}) }));
+    // Mock audit logger globally so it doesn't try to use prisma.auditLog
+    vi.doMock('../src/lib/audit', () => ({ writeAuditLog: vi.fn() }));
   });
 
   it('refreshes token fields when user exists', async () => {
