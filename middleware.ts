@@ -8,13 +8,24 @@ function buildCsp(nonce: string) {
     "base-uri 'self'",
     "form-action 'self'",
     "img-src 'self' data: blob: https:",
-    "style-src 'self' 'nonce-" + nonce + "' 'unsafe-inline'",
+    // Avoid 'unsafe-inline' to enforce nonce-based style execution. If you
+    // must support legacy browsers that don't accept nonces, consider the
+    // security trade-off before re-adding 'unsafe-inline'.
+    "style-src 'self' 'nonce-" + nonce + "'",
     "font-src 'self' https: data:",
-    "script-src 'self' 'nonce-" + nonce + "' 'strict-dynamic' https: 'unsafe-inline'",
+    // Avoid 'unsafe-inline' to ensure scripts execute only when covered
+    // by the server-generated nonce or strict-dynamic+trusted sources.
+    "script-src 'self' 'nonce-" + nonce + "' 'strict-dynamic' https:",
     "connect-src 'self' https:",
     "object-src 'none'",
     "frame-ancestors 'self'"
   ].join('; ');
+}
+
+function generateCsrfToken() {
+  const crypto = (globalThis as any)?.crypto;
+  if (crypto?.randomUUID) return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 export async function middleware(request: NextRequest) {
@@ -31,6 +42,24 @@ export async function middleware(request: NextRequest) {
   const accept = request.headers.get('accept') ?? '';
   if (accept.includes('text/html')) {
     response.headers.set('Content-Security-Policy', buildCsp(nonce));
+  }
+
+  // Ensure a CSRF cookie is present for navigation and RSC requests,
+  // including client-side transitions that do not return full HTML.
+  if (request.method === 'GET') {
+    const csrfCookie = request.cookies.get('XSRF-TOKEN')?.value;
+    if (!csrfCookie) {
+      const forwardedProto = request.headers.get('x-forwarded-proto');
+      const isSecure = forwardedProto === 'https' || request.nextUrl.protocol === 'https:';
+      response.cookies.set({
+        name: 'XSRF-TOKEN',
+        value: generateCsrfToken(),
+        httpOnly: false,
+        sameSite: 'lax',
+        secure: isSecure,
+        path: '/'
+      });
+    }
   }
 
   const pathname = request.nextUrl.pathname;

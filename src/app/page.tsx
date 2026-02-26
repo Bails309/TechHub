@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import PortalView from '../components/PortalView';
 import StatsStrip from '../components/StatsStrip';
+import { getAverageLatency } from '../lib/audit';
+import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,13 +40,19 @@ export default async function Home() {
 
   const appOrder = session?.user?.id
     ? await prisma.userAppOrder.findUnique({
-        where: { userId: session.user.id }
-      })
+      where: { userId: session.user.id }
+    })
     : null;
+
+  const averageLatency = await getAverageLatency() ?? '< 1s';
 
   return (
     <div className="px-6 md:px-12 py-12 space-y-12">
-      <StatsStrip appCount={apps.length} categories={categories.length} />
+      <StatsStrip
+        appCount={apps.length}
+        categories={categories.length}
+        averageLatency={averageLatency}
+      />
 
       <PortalView
         apps={apps.map((app) => ({
@@ -53,7 +61,7 @@ export default async function Home() {
           url: app.url,
           description: app.description,
           category: app.category,
-          icon: app.icon
+          icon: sanitizeIconUrl(app.icon, process.env.NEXTAUTH_URL || 'http://localhost:3000')
         }))}
         isAuthenticated={Boolean(session)}
         initialOrder={Array.isArray(appOrder?.order) ? (appOrder?.order as string[]) : []}

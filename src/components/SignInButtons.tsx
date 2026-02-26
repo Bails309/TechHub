@@ -35,7 +35,7 @@ export default function SignInButtons({
         <button
           type="button"
           onClick={() => signIn('azure-ad', { callbackUrl })}
-          className="rounded-full bg-ocean-500 px-5 py-3 text-sm font-semibold text-white hover:bg-ocean-400 transition"
+          className="btn-primary"
         >
           Sign in with Microsoft
         </button>
@@ -44,7 +44,7 @@ export default function SignInButtons({
         <button
           type="button"
           onClick={() => signIn('keycloak', { callbackUrl })}
-          className="rounded-full bg-ink-200 px-5 py-3 text-sm font-semibold text-ink-900 hover:bg-ink-100 transition"
+          className="btn-secondary"
         >
           Sign in with Keycloak
         </button>
@@ -53,7 +53,7 @@ export default function SignInButtons({
         <button
           type="button"
           onClick={handleCredentials}
-          className="rounded-full border border-ink-600 px-5 py-3 text-sm font-semibold text-ink-100 hover:border-ink-300 transition"
+          className="btn-secondary"
         >
           Use credentials
         </button>

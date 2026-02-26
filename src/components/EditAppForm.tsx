@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import SelectField, { SelectOption } from './SelectField';
+import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
+import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 
 interface EditAppFormProps {
   app: {
@@ -45,26 +47,7 @@ export default function EditAppForm({
 
   const existingIcon = app.icon ?? null;
   const displayIcon = useMemo(() => previewUrl ?? existingIcon, [existingIcon, previewUrl]);
-  const safeDisplayIcon = useMemo(() => {
-    if (!displayIcon) {
-      return null;
-    }
-    try {
-      if (displayIcon.startsWith('blob:')) {
-        return displayIcon;
-      }
-      const url = new URL(displayIcon, window.location.origin);
-      if (url.origin !== window.location.origin) {
-        return null;
-      }
-      if (!url.pathname.startsWith('/uploads/')) {
-        return null;
-      }
-      return url.toString();
-    } catch {
-      return null;
-    }
-  }, [displayIcon]);
+  const safeDisplayIcon = useMemo(() => sanitizeIconUrl(displayIcon), [displayIcon]);
 
   useEffect(() => {
     return () => {
@@ -77,6 +60,7 @@ export default function EditAppForm({
   return (
     <form
       action={(formData) => {
+        formData.set('csrfToken', getCsrfTokenFromCookie());
         setStatusMessage(null);
         setStatusTone(null);
         startTransition(() => {
@@ -103,18 +87,19 @@ export default function EditAppForm({
       encType="multipart/form-data"
       className="grid gap-3 md:grid-cols-2"
     >
+      <HiddenCsrfInput />
       <input type="hidden" name="id" value={app.id} />
       <input
         name="name"
         defaultValue={app.name}
         required
-        className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
+        className="input-field"
       />
       <input
         name="url"
         defaultValue={app.url}
         required
-        className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
+        className="input-field"
       />
       <SelectField
         name="categorySelect"
@@ -124,7 +109,7 @@ export default function EditAppForm({
       <input
         name="categoryNew"
         placeholder="New category"
-        className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
+        className="input-field"
       />
       <SelectField
         name="audience"
@@ -157,7 +142,7 @@ export default function EditAppForm({
       <textarea
         name="description"
         defaultValue={app.description ?? ''}
-        className="input-surface rounded-2xl px-4 py-3 text-sm text-ink-100 md:col-span-2"
+        className="input-field md:col-span-2"
         rows={2}
       />
       <div className="md:col-span-2">
@@ -177,7 +162,7 @@ export default function EditAppForm({
             }
             setPreviewUrl(URL.createObjectURL(file));
           }}
-          className="input-surface mt-2 w-full rounded-full px-4 py-2 text-xs text-ink-100"
+          className="input-field mt-2 py-2 text-xs"
         />
         {safeDisplayIcon ? (
           <div className="mt-3 flex items-center gap-3">
@@ -196,7 +181,7 @@ export default function EditAppForm({
       <button
         type="submit"
         disabled={isPending}
-        className="md:col-span-2 rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition disabled:opacity-60"
+        className="btn-primary md:col-span-2 disabled:opacity-60"
       >
         {isPending ? 'Saving…' : 'Save changes'}
       </button>

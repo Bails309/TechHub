@@ -130,13 +130,32 @@ model SsoConfig {
   updatedAt       DateTime @updatedAt
 }
 
-model SsoAudit {
+model AuditLog {
   id        String   @id @default(cuid())
-  provider  String
+  category  String   // auth | admin | config
   action    String
   actorId   String?
-  changes   Json?
+  targetId  String?
+  provider  String?
+  ip        String?
+  latency   Int?     // milliseconds
+  details   Json?
   createdAt DateTime @default(now())
+
+  @@index([category])
+  @@index([action])
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+model StorageConfig {
+  id        String   @id @default(cuid())
+  provider  String   @unique
+  enabled   Boolean  @default(false)
+  config    Json?
+  secretEnc String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model PasswordPolicy {

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useState, useTransition } from 'react';
+import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
 
 type AdminActionFormProps = {
   action: (formData: FormData) => void | Promise<void | { status: 'idle' | 'success' | 'error'; message: string }>;
@@ -25,6 +26,7 @@ export default function AdminActionForm({
   return (
     <form
       action={(formData) => {
+        formData.set('csrfToken', getCsrfTokenFromCookie());
         setMessage(null);
         setTone(null);
         startTransition(() => {
@@ -63,6 +65,7 @@ export default function AdminActionForm({
       }}
       className={className}
     >
+      <HiddenCsrfInput />
       {children}
       {message ? (
         <p

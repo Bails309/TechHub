@@ -29,16 +29,21 @@ async function safeRevalidateTag(tag: string) {
   }
 }
 import { prisma } from '../../lib/prisma';
+import { writeAuditLog } from '../../lib/audit';
+import { validateCsrf } from '../../lib/csrf';
+import { cookies } from 'next/headers';
 import { Prisma } from '@prisma/client';
 import { getServerAuthSession } from '../../lib/auth';
 import { invalidateUserMeta } from '../../lib/userCache';
-import { encryptSecret, hasSecretKey } from '../../lib/crypto';
+import { decryptSecret, encryptSecret, hasSecretKey } from '../../lib/crypto';
 // SSO rotation removed: previously used rotateSsoSecrets utilities
 import { hashPassword, validatePasswordComplexity } from '../../lib/password';
 import { getPasswordPolicy } from '../../lib/passwordPolicy';
 import { lookup } from 'dns/promises';
 import https from 'https';
 import ipaddr from 'ipaddr.js';
+import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
+import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 
 export type AdminActionState = { status: 'idle' | 'success' | 'error'; message: string };
 
@@ -101,6 +106,10 @@ const uploadSchema = z
     return ALLOWED_ICON_EXTENSIONS.has(extension) && ALLOWED_ICON_MIME_TYPES.has(file.type);
   }, { message: 'Invalid file type' });
 
+const storageProviderSchema = z.enum(['local', 's3', 'azure']);
+const storageIntentSchema = z.enum(['save', 'test']);
+const storageAuthSchema = z.enum(['connection-string', 'account-key']);
+
 async function saveIcon(file: File) {
   const parsed = uploadSchema.safeParse(file);
   if (!parsed.success) return undefined;
@@ -117,7 +126,57 @@ async function safeDeleteIcon(iconPath?: string) {
   }
 }
 
+function parseAzureConnectionString(raw: string) {
+  const accountMatch = raw.match(/AccountName=([^;]+)/i);
+  const keyMatch = raw.match(/AccountKey=([^;]+)/i);
+  if (!accountMatch || !keyMatch) return null;
+  return { account: accountMatch[1], key: keyMatch[1] };
+}
+
+async function testAzureStorageConnection(args: {
+  authMode: 'connection-string' | 'account-key';
+  connectionString?: string;
+  account?: string;
+  accountKey?: string;
+  container: string;
+  endpoint?: string;
+}) {
+  let client: BlobServiceClient | null = null;
+  if (args.authMode === 'connection-string') {
+    if (!args.connectionString) throw new Error('Connection string is required');
+    client = BlobServiceClient.fromConnectionString(args.connectionString);
+  } else {
+    if (!args.account || !args.accountKey) throw new Error('Account name and key are required');
+    const endpoint = args.endpoint || `https://${args.account}.blob.core.windows.net`;
+    const credential = new StorageSharedKeyCredential(args.account, args.accountKey);
+    client = new BlobServiceClient(endpoint, credential);
+  }
+
+  const containerClient = client.getContainerClient(args.container);
+  await containerClient.getProperties();
+}
+
+async function testS3StorageConnection(args: {
+  bucket: string;
+  region?: string;
+  endpoint?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  forcePathStyle?: boolean;
+}) {
+  const client = new S3Client({
+    region: args.region || process.env.S3_REGION,
+    endpoint: args.endpoint || process.env.S3_ENDPOINT,
+    forcePathStyle: args.forcePathStyle ?? (process.env.S3_FORCE_PATH_STYLE === 'true'),
+    credentials: args.accessKeyId && args.secretAccessKey
+      ? { accessKeyId: args.accessKeyId, secretAccessKey: args.secretAccessKey }
+      : undefined
+  });
+  await client.send(new HeadBucketCommand({ Bucket: args.bucket }));
+}
+
 export async function createApp(formData: FormData) {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as const;
   let session;
   try {
     // Attempt to get a real server session. In test environments the
@@ -142,7 +201,7 @@ export async function createApp(formData: FormData) {
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
     return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
   }
-  
+
 
   const payload = appSchema.safeParse({
     name: formData.get('name'),
@@ -213,12 +272,30 @@ export async function createApp(formData: FormData) {
     throw err;
   }
 
+  writeAuditLog({
+    category: 'admin',
+    action: 'app_created',
+    actorId: session.user.id,
+    details: { name: parsed.data.name, url: parsed.data.url },
+  });
+
   await safeRevalidatePath('/admin');
   await safeRevalidatePath('/');
   return { status: 'success', message: 'App created' } as const;
 }
 
 export async function deleteApp(formData: FormData) {
+  const csrfToken = String(formData.get('csrfToken') ?? '');
+  let csrfCookie = '';
+  try {
+    const jar = await cookies();
+    csrfCookie = jar?.get ? jar.get('XSRF-TOKEN')?.value ?? '' : '';
+  } catch {
+    csrfCookie = '';
+  }
+  if (!csrfToken) return { status: 'error', message: 'Missing CSRF token' } as const;
+  if (!csrfCookie) return { status: 'error', message: 'Missing CSRF cookie' } as const;
+  if (csrfToken !== csrfCookie) return { status: 'error', message: 'Invalid CSRF token' } as const;
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' } as const;
@@ -226,7 +303,7 @@ export async function deleteApp(formData: FormData) {
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
     return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
   }
-  
+
 
   const id = String(formData.get('id') ?? '');
   if (!id) {
@@ -251,12 +328,204 @@ export async function deleteApp(formData: FormData) {
     }
   }
 
+  writeAuditLog({
+    category: 'admin',
+    action: 'app_deleted',
+    actorId: session.user.id,
+    targetId: id,
+    details: { name: app?.name },
+  });
+
   await safeRevalidatePath('/admin');
   await safeRevalidatePath('/');
   return { status: 'success', message: 'App deleted' } as const;
 }
 
+export async function updateStorageConfig(
+  _prevState: AdminActionState,
+  formData: FormData
+): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
+
+  const provider = storageProviderSchema.safeParse(String(formData.get('provider') ?? ''));
+  if (!provider.success) return { status: 'error', message: 'Unknown provider' };
+
+  const intent = storageIntentSchema.safeParse(String(formData.get('intent') ?? 'save'));
+  if (!intent.success) return { status: 'error', message: 'Invalid action' };
+
+  const enabled = formData.get('enabled') === 'on';
+  const authMode = storageAuthSchema.safeParse(String(formData.get('authMode') ?? 'account-key'));
+  if (!authMode.success) return { status: 'error', message: 'Invalid auth mode' };
+
+  const container = String(formData.get('container') ?? '').trim();
+  const endpoint = String(formData.get('endpoint') ?? '').trim();
+  const account = String(formData.get('account') ?? '').trim();
+  const connectionString = String(formData.get('connectionString') ?? '').trim();
+  const accountKey = String(formData.get('accountKey') ?? '').trim();
+  const sasTtlMinutes = Number(formData.get('sasTtlMinutes') ?? 0) || null;
+  const clearSecret = formData.get('clearSecret') === 'on';
+  const bucket = String(formData.get('bucket') ?? '').trim();
+  const region = String(formData.get('region') ?? '').trim();
+  const accessKeyId = String(formData.get('accessKeyId') ?? '').trim();
+  const secretAccessKey = String(formData.get('secretAccessKey') ?? '').trim();
+  const forcePathStyle = formData.get('forcePathStyle') === 'on';
+
+  const existing = await prisma.storageConfig.findUnique({ where: { provider: provider.data } });
+  const existingSecret = existing?.secretEnc ? true : false;
+
+  if (intent.data === 'test') {
+    try {
+      if (provider.data === 'local') {
+        // Local storage requires no network test.
+      } else if (provider.data === 's3') {
+        if (!bucket) return { status: 'error', message: 'Bucket is required to test' };
+        const secret = secretAccessKey || (existing?.secretEnc ? decryptSecret(existing.secretEnc) : '');
+        await testS3StorageConnection({
+          bucket,
+          region: region || undefined,
+          endpoint: endpoint || undefined,
+          accessKeyId: accessKeyId || undefined,
+          secretAccessKey: secret || undefined,
+          forcePathStyle
+        });
+      } else {
+        if (!container) return { status: 'error', message: 'Container is required to test' };
+        if (authMode.data === 'connection-string') {
+          const secret = connectionString || (existing?.secretEnc ? decryptSecret(existing.secretEnc) : '');
+          await testAzureStorageConnection({
+            authMode: 'connection-string',
+            connectionString: secret,
+            container
+          });
+        } else {
+          const secret = accountKey || (existing?.secretEnc ? decryptSecret(existing.secretEnc) : '');
+          await testAzureStorageConnection({
+            authMode: 'account-key',
+            account,
+            accountKey: secret,
+            container,
+            endpoint: endpoint || undefined
+          });
+        }
+      }
+    } catch (error) {
+      return { status: 'error', message: error instanceof Error ? error.message : 'Connection test failed' };
+    }
+    await safeRevalidateTag('storage-config');
+    await safeRevalidatePath('/admin');
+    return { status: 'success', message: 'Storage test succeeded' };
+  }
+
+  if (enabled) {
+    if (provider.data === 'local') {
+      // no-op
+    } else if (provider.data === 's3') {
+      if (!bucket) return { status: 'error', message: 'Bucket is required' };
+      if (!secretAccessKey && !existingSecret && !clearSecret) {
+        return { status: 'error', message: 'Secret access key is required' };
+      }
+      if (!accessKeyId && !existingSecret && !clearSecret) {
+        return { status: 'error', message: 'Access key ID is required' };
+      }
+    } else {
+      if (!container) {
+        return { status: 'error', message: 'Container name is required' };
+      }
+      if (authMode.data === 'connection-string') {
+        if (!connectionString && !existingSecret && !clearSecret) {
+          return { status: 'error', message: 'Connection string is required' };
+        }
+      } else {
+        if (!account) return { status: 'error', message: 'Account name is required' };
+        if (!accountKey && !existingSecret && !clearSecret) {
+          return { status: 'error', message: 'Account key is required' };
+        }
+      }
+    }
+  }
+
+  if (!hasSecretKey() && (connectionString || accountKey || secretAccessKey)) {
+    return { status: 'error', message: 'SSO_MASTER_KEY is required to save secrets' };
+  }
+
+  const config: Prisma.InputJsonValue | Prisma.NullTypes.JsonNull = enabled
+    ? provider.data === 's3'
+      ? {
+        bucket,
+        region: region || null,
+        endpoint: endpoint || null,
+        accessKeyId: accessKeyId || null,
+        forcePathStyle
+      }
+      : provider.data === 'azure'
+        ? {
+          authMode: authMode.data,
+          container,
+          account: account || null,
+          endpoint: endpoint || null,
+          sasTtlMinutes: sasTtlMinutes || null
+        }
+        : {}
+    : Prisma.JsonNull;
+
+  const updateData: {
+    enabled: boolean;
+    config: Prisma.InputJsonValue | Prisma.NullTypes.JsonNull;
+    secretEnc?: string | null;
+  } = {
+    enabled,
+    config
+  };
+
+  if (clearSecret) {
+    updateData.secretEnc = null;
+  }
+  if (connectionString) {
+    updateData.secretEnc = encryptSecret(connectionString);
+  }
+  if (accountKey) {
+    updateData.secretEnc = encryptSecret(accountKey);
+  }
+  if (secretAccessKey) {
+    updateData.secretEnc = encryptSecret(secretAccessKey);
+  }
+
+  await prisma.$transaction([
+    prisma.storageConfig.upsert({
+      where: { provider: provider.data },
+      update: updateData,
+      create: {
+        provider: provider.data,
+        enabled,
+        config,
+        secretEnc: updateData.secretEnc ?? null
+      }
+    }),
+    prisma.storageConfig.updateMany({
+      where: { provider: { in: ['local', 's3', 'azure'], not: provider.data } },
+      data: { enabled: false, config: Prisma.JsonNull }
+    })
+  ]);
+
+  writeAuditLog({
+    category: 'config',
+    action: 'storage_config_saved',
+    actorId: session.user.id,
+    provider: provider.data,
+    details: { enabled, config },
+  });
+
+  await safeRevalidateTag('storage-config');
+  await safeRevalidatePath('/admin');
+  return { status: 'success', message: enabled ? 'Storage settings saved' : 'Storage disabled' };
+}
+
 export async function updateApp(formData: FormData) {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as const;
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' } as const;
@@ -264,7 +533,7 @@ export async function updateApp(formData: FormData) {
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
     return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
   }
-  
+
 
   const parsed = updateSchema.safeParse({
     id: formData.get('id'),
@@ -333,7 +602,7 @@ export async function updateApp(formData: FormData) {
         });
       }
     });
-    } catch (err) {
+  } catch (err) {
     // If update failed, and we uploaded a new icon, remove it to avoid orphaned files
     if (iconPath && existingApp?.icon !== iconPath) {
       await safeDeleteIcon(iconPath);
@@ -350,6 +619,14 @@ export async function updateApp(formData: FormData) {
     }
   }
 
+  writeAuditLog({
+    category: 'admin',
+    action: 'app_updated',
+    actorId: session.user.id,
+    targetId: parsed.data.id,
+    details: { name: parsed.data.name, url: parsed.data.url },
+  });
+
   await safeRevalidatePath('/admin');
   await safeRevalidatePath('/');
   return { status: 'success', message: 'App updated' } as const;
@@ -361,6 +638,7 @@ const userRoleSchema = z.object({
 });
 
 export async function updateUserRoles(formData: FormData): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -428,7 +706,7 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
           });
         }
       });
-      } catch (err) {
+    } catch (err) {
       if ((err as Error).message === 'last-admin') {
         return { status: 'error', message: 'last-admin' };
       }
@@ -452,11 +730,39 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
     // ignore cache invalidation failures
   }
 
+  // Audit role changes
+  const allRoles = await prisma.role.findMany({ select: { id: true, name: true } });
+  const roleNameMap = new Map(allRoles.map((r) => [r.id, r.name]));
+  const previousRoleIds = new Set(formData.getAll('previousRoles').map(String).filter(Boolean));
+  for (const roleId of nextRoles) {
+    if (!previousRoleIds.has(roleId)) {
+      writeAuditLog({
+        category: 'admin',
+        action: 'role_assigned',
+        actorId: session.user.id,
+        targetId: parsed.data.userId,
+        details: { roleName: roleNameMap.get(roleId) ?? roleId },
+      });
+    }
+  }
+  for (const roleId of previousRoleIds) {
+    if (!nextRoles.includes(roleId)) {
+      writeAuditLog({
+        category: 'admin',
+        action: 'role_removed',
+        actorId: session.user.id,
+        targetId: parsed.data.userId,
+        details: { roleName: roleNameMap.get(roleId) ?? roleId },
+      });
+    }
+  }
+
   await safeRevalidatePath('/admin');
   return { status: 'success', message: 'User roles updated' };
 }
 
 export async function deleteUser(formData: FormData): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const sessionCheck = await getServerAuthSession();
   if (!sessionCheck?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -520,6 +826,14 @@ export async function deleteUser(formData: FormData): Promise<AdminActionState> 
     // ignore
   }
 
+  writeAuditLog({
+    category: 'admin',
+    action: 'user_deleted',
+    actorId: sessionCheck.user.id,
+    targetId: userId,
+    details: { email: target.email },
+  });
+
   await safeRevalidatePath('/admin');
   await safeRevalidatePath('/');
   return { status: 'success', message: 'User deleted' };
@@ -530,6 +844,7 @@ const roleSchema = z.object({
 });
 
 export async function createRole(formData: FormData): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -556,11 +871,19 @@ export async function createRole(formData: FormData): Promise<AdminActionState> 
     return { status: 'error', message: err instanceof Error ? err.message : 'Failed to create role' };
   }
 
+  writeAuditLog({
+    category: 'admin',
+    action: 'role_created',
+    actorId: session.user.id,
+    details: { name: payload.data.name },
+  });
+
   await safeRevalidatePath('/admin');
   return { status: 'success', message: 'Role created' };
 }
 
 export async function deleteRole(formData: FormData): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -595,6 +918,14 @@ export async function deleteRole(formData: FormData): Promise<AdminActionState> 
     return { status: 'error', message: err instanceof Error ? err.message : 'Failed to delete role' };
   }
 
+  writeAuditLog({
+    category: 'admin',
+    action: 'role_deleted',
+    actorId: session.user.id,
+    targetId: roleId,
+    details: { name: role.name },
+  });
+
   await safeRevalidatePath('/admin');
   return { status: 'success', message: 'Role deleted' };
 }
@@ -620,6 +951,7 @@ export async function createLocalUser(
   _prevState: CreateLocalUserState,
   formData: FormData
 ): Promise<CreateLocalUserState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -708,6 +1040,14 @@ export async function createLocalUser(
     // ignore cache errors
   }
 
+  writeAuditLog({
+    category: 'admin',
+    action: 'user_created',
+    actorId: session.user.id,
+    targetId: createdUserId ?? undefined,
+    details: { email: payload.data.email, roles: roleIds },
+  });
+
   await safeRevalidatePath('/admin');
   return { status: 'success', message: 'Local user created' };
 }
@@ -722,6 +1062,7 @@ export async function linkSsoAccount(
   _prevState: LinkSsoAccountState,
   formData: FormData
 ): Promise<LinkSsoAccountState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -784,19 +1125,18 @@ export async function linkSsoAccount(
       });
 
       await tx.passwordHistory.deleteMany({ where: { userId: user.id } });
+    });
 
-      await tx.ssoAudit.create({
-        data: {
-          provider: payload.data.provider,
-          action: 'link',
-          actorId: session?.user?.id ?? null,
-          changes: {
-            userId: user.id,
-            providerAccountId: payload.data.providerAccountId,
-            email: user.email
-          }
-        }
-      });
+    writeAuditLog({
+      category: 'config',
+      action: 'sso_account_linked',
+      actorId: session?.user?.id ?? null,
+      targetId: user.id,
+      provider: payload.data.provider,
+      details: {
+        providerAccountId: payload.data.providerAccountId,
+        email: user.email
+      },
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -833,6 +1173,7 @@ const passwordPolicySchema = z.object({
 });
 
 export async function updatePasswordPolicy(formData: FormData): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as AdminActionState;
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' } as AdminActionState;
@@ -863,6 +1204,13 @@ export async function updatePasswordPolicy(formData: FormData): Promise<AdminAct
   } catch (err) {
     return { status: 'error', message: err instanceof Error ? err.message : 'Failed to update policy' } as AdminActionState;
   }
+
+  writeAuditLog({
+    category: 'config',
+    action: 'password_policy_updated',
+    actorId: session.user.id,
+    details: payload.data,
+  });
 
   await safeRevalidatePath('/admin');
   return { status: 'success', message: 'Password policy updated' } as AdminActionState;
@@ -1081,6 +1429,7 @@ export async function updateSsoConfig(
   _prevState: SsoActionState,
   formData: FormData
 ): Promise<SsoActionState> {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -1116,13 +1465,12 @@ export async function updateSsoConfig(
       update: { enabled, config: Prisma.JsonNull, clientSecretEnc: null },
       create: { provider: 'credentials', enabled, config: Prisma.JsonNull }
     });
-    await prisma.ssoAudit.create({
-      data: {
-        provider: 'credentials',
-        action: 'save',
-        actorId: session.user.id,
-        changes: { enabled }
-      }
+    writeAuditLog({
+      category: 'config',
+      action: 'sso_config_saved',
+      actorId: session.user.id,
+      provider: 'credentials',
+      details: { enabled },
     });
     await safeRevalidateTag('sso-config');
     await safeRevalidatePath('/admin');
@@ -1237,17 +1585,16 @@ export async function updateSsoConfig(
       }
     });
 
-    await prisma.ssoAudit.create({
-      data: {
-        provider: 'azure-ad',
-        action: 'save',
-        actorId: session.user.id,
-        changes: {
-          enabled: payload.enabled,
-          config,
-          secretUpdated: Boolean(payload.clientSecret) || payload.clearSecret
-        }
-      }
+    writeAuditLog({
+      category: 'config',
+      action: 'sso_config_saved',
+      actorId: session.user.id,
+      provider: 'azure-ad',
+      details: {
+        enabled: payload.enabled,
+        config,
+        secretUpdated: Boolean(payload.clientSecret) || payload.clearSecret
+      },
     });
 
     await safeRevalidateTag('sso-config');
@@ -1309,17 +1656,16 @@ export async function updateSsoConfig(
     }
   });
 
-  await prisma.ssoAudit.create({
-    data: {
-      provider: 'keycloak',
-      action: 'save',
-      actorId: session.user.id,
-      changes: {
-        enabled: payload.enabled,
-        config,
-        secretUpdated: Boolean(payload.clientSecret) || payload.clearSecret
-      }
-    }
+  writeAuditLog({
+    category: 'config',
+    action: 'sso_config_saved',
+    actorId: session.user.id,
+    provider: 'keycloak',
+    details: {
+      enabled: payload.enabled,
+      config,
+      secretUpdated: Boolean(payload.clientSecret) || payload.clearSecret
+    },
   });
 
   await safeRevalidateTag('sso-config');

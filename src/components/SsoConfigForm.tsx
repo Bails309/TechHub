@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { useFormState } from 'react-dom';
 import { updateSsoConfig } from '@/app/admin/actions';
+import HiddenCsrfInput from './HiddenCsrfInput';
 
 export type SsoFormConfig = {
   enabled: boolean;
@@ -127,7 +128,7 @@ export default function SsoConfigForm({
             save SSO secrets. Generate one with:
           </p>
           <pre className="mt-2 rounded-xl bg-black/30 px-3 py-2 text-xs text-amber-50">
-node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&apos;base64&apos;))&quot;
+            node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&apos;base64&apos;))&quot;
           </pre>
           <p className="mt-2 text-xs text-amber-100">
             Then restart the app after updating <span className="text-amber-50">.env</span>.
@@ -151,6 +152,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
           Tenant ID only. Do not paste the OpenID discovery URL.
         </p>
         <form action={azureAction} className="space-y-4">
+          <HiddenCsrfInput />
           <input type="hidden" name="provider" value="azure-ad" />
           <label className="flex items-center gap-2 text-sm text-ink-200">
             <input
@@ -172,7 +174,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               onChange={(event) =>
                 setAzureForm((current) => ({ ...current, clientId: event.target.value }))
               }
-              className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+              className="input-field"
             />
             <input
               name="tenantId"
@@ -181,7 +183,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               onChange={(event) =>
                 setAzureForm((current) => ({ ...current, tenantId: event.target.value }))
               }
-              className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+              className="input-field"
             />
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -193,7 +195,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               onChange={(event) =>
                 setAzureForm((current) => ({ ...current, clientSecret: event.target.value }))
               }
-              className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+              className="input-field"
             />
             <label className="flex items-center gap-2 text-xs text-ink-300">
               <input
@@ -213,7 +215,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               type="submit"
               name="intent"
               value="save"
-              className="rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
+              className="btn-primary btn-small"
             >
               Save settings
             </button>
@@ -221,7 +223,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               type="submit"
               name="intent"
               value="test"
-              className="rounded-full border border-ink-600 px-4 py-2 text-xs font-semibold text-ink-100 hover:border-ink-300 transition"
+              className="btn-secondary btn-small"
             >
               Test connection
             </button>
@@ -247,6 +249,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
           Issuer base URL only (no <span className="text-ink-100">/.well-known/openid-configuration</span>).
         </p>
         <form action={keycloakAction} className="space-y-4">
+          <HiddenCsrfInput />
           <input type="hidden" name="provider" value="keycloak" />
           <label className="flex items-center gap-2 text-sm text-ink-200">
             <input
@@ -268,7 +271,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               onChange={(event) =>
                 setKeycloakForm((current) => ({ ...current, clientId: event.target.value }))
               }
-              className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+              className="input-field"
             />
             <input
               name="issuer"
@@ -277,7 +280,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               onChange={(event) =>
                 setKeycloakForm((current) => ({ ...current, issuer: event.target.value }))
               }
-              className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+              className="input-field"
             />
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -289,7 +292,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               onChange={(event) =>
                 setKeycloakForm((current) => ({ ...current, clientSecret: event.target.value }))
               }
-              className="input-surface rounded-2xl px-4 py-2 text-sm text-ink-100"
+              className="input-field"
             />
             <label className="flex items-center gap-2 text-xs text-ink-300">
               <input
@@ -309,7 +312,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               type="submit"
               name="intent"
               value="save"
-              className="rounded-full bg-ocean-500 px-4 py-2 text-xs font-semibold text-white hover:bg-ocean-400 transition"
+              className="btn-primary btn-small"
             >
               Save settings
             </button>
@@ -317,7 +320,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
               type="submit"
               name="intent"
               value="test"
-              className="rounded-full border border-ink-600 px-4 py-2 text-xs font-semibold text-ink-100 hover:border-ink-300 transition"
+              className="btn-secondary btn-small"
             >
               Test connection
             </button>
@@ -332,6 +335,7 @@ node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&
         source={credentials?.source}
       >
         <form action={credentialsAction} className="space-y-4">
+          <HiddenCsrfInput />
           <input type="hidden" name="provider" value="credentials" />
           <label className="flex items-center gap-2 text-sm text-ink-200">
             <input

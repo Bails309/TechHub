@@ -21,10 +21,18 @@ vi.mock('next/cache', () => ({
   }
 }));
 
+vi.mock('@/lib/csrf', () => ({ validateCsrf: async () => true }));
+vi.mock('../src/lib/csrf', () => ({ validateCsrf: async () => true }));
+
 const deleteIconMock = vi.fn();
 const saveIconMock = vi.fn().mockResolvedValue('/uploads/fake.png');
 
 vi.mock('@/lib/storage', () => ({
+  saveIcon: saveIconMock,
+  deleteIcon: deleteIconMock
+}));
+
+vi.mock('../src/lib/storage', () => ({
   saveIcon: saveIconMock,
   deleteIcon: deleteIconMock
 }));
@@ -54,6 +62,14 @@ vi.mock('@/lib/passwordPolicy', () => ({ getPasswordPolicy: async () => ({ histo
 
 // Simulate a DB failure inside the transaction
 vi.mock('@/lib/prisma', () => ({
+  prisma: {
+    $transaction: async (_fn: any) => {
+      throw new Error('simulated-db-failure');
+    }
+  }
+}));
+
+vi.mock('../src/lib/prisma', () => ({
   prisma: {
     $transaction: async (_fn: any) => {
       throw new Error('simulated-db-failure');

@@ -4,11 +4,16 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: techhub
-      POSTGRES_PASSWORD: techhub
-      POSTGRES_DB: techhub
+      # For local development sensible defaults are provided, but in
+      # production you MUST override these values with secure credentials
+      POSTGRES_USER: ${POSTGRES_USER:-techhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-techhub}
+      POSTGRES_DB: ${POSTGRES_DB:-techhub}
     ports:
-      - "127.0.0.1:5432:5432"
+      # Bind the container Postgres port to the host. The host IP remains
+      # localhost for safety; the host port is configurable via
+      # POSTGRES_PORT in the environment (see .env.example).
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
   app:

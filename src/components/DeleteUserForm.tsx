@@ -22,7 +22,7 @@ export default function DeleteUserForm({ userId, userEmail, action }: Props) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="rounded-full border border-rose-400 px-3 py-1 text-xs text-rose-300 hover:bg-rose-500/10 transition"
+          className="btn-danger btn-small"
         >
           Delete
         </button>
@@ -35,19 +35,19 @@ export default function DeleteUserForm({ userId, userEmail, action }: Props) {
               placeholder={userEmail ? `Type ${userEmail} to confirm` : 'Type email to confirm'}
               value={typed}
               onChange={(e: ChangeEvent<HTMLInputElement>) => setTyped(e.target.value)}
-              className="input-surface rounded-full px-3 py-1 text-xs text-ink-100"
+              className="input-field"
             />
             <button
               type="submit"
               disabled={!matches}
-              className="rounded-full bg-rose-500 px-3 py-1 text-xs font-semibold text-white hover:bg-rose-400 transition disabled:opacity-50"
+              className="btn-danger btn-small disabled:opacity-50"
             >
               Confirm delete
             </button>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-full border border-ink-700 px-3 py-1 text-xs text-ink-200 hover:border-ink-400 transition"
+              className="btn-secondary btn-small"
             >
               Cancel
             </button>

@@ -37,4 +37,3 @@ TRUSTED_PROXIES=10.0.0.0/8,192.168.0.0/16
 
 - To verify header behavior locally, run the app behind a simple proxy (nginx) that forwards `X-Forwarded-For` and set `TRUSTED_PROXIES` to the proxy's address. Confirm the application logs/use the expected client IP rather than the proxy address.
 
-If you'd like, I can add the `TRUSTED_PROXIES` parsing helper and wire it into `src/lib/auth.ts` next.

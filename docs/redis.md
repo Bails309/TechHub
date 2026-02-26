@@ -1,68 +1,73 @@
-## Redis configuration and usage
+## Redis Configuration and Usage
 
 This document describes how TechHub uses Redis, the local `docker-compose` defaults, and how to configure an external Redis for production or CI.
 
-### What Redis is used for
+### What Redis Is Used For
 
-- Server-side user metadata cache (roles and `mustChangePassword`). This keeps sessions authoritative without forcing every request to hit the database.
-- Optional rate-limiter backend when `RATE_LIMIT_STORE=redis`.
+- **Server-side user metadata cache** (roles and `mustChangePassword`). Keeps sessions authoritative without forcing every request to hit the database.
+- **Rate-limiter backend** when `RATE_LIMIT_STORE=redis`.
 
-### Local development (out of the box)
+### Local Development (Out of the Box)
 
-- The repository's `docker-compose.yml` starts a Redis container named `redis` and sets `REDIS_URL` in the `app` service to `redis://redis:6379` by default. Running `docker compose up --build` will provide a working Redis instance for local development.
-- The compose file also sets `RATE_LIMIT_STORE=redis` by default for local runs so the rate limiter uses Redis instead of the in-memory store.
+The repository's `docker-compose.yml` starts a Redis container named `redis` and sets `REDIS_URL` in the `app` service to `redis://redis:6379` by default. Running `docker compose up --build` provides a working Redis instance. The compose file also sets `RATE_LIMIT_STORE=redis` by default so the rate limiter uses Redis locally.
 
-### Using an external Redis
+### Using an External Redis
 
-- To use an external Redis (recommended for production), set `REDIS_URL` in your environment to point to the external host, for example:
+To use an external Redis (recommended for production), set `REDIS_URL` in your environment:
 
 ```
 REDIS_URL=redis://:password@redis.example.com:6379
 ```
 
-- Optionally set `REDIS_PASSWORD` and `REDIS_TLS=true` if your provider requires separate password/TLS flags. The app will pass TLS options to `ioredis` when `REDIS_TLS=true`.
+- Optionally set `REDIS_PASSWORD` and `REDIS_TLS=true` if your provider requires separate password/TLS flags. The app passes TLS options to `ioredis` when `REDIS_TLS=true`.
+- Ensure `RATE_LIMIT_STORE=redis` is set in your production environment.
 
-- Ensure `RATE_LIMIT_STORE=redis` is set in your production environment to enable the Redis-backed rate limiter.
+> **Note:** In production the application enforces a centralized rate limiter. If `RATE_LIMIT_STORE` is not set to `redis`, the application will refuse to start (fail fast) to avoid insecure memory-based rate limiting across multiple instances. Use the in-memory store only for single-process local testing.
 
-### Failure and behavior
+### Failure Behavior
 
-- The application treats Redis as the authoritative store for user metadata and (when `RATE_LIMIT_STORE=redis`) for rate limiting. There is no silent in-memory fallback in this mode. If `RATE_LIMIT_STORE=redis` and `REDIS_URL` is not set or Redis cannot be reached, the application will fail fast. This prevents TOCTOU/inconsistency issues and enforces production parity during development and CI.
+The application treats Redis as the authoritative store for user metadata and (when `RATE_LIMIT_STORE=redis`) for rate limiting. There is no silent in-memory fallback. If `RATE_LIMIT_STORE=redis` and Redis cannot be reached, the application will fail fast. This prevents TOCTOU/inconsistency issues and enforces production parity.
 
-- For local development run `docker compose up --build` — the included compose file starts a `redis` service and the app will default to `REDIS_URL=redis://redis:6379`. In CI and production ensure `REDIS_URL` points to a reachable Redis endpoint (TLS/password support available via `rediss://` and `REDIS_PASSWORD`).
+**Operational guidance:**
 
-### Security and operations
+- For production, provide a highly available Redis (clustered or managed service) and point `REDIS_URL` at it. Configure `REDIS_PASSWORD`/`REDIS_TLS` as needed.
+- If you must run without Redis in development, set `RATE_LIMIT_STORE=memory` locally, but do not use this in any multi-host environment.
+
+### Security and Operations
 
 - Use ACLs, network rules, and TLS when running Redis in production. Don't expose Redis directly to the public internet.
-- Monitor latency and eviction metrics. When using Redis for rate limiting, misconfiguration can cause service disruptions if Redis becomes unavailable.
+- Monitor latency and eviction metrics. Misconfiguration can cause service disruptions if Redis becomes unavailable.
 
 ### CI
 
-- CI workflows in `.github/workflows/ci.yml` now start a Redis service and set `REDIS_URL=redis://localhost:6379` and `RATE_LIMIT_STORE=redis` for pipeline runs so tests exercise the Redis-backed behavior.
+CI workflows in `.github/workflows/ci.yml` start a Redis service and set `REDIS_URL=redis://localhost:6379` and `RATE_LIMIT_STORE=redis` so tests exercise the Redis-backed behavior.
 
-### Azure Container Apps / Deployment notes
+For the `docker-build` smoke test job, the workflow starts a Redis container and links it into the container built from the app image, passing `REDIS_URL=redis://redis:6379` and `RATE_LIMIT_STORE=redis`.
 
-- When deploying to Azure Container Apps (or other container platforms), prefer injecting `REDIS_URL` and `REDIS_PASSWORD` as runtime environment variables (platform UI, `az` CLI, or linked Key Vault) rather than baking them into the image.
+If you want CI to run without Redis, remove the Redis service block and omit the environment variables — tests will fall back to in-memory stores, but that is not recommended for production parity.
 
-- Example: using Azure Container Apps with plain env-vars (quick, less secure):
+### Azure Container Apps / Deployment Notes
+
+When deploying to Azure Container Apps (or other container platforms), inject `REDIS_URL` and `REDIS_PASSWORD` as runtime environment variables rather than baking them into the image.
+
+**Quick (less secure):**
 
 ```bash
 az containerapp create \
-	--name techhub-app \
-	--resource-group my-rg \
-	--image myregistry/techhub:latest \
-	--env-vars REDIS_URL="rediss://my-redis.redis.cache.windows.net:6380" REDIS_PASSWORD="<your-password>"
+  --name techhub-app \
+  --resource-group my-rg \
+  --image myregistry/techhub:latest \
+  --env-vars REDIS_URL="rediss://my-redis.redis.cache.windows.net:6380" REDIS_PASSWORD="<your-password>"
 ```
 
-- Recommended: store the Redis password in Azure Key Vault and reference it from the Container App as a secret. This keeps secrets out of CI logs and the image.
+**Recommended — store secrets in Azure Key Vault:**
 
-1. Create or import the secret into Key Vault:
+1. Create or import the secret:
 
-```bash
-az keyvault secret set --vault-name my-kv --name REDIS-PASSWORD --value "<your-password>"
-```
+   ```bash
+   az keyvault secret set --vault-name my-kv --name REDIS-PASSWORD --value "<your-password>"
+   ```
 
-2. Grant the Container App access to the Key Vault and reference the secret as an environment variable in the Container App configuration. In the Container App YAML or via `az containerapp update` you can reference Key Vault secrets; the platform will inject the value at runtime as `REDIS_PASSWORD`.
+2. Grant the Container App access to Key Vault and reference the secret as an environment variable in the Container App configuration. The platform injects the value at runtime as `REDIS_PASSWORD`.
 
-- If you use Azure Cache for Redis, prefer the provided `rediss://` endpoints for TLS. Ensure the client in `src/lib/userCache.ts` and `src/lib/rateLimit.ts` are configured to use TLS when `REDIS_TLS=true` or when a `rediss://` scheme is present.
-
-- Summary: platform env-vars override local `.env` behavior. Keep secrets in Key Vault and wire them into Container Apps at runtime for best security.
+If you use Azure Cache for Redis, prefer the `rediss://` endpoints for TLS. Ensure the clients in `src/lib/userCache.ts` and `src/lib/rateLimit.ts` use TLS when `REDIS_TLS=true` or when a `rediss://` scheme is present.

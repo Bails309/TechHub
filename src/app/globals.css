@@ -2,6 +2,49 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+
+  /* Buttons */
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-full bg-ocean-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ocean-400 disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-full border border-ink-600 bg-transparent px-5 py-2.5 text-sm font-medium text-ink-100 transition hover:border-ink-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center rounded-full bg-rose-500/10 border border-rose-500/20 px-5 py-2.5 text-sm font-semibold text-rose-400 transition hover:bg-rose-500/20 hover:border-rose-500/30;
+  }
+
+  .btn-small {
+    @apply px-4 py-2 text-xs font-semibold;
+  }
+
+  /* Inputs & Forms */
+  .input-field {
+    @apply w-full rounded-2xl border border-ink-700 bg-ink-900/50 px-4 py-3 text-sm text-ink-50 transition focus:border-ocean-500 focus:outline-none focus:ring-1 focus:ring-ocean-500;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-ink-200 mb-2;
+  }
+
+  /* Structural */
+  .card-panel {
+    @apply rounded-3xl border border-ink-800 bg-ink-900/40 p-6 shadow-glow;
+  }
+
+  /* Admin Tabs */
+  .tab-active {
+    @apply bg-ocean-500/20 text-ocean-300 border border-ocean-500/40;
+  }
+
+  .tab-inactive {
+    @apply text-ink-300 hover:text-ink-100 hover:bg-white/5 border border-transparent;
+  }
+}
+
 :root {
   color-scheme: dark;
   --capita-navy: #02083c;
@@ -49,7 +92,7 @@ html[data-theme='light'] {
   --input-bg-solid: #ffffff;
   --input-border: rgba(2, 8, 60, 0.15);
   --select-hover-bg: rgba(2, 8, 60, 0.08);
-  --select-selected-bg: rgba(0, 255, 255, 0.2);
+  --select-selected-bg: rgba(16, 214, 166, 0.18);
   --launch-bg: rgba(16, 214, 166, 0.18);
   --launch-border: rgba(16, 214, 166, 0.55);
   --launch-text: #0b2f25;
@@ -139,6 +182,7 @@ html[data-theme='light'] .modal-backdrop {
   box-shadow: 0 12px 24px -18px rgba(16, 214, 166, 0.6);
 }
 
+/* --- Light Theme Text Overrides --- */
 html[data-theme='light'] .text-ink-50,
 html[data-theme='light'] .text-ink-100 {
   color: var(--text-dark);
@@ -146,18 +190,85 @@ html[data-theme='light'] .text-ink-100 {
 
 html[data-theme='light'] .text-ink-200 {
   color: var(--text-light);
+  /* #666666 */
 }
 
 html[data-theme='light'] .text-ink-300 {
   color: #3f3f46;
+  /* zinc-700 */
 }
 
 html[data-theme='light'] .text-ink-400 {
   color: #52525b;
+  /* zinc-600 */
 }
 
+html[data-theme='light'] .text-ink-500 {
+  color: #71717a;
+  /* zinc-500 */
+}
+
+html[data-theme='light'] .text-white {
+  color: var(--text-dark);
+}
+
+/* --- Light Theme Border Overrides --- */
 html[data-theme='light'] .border-ink-600,
 html[data-theme='light'] .border-ink-700,
 html[data-theme='light'] .border-ink-800 {
-  border-color: rgba(2, 8, 60, 0.2);
+  border-color: rgba(2, 8, 60, 0.12);
+  /* Subtle dark border */
+}
+
+html[data-theme='light'] .border-ink-800\/50 {
+  border-color: rgba(2, 8, 60, 0.08);
+  /* Even subtler for /50 opacity variants */
+}
+
+/* --- Light Theme Background Overrides --- */
+html[data-theme='light'] .bg-ink-900,
+html[data-theme='light'] .bg-\[\#0A0A0A\] {
+  background-color: #ffffff;
+}
+
+html[data-theme='light'] .bg-ink-800 {
+  background-color: rgba(2, 8, 60, 0.04);
+}
+
+html[data-theme='light'] .bg-ink-800\/50,
+html[data-theme='light'] .bg-ink-900\/50,
+html[data-theme='light'] .bg-\[\#0A0A0A\]\/50 {
+  background-color: rgba(255, 255, 255, 0.6);
+}
+
+html[data-theme='light'] .bg-ink-800\/80 {
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+/* --- Semantic Component Overrides --- */
+html[data-theme='light'] .card-panel {
+  background-color: rgba(255, 255, 255, 0.75);
+  border-color: rgba(2, 8, 60, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+}
+
+html[data-theme='light'] .input-field {
+  background-color: rgba(255, 255, 255, 0.95);
+  border-color: rgba(2, 8, 60, 0.15);
+  color: var(--text-dark);
+}
+
+html[data-theme='light'] .tab-active {
+  background-color: rgba(16, 214, 166, 0.15);
+  color: #0b2f25;
+  border-color: rgba(16, 214, 166, 0.4);
+}
+
+html[data-theme='light'] .tab-inactive {
+  color: var(--text-light);
+}
+
+html[data-theme='light'] .tab-inactive:hover {
+  color: var(--text-dark);
+  background-color: rgba(0, 0, 0, 0.05);
 }

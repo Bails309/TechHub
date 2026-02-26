@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ExternalLink, LayoutGrid } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 
 export interface AppCardProps {
   app: {
@@ -18,6 +19,7 @@ export interface AppCardProps {
 export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [iconError, setIconError] = useState(false);
+  const safeIcon = useMemo(() => sanitizeIconUrl(app.icon), [app.icon]);
 
   const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
     event.dataTransfer.setData('text/plain', app.id);
@@ -50,9 +52,8 @@ export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
       onDragEnd={handleDragEnd}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      className={`glass rounded-3xl p-5 flex flex-col gap-3 hover:shadow-glow transition ${
-        isDragging ? 'opacity-60' : ''
-      }`}
+      className={`glass rounded-3xl p-5 flex flex-col gap-3 hover:shadow-glow transition ${isDragging ? 'opacity-60' : ''
+        }`}
     >
       <div className="flex items-start justify-between">
         <div>
@@ -61,9 +62,9 @@ export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
           </p>
           <div className="mt-2 flex items-center gap-3">
             <div className="h-10 w-10 rounded-2xl bg-white/10 flex items-center justify-center">
-              {app.icon && !iconError ? (
+              {safeIcon && !iconError ? (
                 <img
-                  src={app.icon}
+                  src={safeIcon}
                   alt=""
                   className="h-8 w-8 object-contain"
                   onError={() => setIconError(true)}
@@ -81,10 +82,11 @@ export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
         <p className="text-sm text-ink-200 leading-relaxed">{app.description}</p>
       ) : null}
       <Link
-        href={app.url}
+        href={`/api/launch/${app.id}`}
         target="_blank"
         className="launch-button mt-auto inline-flex items-center justify-between rounded-2xl px-4 py-2 text-sm transition"
         draggable={false}
+        prefetch={false}
       >
         Launch
         <span className="text-ink-400">↗</span>
