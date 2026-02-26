@@ -42,6 +42,8 @@ import { getPasswordPolicy } from '../../lib/passwordPolicy';
 import { lookup } from 'dns/promises';
 import https from 'https';
 import ipaddr from 'ipaddr.js';
+import { getStorageConfigMapWithDeps, StorageProviderId } from '@/lib/storageConfig';
+import { invalidateStorageClients } from '@/lib/storage';
 import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 

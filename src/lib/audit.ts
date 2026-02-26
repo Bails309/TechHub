@@ -22,7 +22,7 @@ export interface AuditEntry {
  */
 export async function writeAuditLog(entry: AuditEntry) {
     try {
-        return await prisma.auditLog.create({
+        const result = await prisma.auditLog.create({
             data: {
                 category: entry.category,
                 action: entry.action,
@@ -34,9 +34,32 @@ export async function writeAuditLog(entry: AuditEntry) {
                 details: entry.details ?? undefined,
             },
         });
+
+        // Probabilistic cleanup: 5% chance to delete logs older than 90 days.
+        if (Math.random() < 0.05) {
+            void cleanupAuditLogs();
+        }
+
+        return result;
     } catch (err) {
         console.error('[audit] Failed to write audit log entry:', err);
         return null;
+    }
+}
+
+async function cleanupAuditLogs() {
+    try {
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        await prisma.auditLog.deleteMany({
+            where: {
+                createdAt: {
+                    lt: ninetyDaysAgo
+                }
+            }
+        });
+    } catch (err) {
+        console.error('[audit] Failed to clean up audit logs:', err);
     }
 }
 
@@ -46,17 +69,20 @@ export async function writeAuditLog(entry: AuditEntry) {
  */
 export async function getAverageLatency(limit = 100) {
     try {
-        const result = await prisma.auditLog.aggregate({
-            _avg: {
-                latency: true
-            },
+        const logs = await prisma.auditLog.findMany({
+            select: { latency: true },
             where: {
                 action: 'app_launch',
                 latency: { not: null }
             },
+            orderBy: { createdAt: 'desc' },
             take: limit
         });
-        return result._avg.latency ? Math.round(result._avg.latency) : null;
+
+        if (logs.length === 0) return null;
+
+        const sum = logs.reduce((acc, log) => acc + (log.latency || 0), 0);
+        return Math.round(sum / logs.length);
     } catch (err) {
         console.error('[audit] Failed to calculate average latency:', err);
         return null;

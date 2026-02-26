@@ -41,6 +41,7 @@ export default async function AppsPage({
         prisma.user.findMany({
             select: { id: true, name: true, email: true },
             orderBy: { email: 'asc' },
+            take: 100, // Limit to prevent OOM on large datasets
         }),
     ]);
 

@@ -322,3 +322,8 @@ export async function deleteIcon(iconPath?: string) {
   if (provider === 'azure') return deleteAzure(iconPath);
   return deleteLocal(iconPath);
 }
+
+export function invalidateStorageClients() {
+  s3ClientInstance = null;
+  azureClientInstance = null;
+}

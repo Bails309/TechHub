@@ -1,45 +1,11 @@
 import Redis, { RedisOptions } from 'ioredis';
 import { prisma } from './prisma';
 
+import { getSharedRedisClient, _setSharedRedisClientForTest } from './redis';
+
 type UserMeta = { roles: string[]; mustChangePassword: boolean; updatedAt?: number };
 
-const REDIS_URL = process.env.REDIS_URL ?? '';
 const TTL_SECONDS = Number(process.env.USER_META_CACHE_TTL_SEC ?? 300);
-
-let redis: Redis | null = null;
-let redisInitPromise: Promise<Redis | null> | null = null;
-
-async function initRedisClient(): Promise<Redis | null> {
-  if (redis) return redis;
-  if (redisInitPromise) return redisInitPromise;
-
-  if (!REDIS_URL && process.env.NODE_ENV === 'production') {
-    throw new Error('REDIS_URL is not configured; Redis is required');
-  }
-
-  redisInitPromise = (async () => {
-    try {
-      const opts: RedisOptions = {};
-      if (process.env.REDIS_PASSWORD) opts.password = process.env.REDIS_PASSWORD;
-      if (process.env.REDIS_TLS === 'true') opts.tls = {} as RedisOptions['tls'];
-      const client = REDIS_URL ? new Redis(REDIS_URL, opts) : new Redis(opts);
-      client.on('error', () => {});
-      await client.ping();
-      redis = client;
-      return client;
-    } catch (e) {
-      redis = null;
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('Failed to connect to Redis: ' + (e instanceof Error ? e.message : String(e)));
-      }
-      return null;
-    } finally {
-      redisInitPromise = null;
-    }
-  })();
-
-  return redisInitPromise;
-}
 
 async function fetchFromDb(userId: string): Promise<UserMeta | null> {
   const rec = await prisma.user.findUnique({
@@ -69,7 +35,7 @@ export async function getUserMeta(userId: string): Promise<UserMeta | null> {
     return null;
   }
 
-  const client = await initRedisClient();
+  const client = await getSharedRedisClient();
   if (!client) return null;
 
   try {
@@ -93,7 +59,7 @@ export async function getUserMeta(userId: string): Promise<UserMeta | null> {
 }
 
 export async function invalidateUserMeta(userId: string) {
-  const client = await initRedisClient();
+  const client = await getSharedRedisClient();
   if (!client) return;
   await client.del(`user:meta:${userId}`);
 }
@@ -109,14 +75,7 @@ export function clearMemCache() {
 }
 
 export function setRedisClient(client: Redis | null) {
-  if (redis && client !== redis) {
-    try {
-      redis.disconnect();
-    } catch {
-      /* ignore */
-    }
-  }
-  redis = client;
+  _setSharedRedisClientForTest(client as any);
 }
 
 const userCache = { getUserMeta, invalidateUserMeta, setUserMetaForTest, setRedisClient, clearMemCache };
