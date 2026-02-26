@@ -223,7 +223,7 @@ export async function createApp(formData: FormData) {
 
   const iconFile = formData.get('icon');
   let iconPath: string | undefined;
-  if (iconFile instanceof File) {
+  if (iconFile instanceof File && iconFile.size > 0) {
     const parsedIcon = uploadSchema.safeParse(iconFile);
     if (!parsedIcon.success) {
       return { status: 'error', message: 'Invalid file type or size' } as const;
@@ -550,7 +550,7 @@ export async function updateApp(formData: FormData) {
   let iconPath: string | undefined;
   if (iconRemove) {
     iconPath = undefined;
-  } else if (iconFile instanceof File) {
+  } else if (iconFile instanceof File && iconFile.size > 0) {
     const parsedIcon = uploadSchema.safeParse(iconFile);
     if (!parsedIcon.success) {
       return { status: 'error', message: 'Invalid file type or size' } as const;
