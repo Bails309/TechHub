@@ -26,6 +26,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 const CHECK_INTERVAL_MS = 10_000; // poll every 10s
 const FALLBACK_IDLE_MS = 20 * 60 * 1000; // 20 min fallback
 const FALLBACK_WARNING_MS = 2 * 60 * 1000; // 2 min fallback
+const ACTIVITY_DEBOUNCE_MS = 30_000; // 30s debounce to prevent update() loops
+
+// Module-level ref to persist across re-renders/soft-mounts
+let activityDebounceActive = false;
 
 /** Persist the idle-timeout reason into the JWT, then sign out. */
 async function idleSignOut(updateFn: ReturnType<typeof useSession>['update']) {
@@ -62,11 +66,10 @@ export default function SessionGuard() {
         }
     }, [s?.revoked]);
 
-    // Debounced activity tracker — updates the timestamp at most once per second
-    const activityDebounceRef = useRef(false);
+    // Debounced activity tracker
     const markActivity = useCallback(() => {
-        if (activityDebounceRef.current || signingOutRef.current) return;
-        activityDebounceRef.current = true;
+        if (activityDebounceActive || signingOutRef.current) return;
+        activityDebounceActive = true;
         const now = Date.now();
         lastActivityRef.current = now;
 
@@ -81,8 +84,8 @@ export default function SessionGuard() {
         }
 
         setTimeout(() => {
-            activityDebounceRef.current = false;
-        }, 1000);
+            activityDebounceActive = false;
+        }, ACTIVITY_DEBOUNCE_MS);
     }, [update]);
 
     useEffect(() => {
@@ -91,7 +94,7 @@ export default function SessionGuard() {
         // Initialize last activity to now
         lastActivityRef.current = Date.now();
 
-        const activityEvents = ['mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+        const activityEvents = ['mousedown', 'keydown', 'touchstart', 'click'];
         activityEvents.forEach((event) => {
             window.addEventListener(event, markActivity, { passive: true });
         });

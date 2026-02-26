@@ -478,8 +478,9 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           lastChecked = Number.isFinite(parsed) ? parsed : 0;
         }
         const delta = now - lastChecked;
+        const shouldCheck = delta > JWT_CHECK_INTERVAL_MS || token.mustChangePassword;
 
-        if (token.sub && delta > JWT_CHECK_INTERVAL_MS) {
+        if (token.sub && shouldCheck) {
           try {
             const meta = await getUserMeta(String(token.sub));
             if (!meta) {

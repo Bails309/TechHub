@@ -57,7 +57,11 @@ export default function TopNav() {
   return (
     <header className="px-6 md:px-12 pt-6">
       <div className="card-panel py-4 flex flex-wrap md:flex-nowrap items-center justify-between shadow-glow gap-4 md:gap-0">
-        <Link href="/" className="flex items-center gap-3 group">
+        <Link
+          href="/"
+          className={`flex items-center gap-3 group ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
+          onClick={(e) => user?.mustChangePassword && e.preventDefault()}
+        >
           <div className="h-10 w-24">
             <img
               src={theme === 'dark' ? '/capita-logo-dark.png' : '/capita-logo.png'}
@@ -71,11 +75,19 @@ export default function TopNav() {
           </div>
         </Link>
         <nav className="flex items-center gap-4 text-sm">
-          <Link href="/" className="text-ink-200 hover:text-white transition">
+          <Link
+            href="/"
+            className={`text-ink-200 hover:text-white transition ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
+            onClick={(e) => user?.mustChangePassword && e.preventDefault()}
+          >
             Portal
           </Link>
           {roles.includes('admin') ? (
-            <Link href="/admin" className="text-ink-200 hover:text-white transition">
+            <Link
+              href="/admin"
+              className={`text-ink-200 hover:text-white transition ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
+              onClick={(e) => user?.mustChangePassword && e.preventDefault()}
+            >
               Admin
             </Link>
           ) : null}
@@ -86,7 +98,8 @@ export default function TopNav() {
               placeholder="Search apps"
               value={searchValue}
               onChange={(event) => handleSearch(event.target.value)}
-              className="bg-transparent text-xs text-ink-100 placeholder:text-ink-400 focus:outline-none"
+              disabled={user?.mustChangePassword}
+              className="bg-transparent text-xs text-ink-100 placeholder:text-ink-400 focus:outline-none disabled:opacity-50"
               aria-label="Search apps"
             />
           </div>
@@ -95,7 +108,8 @@ export default function TopNav() {
             <button
               type="button"
               onClick={toggleHeadings}
-              className="btn-secondary btn-small"
+              disabled={user?.mustChangePassword}
+              className="btn-secondary btn-small disabled:opacity-50"
             >
               Toggle headings
             </button>

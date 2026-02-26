@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFormState } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -11,18 +11,28 @@ const initialState: ChangePasswordState = { status: 'idle', message: '' };
 
 export default function ChangePasswordPage() {
   const [state, formAction] = useFormState(changePassword, initialState);
+  const { data: session, update } = useSession();
+  const successRedirected = useRef(false);
   const router = useRouter();
-  const { update } = useSession();
+
+  // Redirect if they land here but don't need to change password
+  useEffect(() => {
+    if (session?.user && !session.user.mustChangePassword) {
+      router.replace('/');
+    }
+  }, [session, router]);
 
   useEffect(() => {
-    if (state.status === 'success') {
+    if (state.status === 'success' && !successRedirected.current) {
+      successRedirected.current = true;
       const finish = async () => {
         await update({ user: { mustChangePassword: false } as { mustChangePassword: boolean } });
-        router.replace('/');
+        // Force a hard reload to ensure middleware sees the new cookie
+        window.location.assign('/');
       };
       void finish();
     }
-  }, [state.status, update, router]);
+  }, [state.status, update]);
 
   return (
     <div className="px-6 md:px-12 py-12">
