@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       expiresAt: sas.expiresAt
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to create SAS';
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error('[SAS] Failed to create SAS token:', error);
+    return NextResponse.json({ error: 'Failed to create secure upload token. Please contact an administrator.' }, { status: 500 });
   }
 }

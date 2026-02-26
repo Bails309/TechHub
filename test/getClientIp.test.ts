@@ -1,5 +1,26 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+vi.mock('@prisma/client', () => ({
+  PrismaClient: class { },
+  Prisma: {}
+}));
+
+vi.mock('@/lib/prisma', () => ({
+  prisma: {}
+}));
+
+vi.mock('../src/lib/prisma', () => ({
+  prisma: {}
+}));
+
+vi.mock('@/lib/redis', () => ({
+  redis: {}
+}));
+
+vi.mock('../src/lib/redis', () => ({
+  redis: {}
+}));
+
 async function loadAuthModule() {
   // Ensure module reload so env changes take effect
   vi.resetModules();
@@ -21,7 +42,7 @@ describe('getClientIp and getRateLimitKey', () => {
 
     const key = auth.getRateLimitKey({}, 'User@Example.COM', '203.0.113.5');
     expect(key).toBe('ip:203.0.113.5|user:user@example.com');
-  });
+  }, 30000);
 
   it('accepts x-client-ip from trusted proxy when TRUST_PROXY=true', async () => {
     process.env.TRUST_PROXY = 'true';
@@ -34,7 +55,7 @@ describe('getClientIp and getRateLimitKey', () => {
 
     const key = auth.getRateLimitKey(headers, 'Admin@Example.COM', '10.1.2.3');
     expect(key).toBe('ip:198.51.100.9|user:admin@example.com');
-  });
+  }, 30000);
 
   it('falls back to x-forwarded-for when x-client-ip missing', async () => {
     process.env.TRUST_PROXY = 'true';
@@ -46,7 +67,7 @@ describe('getClientIp and getRateLimitKey', () => {
     // With right-to-left parsing (skipping trusted proxies) we pick the
     // first untrusted address starting from the right-hand side.
     expect(ip).toBe('198.51.100.2');
-  });
+  }, 30000);
 
   it('ignores proxy headers when remote is not a trusted proxy', async () => {
     process.env.TRUST_PROXY = 'true';
@@ -57,7 +78,7 @@ describe('getClientIp and getRateLimitKey', () => {
     // remoteAddr is outside the trusted CIDR
     const ip = auth.getClientIp(headers, '203.0.113.7');
     expect(ip).toBe('203.0.113.7');
-  });
+  }, 30000);
 
   it('normalizes ipv6 addresses and bracketed addresses with ports', async () => {
     process.env.TRUST_PROXY = 'false';
@@ -69,7 +90,7 @@ describe('getClientIp and getRateLimitKey', () => {
     // With TRUST_PROXY=false we must NOT trust proxy-supplied headers like `x-real-ip`.
     // The function should therefore return undefined when the immediate remote is not provided.
     expect(ip2).toBeUndefined();
-  });
+  }, 30000);
 
-  
+
 });

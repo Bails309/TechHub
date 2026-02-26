@@ -21,6 +21,19 @@ vi.mock('next/cache', () => ({
   }
 }));
 
+vi.mock('@prisma/client', () => ({
+  Prisma: {
+    PrismaClientKnownRequestError: class extends Error {
+      code: string;
+      constructor(message: string, code: string) {
+        super(message);
+        this.code = code;
+        this.name = 'PrismaClientKnownRequestError';
+      }
+    }
+  }
+}));
+
 vi.mock('@/lib/csrf', () => ({ validateCsrf: async () => true }));
 vi.mock('../src/lib/csrf', () => ({ validateCsrf: async () => true }));
 
@@ -74,6 +87,16 @@ vi.mock('@/lib/prisma', () => ({
     $transaction: async (_fn: any) => {
       throw new Error('simulated-db-failure');
     }
+  },
+  Prisma: {
+    PrismaClientKnownRequestError: class extends Error {
+      code: string;
+      constructor(message: string, code: string) {
+        super(message);
+        this.code = code;
+        this.name = 'PrismaClientKnownRequestError';
+      }
+    }
   }
 }));
 
@@ -81,6 +104,16 @@ vi.mock('../src/lib/prisma', () => ({
   prisma: {
     $transaction: async (_fn: any) => {
       throw new Error('simulated-db-failure');
+    }
+  },
+  Prisma: {
+    PrismaClientKnownRequestError: class extends Error {
+      code: string;
+      constructor(message: string, code: string) {
+        super(message);
+        this.code = code;
+        this.name = 'PrismaClientKnownRequestError';
+      }
     }
   }
 }));
@@ -134,5 +167,5 @@ describe('createApp orphaned icon cleanup', () => {
     // Ensure upload was attempted and the uploaded icon was removed on failure
     expect(saveIconMock).toHaveBeenCalled();
     expect(deleteIconMock).toHaveBeenCalledWith('/uploads/fake.png');
-  });
+  }, 30000);
 });

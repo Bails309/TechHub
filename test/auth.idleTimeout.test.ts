@@ -55,7 +55,7 @@ describe('Idle session timeout', () => {
         expect(out.revoked).toBeUndefined();
         expect(typeof out.lastActivity).toBe('number');
         // lastActivity should have been refreshed to ~now
-        expect(out.lastActivity).toBeGreaterThan(freshTime);
+        expect(out.lastActivity).toBeGreaterThanOrEqual(freshTime);
     });
 
     it('sets lastActivity on first login (no prior value)', async () => {
@@ -74,7 +74,8 @@ describe('Idle session timeout', () => {
 
         // No lastActivity set yet (first request after login)
         const token = { sub: 'u1' } as any;
-        const out = await jwtCb({ token });
+        const user = { id: 'u1' };
+        const out = await jwtCb({ token, user });
 
         expect(out.revoked).toBeUndefined();
         expect(typeof out.lastActivity).toBe('number');

@@ -22,6 +22,24 @@ export async function GET(
             return new NextResponse('App not found', { status: 404 });
         }
 
+        // Read standard headers to determine trusted context
+        const referer = request.headers.get('referer');
+        const host = request.headers.get('host');
+
+        let isTrustedReferer = false;
+        if (referer && host) {
+            try {
+                const refererUrl = new URL(referer);
+                // Simple origin check (port/protocol independent for local dev/Docker scenarios)
+                // In production behind nginx, Host is preserved.
+                if (refererUrl.host === host) {
+                    isTrustedReferer = true;
+                }
+            } catch (e) {
+                // Invalid referer URL, ignore
+            }
+        }
+
         const endTime = performance.now();
         const latency = Math.round(endTime - startTime);
 
@@ -35,8 +53,16 @@ export async function GET(
             details: { name: app.name, url: app.url }
         });
 
-        // Redirect to the app URL
-        return NextResponse.redirect(new URL(app.url));
+        if (isTrustedReferer) {
+            // Direct redirect from our own UI
+            return NextResponse.redirect(new URL(app.url));
+        } else {
+            // Untrusted referer or direct link -- enforce confirmation interstitial
+            const proto = request.headers.get('x-forwarded-proto') ?? (request.nextUrl.protocol.replace(':', '') || 'http');
+            const hostHeader = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? request.nextUrl.host;
+            const confirmUrl = new URL(`/launch-confirm/${app.id}`, `${proto}://${hostHeader}`);
+            return NextResponse.redirect(confirmUrl);
+        }
     } catch (error) {
         console.error('[launch] Redirection error:', error);
         return new NextResponse('Internal Server Error', { status: 500 });

@@ -285,17 +285,9 @@ export async function createApp(formData: FormData) {
 }
 
 export async function deleteApp(formData: FormData) {
-  const csrfToken = String(formData.get('csrfToken') ?? '');
-  let csrfCookie = '';
-  try {
-    const jar = await cookies();
-    csrfCookie = jar?.get ? jar.get('XSRF-TOKEN')?.value ?? '' : '';
-  } catch {
-    csrfCookie = '';
+  if (!(await validateCsrf(formData))) {
+    return { status: 'error', message: 'Invalid CSRF token' } as const;
   }
-  if (!csrfToken) return { status: 'error', message: 'Missing CSRF token' } as const;
-  if (!csrfCookie) return { status: 'error', message: 'Missing CSRF cookie' } as const;
-  if (csrfToken !== csrfCookie) return { status: 'error', message: 'Invalid CSRF token' } as const;
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' } as const;
