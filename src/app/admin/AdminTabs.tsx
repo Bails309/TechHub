@@ -17,26 +17,28 @@ export default function AdminTabs() {
   const pathname = usePathname();
 
   return (
-    <nav className="flex items-center gap-1 overflow-x-auto px-6 md:px-12 pt-4 pb-2">
-      {tabs.map((tab) => {
-        const isActive = tab.exact
-          ? pathname === tab.href
-          : pathname.startsWith(tab.href);
-        const Icon = tab.icon;
-        return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className={`
+    <div className="px-6 md:px-12 pt-6">
+      <nav className="glass rounded-full px-2 py-1.5 flex items-center gap-1 overflow-x-auto shadow-inner border-white/5 bg-white/5">
+        {tabs.map((tab) => {
+          const isActive = tab.exact
+            ? pathname === tab.href
+            : pathname.startsWith(tab.href);
+          const Icon = tab.icon;
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className={`
               flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition
               ${isActive ? 'tab-active' : 'tab-inactive'}
             `}
-          >
-            <Icon size={16} />
-            {tab.label}
-          </Link>
-        );
-      })}
-    </nav>
+            >
+              <Icon size={16} />
+              {tab.label}
+            </Link>
+          );
+        })}
+      </nav>
+    </div>
   );
 }

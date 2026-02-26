@@ -59,8 +59,8 @@ function ProviderCard({ title, description, source, children }: ProviderCardProp
 
 function StatusBadge({ state }: { state: ActionState }) {
   if (state.status === 'idle') return null;
-  const tone = state.status === 'success' ? 'text-emerald-300' : 'text-rose-300';
-  return <p className={`text-xs ${tone}`}>{state.message}</p>;
+  const tone = state.status === 'success' ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300';
+  return <p className={`text-xs font-medium ${tone}`}>{state.message}</p>;
 }
 
 export default function StorageConfigForm({
@@ -178,10 +178,10 @@ export default function StorageConfigForm({
         </p>
       </div>
       {!hasMasterKey ? (
-        <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+        <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
           <p className="font-semibold">SSO master key required</p>
-          <p className="mt-1 text-xs text-amber-100">
-            Set <span className="text-amber-50">SSO_MASTER_KEY</span> in your environment to
+          <p className="mt-1 text-xs text-amber-600 dark:text-amber-100">
+            Set <span className="font-mono bg-amber-500/10 px-1 rounded dark:text-amber-50">SSO_MASTER_KEY</span> in your environment to
             save encrypted storage secrets.
           </p>
         </div>

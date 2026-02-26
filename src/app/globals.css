@@ -32,7 +32,39 @@
 
   /* Structural */
   .card-panel {
-    @apply rounded-3xl border border-ink-800 bg-ink-900/40 p-6 shadow-glow;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(22px);
+    @apply rounded-[36px] p-6 md:p-8 shadow-glow;
+  }
+
+  /* File Upload */
+  .file-upload-zone {
+    @apply relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-ink-700 bg-ink-900/40 p-6 transition-all hover:border-ocean-500 hover:bg-ocean-500/5 cursor-pointer;
+  }
+
+  .file-upload-icon {
+    @apply mb-2 h-6 w-6 text-ink-400 transition-colors;
+  }
+
+  .file-upload-zone:hover .file-upload-icon {
+    @apply text-ocean-400;
+  }
+
+  .file-upload-title {
+    @apply text-sm font-medium text-ink-100 transition-colors;
+  }
+
+  .file-upload-zone:hover .file-upload-title {
+    @apply text-white;
+  }
+
+  .file-upload-description {
+    @apply text-xs text-ink-400 mt-1 transition-colors;
+  }
+
+  .file-upload-zone:hover .file-upload-description {
+    @apply text-ink-300;
   }
 
   /* Admin Tabs */
@@ -63,9 +95,10 @@
   --page-fg: var(--capita-white);
   --page-bg: var(--dark-navy);
   --page-bg-image:
-    radial-gradient(circle at 18% 18%, rgba(0, 255, 255, 0.16), transparent 50%),
-    radial-gradient(circle at 78% 8%, rgba(255, 177, 29, 0.2), transparent 48%),
+    radial-gradient(circle at 15vw 15vh, rgba(0, 255, 255, 0.15), transparent 50%),
+    radial-gradient(circle at 80vw 10vh, rgba(255, 177, 29, 0.18), transparent 48%),
     linear-gradient(140deg, rgba(2, 8, 60, 0.95), rgba(0, 15, 46, 0.98));
+  --page-bg-attachment: fixed;
   --glass-bg: linear-gradient(135deg, rgba(2, 8, 60, 0.7), rgba(0, 15, 46, 0.55));
   --glass-border: rgba(0, 255, 255, 0.2);
   --input-bg: linear-gradient(135deg, rgba(2, 8, 60, 0.65), rgba(0, 15, 46, 0.7));
@@ -83,8 +116,8 @@ html[data-theme='light'] {
   --page-fg: var(--text-dark);
   --page-bg: var(--light-gray);
   --page-bg-image:
-    radial-gradient(circle at 16% 18%, rgba(0, 255, 255, 0.14), transparent 50%),
-    radial-gradient(circle at 82% 6%, rgba(255, 80, 81, 0.18), transparent 48%),
+    radial-gradient(circle at 15vw 15vh, rgba(0, 255, 255, 0.12), transparent 50%),
+    radial-gradient(circle at 80vw 10vh, rgba(255, 80, 81, 0.15), transparent 48%),
     linear-gradient(140deg, rgba(245, 245, 245, 0.96), rgba(229, 231, 235, 0.96));
   --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(245, 245, 245, 0.8));
   --glass-border: rgba(2, 8, 60, 0.12);
@@ -104,6 +137,7 @@ body {
   color: var(--page-fg);
   background-color: var(--page-bg);
   background-image: var(--page-bg-image);
+  background-attachment: var(--page-bg-attachment, scroll);
   min-height: 100vh;
 }
 
@@ -115,6 +149,7 @@ main {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(22px);
+  @apply shadow-glow;
 }
 
 .hero-grid {
@@ -161,6 +196,12 @@ select.input-surface option {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   color: var(--page-fg);
+  @apply shadow-2xl;
+}
+
+html[data-theme='light'] .modal-surface {
+  border: 1px solid rgba(2, 8, 60, 0.2);
+  box-shadow: 0 20px 50px -12px rgba(2, 8, 60, 0.15), 0 0 0 1px rgba(2, 8, 60, 0.05);
 }
 
 .modal-backdrop {
@@ -168,7 +209,8 @@ select.input-surface option {
 }
 
 html[data-theme='light'] .modal-backdrop {
-  background-color: rgba(226, 232, 240, 0.8);
+  background-color: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
 }
 
 .launch-button {
@@ -208,7 +250,8 @@ html[data-theme='light'] .text-ink-500 {
   /* zinc-500 */
 }
 
-html[data-theme='light'] .text-white {
+/* Ensure buttons and other high-contrast elements keep white text */
+html[data-theme='light'] .text-white:not(.btn-primary):not(.btn-danger):not(.launch-button) {
   color: var(--text-dark);
 }
 
@@ -252,6 +295,29 @@ html[data-theme='light'] .card-panel {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
 }
 
+html[data-theme='light'] .file-upload-zone {
+  @apply bg-white border-ink-300 shadow-sm;
+}
+
+html[data-theme='light'] .file-upload-zone:hover {
+  @apply bg-ocean-50 border-ocean-500/50;
+}
+
+html[data-theme='light'] .file-upload-zone:hover .file-upload-icon {
+  @apply text-ocean-600;
+}
+
+html[data-theme='light'] .file-upload-title,
+html[data-theme='light'] .file-upload-zone:hover .file-upload-title {
+  color: var(--text-dark);
+}
+
+html[data-theme='light'] .file-upload-description,
+html[data-theme='light'] .file-upload-zone:hover .file-upload-description {
+  color: #52525b;
+  /* zinc-600 */
+}
+
 html[data-theme='light'] .input-field {
   background-color: rgba(255, 255, 255, 0.95);
   border-color: rgba(2, 8, 60, 0.15);
@@ -262,6 +328,35 @@ html[data-theme='light'] .tab-active {
   background-color: rgba(16, 214, 166, 0.15);
   color: #0b2f25;
   border-color: rgba(16, 214, 166, 0.4);
+}
+
+/* --- Light Theme Button Refinements --- */
+html[data-theme='light'] .btn-primary {
+  @apply bg-ocean-600 text-white border-transparent shadow-md;
+  background-image: linear-gradient(135deg, #2563eb, #1d4ed8);
+}
+
+html[data-theme='light'] .btn-primary:hover {
+  @apply bg-ocean-500;
+  background-image: linear-gradient(135deg, #3b82f6, #2563eb);
+}
+
+html[data-theme='light'] .btn-secondary {
+  @apply border-ink-300 text-ink-500 bg-white/50;
+}
+
+html[data-theme='light'] .btn-secondary:hover {
+  @apply border-ocean-500/50 text-ocean-600 bg-ocean-500/5;
+}
+
+html[data-theme='light'] .btn-danger {
+  @apply bg-rose-600 text-white border-transparent shadow-md;
+  background-image: linear-gradient(135deg, #e11d48, #be123c);
+}
+
+html[data-theme='light'] .btn-danger:hover {
+  @apply bg-rose-500;
+  background-image: linear-gradient(135deg, #f43f5e, #e11d48);
 }
 
 html[data-theme='light'] .tab-inactive {

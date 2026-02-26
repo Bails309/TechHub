@@ -71,8 +71,8 @@ export default function AdminActionForm({
         <p
           className={
             tone === 'success'
-              ? 'text-emerald-300 text-xs'
-              : 'text-rose-300 text-xs'
+              ? 'text-emerald-600 dark:text-emerald-300 text-xs font-medium'
+              : 'text-rose-600 dark:text-rose-300 text-xs font-medium'
           }
         >
           {message}

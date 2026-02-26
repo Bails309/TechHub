@@ -102,14 +102,14 @@ export default async function SsoPage() {
 
     return (
         <div className="px-6 md:px-12 py-12 space-y-8">
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel">
                 <h1 className="font-serif text-3xl">SSO</h1>
                 <p className="text-ink-200 mt-2">
                     Configure single sign-on providers, link accounts, and review audit logs.
                 </p>
             </section>
 
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel">
                 <h2 className="font-serif text-2xl mb-6">SSO configuration</h2>
                 <SsoConfigForm
                     azure={azureConfigPayload}
@@ -120,7 +120,7 @@ export default async function SsoPage() {
                 />
             </section>
 
-            <section className="glass rounded-[36px] p-8">
+            <section className="card-panel">
                 <h2 className="font-serif text-2xl mb-6">Link SSO account</h2>
                 <LinkSsoAccountForm linkSsoAccount={linkSsoAccount} />
                 <p className="text-xs text-ink-300 mt-3">

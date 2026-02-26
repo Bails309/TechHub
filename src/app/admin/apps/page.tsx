@@ -76,7 +76,7 @@ export default async function AppsPage({
 
     return (
         <div className="px-6 md:px-12 py-12 space-y-8">
-            <section className="card-panel md:p-8">
+            <section className="card-panel">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h1 className="font-serif text-3xl">App catalogue</h1>
@@ -88,7 +88,7 @@ export default async function AppsPage({
                 </div>
             </section>
 
-            <section className="card-panel md:p-8">
+            <section className="card-panel">
                 <h2 className="font-serif text-2xl mb-6">Add a new app</h2>
                 <NewAppForm
                     categorySelectOptions={categorySelectOptions}
@@ -98,7 +98,7 @@ export default async function AppsPage({
                 />
             </section>
 
-            <section className="card-panel md:p-8">
+            <section className="card-panel">
                 <h2 className="font-serif text-2xl mb-6">Current catalogue</h2>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-xs text-ink-300">
                     <span>
@@ -136,37 +136,39 @@ export default async function AppsPage({
                 </div>
                 <div className="space-y-4">
                     {apps.map((app) => (
-                        <div
-                            key={app.id}
-                            className="rounded-2xl border border-ink-800 px-5 py-4 space-y-4"
-                        >
-                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                                <div>
-                                    <p className="font-semibold">{app.name}</p>
-                                    <p className="text-xs text-ink-400">{app.url}</p>
-                                    {app.category ? (
-                                        <p className="text-xs text-ink-300">{app.category}</p>
-                                    ) : null}
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <details className="group">
-                                        <summary className="cursor-pointer list-none btn-secondary btn-small">
-                                            Edit
-                                        </summary>
-                                        <div className="mt-4 grid gap-3 md:grid-cols-2">
-                                            <EditAppForm
-                                                app={app}
-                                                categorySelectOptions={categorySelectOptions}
-                                                audienceOptions={audienceOptions}
-                                                roleOptions={roleOptions}
-                                                initialUsers={app.userAccesses.map((item) => item.user)}
-                                                action={updateApp}
-                                            />
+                        <div key={app.id} className="card-panel !p-0 overflow-hidden">
+                            <details className="group">
+                                <summary className="list-none cursor-pointer p-5 block w-full hover:bg-white/5 transition">
+                                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-semibold text-ink-100">{app.name}</p>
+                                            <p className="text-xs text-ink-400">{app.url}</p>
+                                            {app.category && (
+                                                <span className="inline-block mt-1 text-[10px] uppercase tracking-wider text-ocean-400 bg-ocean-500/10 px-2 py-0.5 rounded-full">
+                                                    {app.category}
+                                                </span>
+                                            )}
                                         </div>
-                                    </details>
-                                    <DeleteAppForm id={app.id} name={app.name} action={deleteApp} />
+                                        <div className="flex items-center gap-3 shrink-0">
+                                            <span className="btn-secondary btn-small group-open:bg-ocean-500/20 group-open:text-ocean-300 transition">
+                                                Edit
+                                            </span>
+                                            <DeleteAppForm id={app.id} name={app.name} action={deleteApp} />
+                                        </div>
+                                    </div>
+                                </summary>
+
+                                <div className="p-5 border-t border-white/5 bg-black/10">
+                                    <EditAppForm
+                                        app={app}
+                                        categorySelectOptions={categorySelectOptions}
+                                        audienceOptions={audienceOptions}
+                                        roleOptions={roleOptions}
+                                        initialUsers={app.userAccesses.map((item) => item.user)}
+                                        action={updateApp}
+                                    />
                                 </div>
-                            </div>
+                            </details>
                         </div>
                     ))}
                 </div>

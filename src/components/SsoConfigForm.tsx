@@ -55,8 +55,8 @@ function StatusBadge({ state }: { state: ActionState }) {
   if (state.status === 'idle') {
     return null;
   }
-  const tone = state.status === 'success' ? 'text-emerald-300' : 'text-rose-300';
-  return <p className={`text-xs ${tone}`}>{state.message}</p>;
+  const tone = state.status === 'success' ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300';
+  return <p className={`text-xs font-medium ${tone}`}>{state.message}</p>;
 }
 
 export default function SsoConfigForm({
@@ -121,17 +121,17 @@ export default function SsoConfigForm({
         SSO accounts must be explicitly linked to local users by an admin via the Link SSO Account form. Linked accounts will have local passwords cleared on link/first SSO login.
       </div>
       {!hasMasterKey ? (
-        <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+        <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
           <p className="font-semibold">SSO master key required</p>
-          <p className="mt-1 text-xs text-amber-100">
-            Set <span className="text-amber-50">SSO_MASTER_KEY</span> in your environment to
+          <p className="mt-1 text-xs text-amber-600 dark:text-amber-100">
+            Set <span className="font-mono bg-amber-500/10 px-1 rounded dark:text-amber-50">SSO_MASTER_KEY</span> in your environment to
             save SSO secrets. Generate one with:
           </p>
-          <pre className="mt-2 rounded-xl bg-black/30 px-3 py-2 text-xs text-amber-50">
+          <pre className="mt-2 rounded-xl bg-black/30 px-3 py-2 text-xs text-amber-600 dark:text-amber-50">
             node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&apos;base64&apos;))&quot;
           </pre>
-          <p className="mt-2 text-xs text-amber-100">
-            Then restart the app after updating <span className="text-amber-50">.env</span>.
+          <p className="mt-2 text-xs text-amber-600 dark:text-amber-100">
+            Then restart the app after updating <span className="font-mono bg-amber-500/10 px-1 rounded dark:text-amber-50">.env</span>.
           </p>
         </div>
       ) : null}

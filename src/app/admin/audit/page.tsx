@@ -62,17 +62,29 @@ export default async function AuditPage(props: {
     const categoryFilter = resolvedParams.category as string | undefined;
     const actionFilter = resolvedParams.action as string | undefined;
     const providerFilter = resolvedParams.provider as string | undefined;
+    const requestedPage = Number(resolvedParams.page ?? '1');
+    const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const pageSize = 40;
+    const skip = (page - 1) * pageSize;
 
     const where: any = {};
     if (categoryFilter) where.category = categoryFilter;
     if (actionFilter) where.action = actionFilter;
     if (providerFilter) where.provider = providerFilter;
 
-    const audits = await prisma.auditLog.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-    });
+    const [audits, totalAudits] = await Promise.all([
+        prisma.auditLog.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take: pageSize,
+        }),
+        prisma.auditLog.count({ where })
+    ]);
+
+    const totalPages = Math.max(1, Math.ceil(totalAudits / pageSize));
+    const prevPage = page > 1 ? page - 1 : null;
+    const nextPage = page < totalPages ? page + 1 : null;
 
     const actorIds = Array.from(
         new Set(audits.map((a: any) => a.actorId).filter((id: string | null): id is string => id !== null && id !== undefined))
@@ -108,7 +120,7 @@ export default async function AuditPage(props: {
 
 
     return (
-        <div className="px-6 md:px-12 py-12 space-y-8 max-w-7xl mx-auto">
+        <div className="px-6 md:px-12 py-12 space-y-8">
             <section className="card-panel md:p-8">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
@@ -127,11 +139,38 @@ export default async function AuditPage(props: {
             </section>
 
             <section className="card-panel md:p-8">
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                     <h2 className="font-serif text-2xl">Recent events</h2>
-                    <span className="rounded-full bg-ink-800 px-3 py-1 text-xs text-ink-300">
-                        Showing latest {audits.length}
-                    </span>
+                    <div className="flex items-center gap-4">
+                        <span className="text-xs text-ink-300">
+                            Showing {audits.length} of {totalAudits}
+                        </span>
+                        <div className="flex items-center gap-2">
+                            {prevPage ? (
+                                <a
+                                    href={`/admin/audit?page=${prevPage}${categoryFilter ? `&category=${categoryFilter}` : ''}${actionFilter ? `&action=${actionFilter}` : ''}${providerFilter ? `&provider=${providerFilter}` : ''}`}
+                                    className="btn-secondary btn-small"
+                                >
+                                    Previous
+                                </a>
+                            ) : (
+                                <span className="btn-secondary btn-small opacity-50 cursor-not-allowed">Previous</span>
+                            )}
+                            <span className="text-xs text-ink-400 min-w-[80px] text-center">
+                                Page {page} of {totalPages}
+                            </span>
+                            {nextPage ? (
+                                <a
+                                    href={`/admin/audit?page=${nextPage}${categoryFilter ? `&category=${categoryFilter}` : ''}${actionFilter ? `&action=${actionFilter}` : ''}${providerFilter ? `&provider=${providerFilter}` : ''}`}
+                                    className="btn-secondary btn-small"
+                                >
+                                    Next
+                                </a>
+                            ) : (
+                                <span className="btn-secondary btn-small opacity-50 cursor-not-allowed">Next</span>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 <div className="space-y-3 mt-4">
@@ -139,7 +178,11 @@ export default async function AuditPage(props: {
                         <p className="text-sm text-ink-400">No audit entries found matching the current filters.</p>
                     ) : (
                         audits.map((audit: any) => (
-                            <div key={audit.id} className="rounded-2xl border border-ink-800 px-5 py-3">
+                            <div
+                                key={audit.id}
+                                className="rounded-2xl border border-white/5 p-5 shadow-inner bg-white/[0.03] hover:border-ocean-500/30 transition-colors"
+                                style={{ contentVisibility: 'auto', containIntrinsicSize: '0 80px' }}
+                            >
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-ink-800 rounded-lg">
                                         <CategoryIcon category={audit.category} />
@@ -184,7 +227,7 @@ export default async function AuditPage(props: {
                                             <span className="transition [details[open]>&]:rotate-90">▶</span>
                                             View details
                                         </summary>
-                                        <div className="mt-2 bg-ink-900 border border-ink-800/50 rounded-xl overflow-hidden">
+                                        <div className="mt-2 glass rounded-xl overflow-hidden shadow-inner">
                                             <pre className="overflow-x-auto p-4 textxs text-ink-200 font-mono">
                                                 {JSON.stringify(audit.details, null, 2)}
                                             </pre>
