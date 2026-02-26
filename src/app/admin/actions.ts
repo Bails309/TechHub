@@ -114,7 +114,10 @@ const storageAuthSchema = z.enum(['connection-string', 'account-key']);
 
 async function saveIcon(file: File) {
   const parsed = uploadSchema.safeParse(file);
-  if (!parsed.success) return undefined;
+  if (!parsed.success) {
+    const errorMsg = parsed.error.errors[0]?.message || 'Invalid file';
+    throw new Error(errorMsg);
+  }
   return storageSaveIcon(file);
 }
 
@@ -224,11 +227,11 @@ export async function createApp(formData: FormData) {
   const iconFile = formData.get('icon');
   let iconPath: string | undefined;
   if (iconFile instanceof File && iconFile.size > 0) {
-    const parsedIcon = uploadSchema.safeParse(iconFile);
-    if (!parsedIcon.success) {
-      return { status: 'error', message: 'Invalid file type or size' } as const;
+    try {
+      iconPath = await saveIcon(iconFile);
+    } catch (err) {
+      return { status: 'error', message: err instanceof Error ? err.message : 'Failed to save icon' } as const;
     }
-    iconPath = await saveIcon(iconFile);
   } else {
     iconPath = undefined;
   }
@@ -551,11 +554,11 @@ export async function updateApp(formData: FormData) {
   if (iconRemove) {
     iconPath = undefined;
   } else if (iconFile instanceof File && iconFile.size > 0) {
-    const parsedIcon = uploadSchema.safeParse(iconFile);
-    if (!parsedIcon.success) {
-      return { status: 'error', message: 'Invalid file type or size' } as const;
+    try {
+      iconPath = await saveIcon(iconFile);
+    } catch (err) {
+      return { status: 'error', message: err instanceof Error ? err.message : 'Failed to save icon' } as const;
     }
-    iconPath = await saveIcon(iconFile);
   } else {
     iconPath = undefined;
   }

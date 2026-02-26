@@ -65,7 +65,22 @@ export function sanitizeIconUrl(
             if (allowedS3Hostname && url.hostname !== allowedS3Hostname) {
                 return null;
             }
-            return url.toString();
+            return url.pathname; // Convert to proxy route
+        }
+
+        // Azure Blob Storage URLs
+        // Production: https://*.blob.core.windows.net/<container>/uploads/...
+        // Azurite (Local): http://127.0.0.1:10000/.../uploads/...
+        if (
+            (url.hostname.endsWith('.blob.core.windows.net') || url.hostname === '127.0.0.1' || url.hostname === 'localhost') &&
+            (url.protocol === 'https:' || url.protocol === 'http:') &&
+            url.pathname.includes('/uploads/')
+        ) {
+            const idx = url.pathname.indexOf('/uploads/');
+            if (idx !== -1) {
+                return url.pathname.substring(idx); // Convert to proxy route
+            }
+            return url.pathname;
         }
 
         return null;

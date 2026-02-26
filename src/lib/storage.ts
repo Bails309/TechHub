@@ -1,7 +1,7 @@
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { writeFile, mkdir, readdir, stat, unlink } from 'fs/promises';
-import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import {
   BlobServiceClient,
   StorageSharedKeyCredential,
@@ -449,10 +449,63 @@ export async function cleanupOrphanedIcons(validIconPaths: string[]): Promise<nu
 }
 
 export async function saveIcon(file: File) {
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  // Security: Check magic bytes to prevent dangerous payloads disguised as images.
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  // JPEG: FF D8 FF
+  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+
+  if (!isPng && !isJpeg) {
+    throw new Error('SECURITY: Invalid image content. The file does not appear to be a valid PNG or JPEG.');
+  }
+
   const provider = await resolveStorageProvider();
-  if (provider === 's3') return saveS3(file);
-  if (provider === 'azure') return saveAzure(file);
-  return saveLocal(file);
+
+  // Pass the already read buffer to the providers to avoid re-reading
+  const extension = path.extname(file.name) || (isPng ? '.png' : '.jpg');
+  const filename = `${randomUUID()}${extension}`;
+
+  if (provider === 's3') return saveS3WithBuffer(buffer, filename, file.type);
+  if (provider === 'azure') return saveAzureWithBuffer(buffer, filename, file.type);
+  return saveLocalWithBuffer(buffer, filename);
+}
+
+// Internal helpers to accept pre-read buffers
+async function saveLocalWithBuffer(buffer: Buffer, filename: string) {
+  const uploadDir = path.join(process.cwd(), 'uploads');
+  await mkdir(uploadDir, { recursive: true });
+  await writeFile(path.join(uploadDir, filename), buffer);
+  return `/uploads/${filename}`;
+}
+
+async function saveS3WithBuffer(buffer: Buffer, keySuffix: string, contentType: string) {
+  const config = await resolveS3Config();
+  const bucket = config?.bucket || process.env.S3_BUCKET;
+  if (!bucket) throw new Error('S3_BUCKET not configured');
+  const key = `uploads/${keySuffix}`;
+  const s3 = getS3Client(config ?? undefined);
+  await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: contentType }));
+  const region = config?.region || process.env.S3_REGION;
+  const endpoint = config?.endpoint || process.env.S3_ENDPOINT;
+  const baseUrl = endpoint
+    ? endpoint.replace(/\/$/, '')
+    : region
+      ? `https://${bucket}.s3.${region}.amazonaws.com`
+      : `https://${bucket}.s3.amazonaws.com`;
+  return `${baseUrl}/${key}`;
+}
+
+async function saveAzureWithBuffer(buffer: Buffer, keySuffix: string, contentType: string) {
+  const key = `uploads/${keySuffix}`;
+  const config = await resolveAzureConfig();
+  const containerClient = getAzureContainerClient(config ?? undefined);
+  const blobClient = containerClient.getBlockBlobClient(key);
+  await blobClient.uploadData(buffer, {
+    blobHTTPHeaders: { blobContentType: contentType || 'application/octet-stream' },
+  });
+  return blobClient.url;
 }
 
 export async function deleteIcon(iconPath?: string) {
@@ -465,4 +518,63 @@ export async function deleteIcon(iconPath?: string) {
 export function invalidateStorageClients() {
   s3ClientInstance = null;
   azureClientInstance = null;
+}
+
+export async function readIcon(iconPath: string): Promise<{ buffer: Uint8Array; contentType: string } | null> {
+  const provider = await resolveStorageProvider();
+
+  let key = iconPath;
+  if (iconPath.startsWith('/')) key = iconPath.slice(1);
+  try {
+    const url = new URL(iconPath, 'https://example.com');
+    key = url.pathname.replace(/^\//, '');
+  } catch { }
+
+  if (provider === 's3') {
+    const config = await resolveS3Config();
+    const bucket = config?.bucket || process.env.S3_BUCKET;
+    if (!bucket) return null;
+    const s3 = getS3Client(config ?? undefined);
+    try {
+      const resp = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      if (!resp.Body) return null;
+      const buffer = await resp.Body.transformToByteArray();
+      return { buffer, contentType: resp.ContentType || 'application/octet-stream' };
+    } catch { return null; }
+  }
+
+  if (provider === 'azure') {
+    const config = await resolveAzureConfig();
+    if (!config) return null;
+    const containerClient = getAzureContainerClient(config);
+    if (!containerClient.containerName) return null;
+    try {
+      // Azure blob key might have container name prefix
+      const url = new URL(iconPath, 'https://example.com');
+      const pathName = url.pathname.replace(/^\//, '');
+      const containerNameLower = containerClient.containerName.toLowerCase();
+      let actualKey = pathName;
+      if (pathName.toLowerCase().startsWith(`${containerNameLower}/`)) {
+        actualKey = pathName.slice(containerClient.containerName.length + 1);
+      }
+      const blobClient = containerClient.getBlockBlobClient(actualKey);
+      const buffer = await blobClient.downloadToBuffer();
+      const props = await blobClient.getProperties();
+      return { buffer, contentType: props.contentType || 'application/octet-stream' };
+    } catch { return null; }
+  }
+
+  // Local
+  const uploadsDirName = 'uploads';
+  const rel = key;
+  if (!rel.startsWith(uploadsDirName + '/')) return null;
+  const resolved = path.resolve(process.cwd(), rel);
+  const relativeToUploads = path.relative(path.join(process.cwd(), uploadsDirName), resolved);
+  if (relativeToUploads.startsWith('..') || path.isAbsolute(relativeToUploads)) return null;
+  try {
+    const buffer = await import('fs/promises').then(m => m.readFile(resolved));
+    const extension = path.extname(resolved).toLowerCase();
+    const MIME_TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.gif': 'image/gif', '.webp': 'image/webp', '.ico': 'image/x-icon' };
+    return { buffer, contentType: MIME_TYPES[extension] || 'application/octet-stream' };
+  } catch { return null; }
 }
