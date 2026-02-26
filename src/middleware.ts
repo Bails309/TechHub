@@ -22,10 +22,34 @@ function buildCsp(nonce: string) {
   ].join('; ');
 }
 
-function generateCsrfToken() {
-  const crypto = (globalThis as any)?.crypto;
-  if (crypto?.randomUUID) return crypto.randomUUID();
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+function buf2hex(buffer: ArrayBuffer) {
+  return [...new Uint8Array(buffer)]
+    .map(x => x.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function createCsrfToken(sessionId: string): Promise<string> {
+  const secret = process.env.NEXTAUTH_SECRET ?? '';
+  const crypto = (globalThis as any).crypto;
+  const nonce = crypto.randomUUID().replace(/-/g, '');
+
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    enc.encode(nonce + ':' + sessionId)
+  );
+
+  const sigHex = buf2hex(signature);
+  return nonce + '.' + sigHex;
 }
 
 export async function middleware(request: NextRequest) {
@@ -44,18 +68,22 @@ export async function middleware(request: NextRequest) {
     response.headers.set('Content-Security-Policy', buildCsp(nonce));
   }
 
-  // Ensure a CSRF cookie is present for navigation and RSC requests,
-  // including client-side transitions that do not return full HTML.
+  // Generate an HMAC-signed CSRF cookie on every GET request.
+  // The token is bound to the user's session (JWT `sub`), so it
+  // can't be replayed across sessions or forged without the secret.
   if (request.method === 'GET') {
-    const csrfCookie = request.cookies.get('XSRF-TOKEN')?.value;
-    if (!csrfCookie) {
-      const forwardedProto = request.headers.get('x-forwarded-proto');
-      const isSecure = forwardedProto === 'https' || request.nextUrl.protocol === 'https:';
+    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    const sessionId = (token?.sub as string) ?? '';
+    const forwardedProto = request.headers.get('x-forwarded-proto');
+    const isSecure = forwardedProto === 'https' || request.nextUrl.protocol === 'https:';
+    // Only set the CSRF cookie for authenticated users (who have a session)
+    if (sessionId) {
+      const newToken = await createCsrfToken(sessionId);
       response.cookies.set({
         name: 'XSRF-TOKEN',
-        value: generateCsrfToken(),
+        value: newToken,
         httpOnly: false,
-        sameSite: 'lax',
+        sameSite: 'strict',
         secure: isSecure,
         path: '/'
       });
@@ -109,5 +137,5 @@ export async function middleware(request: NextRequest) {
 export const config = {
   // Run middleware for API routes as well so server endpoints can be protected
   // when a user must change their password. Static/_next assets remain excluded.
-  matcher: ['/((?!_next/static|_next/image|_next/data|favicon.ico|theme-init.js|uploads/).*)']
+  matcher: ['/((?!_next/static|_next/image|_next/data|favicon.ico|theme-init.js|uploads/|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)']
 };

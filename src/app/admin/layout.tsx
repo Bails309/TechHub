@@ -1,6 +1,8 @@
 import { getServerAuthSession } from '../../lib/auth';
 import AdminTabs from './AdminTabs';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AdminLayout({
     children,
 }: {
