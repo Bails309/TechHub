@@ -21,13 +21,19 @@ function parseKey(raw: string, label: string) {
   return key;
 }
 
+// Cache the parsed key ring so we don't re-parse the base64 key on every
+// encrypt/decrypt operation. Parsing is relatively expensive and unnecessary
+// to repeat for each call.
+let cachedKeyRing: KeyRing | null = null;
 function loadKeyRing(): KeyRing {
+  if (cachedKeyRing) return cachedKeyRing;
   const raw = process.env[KEY_ENV];
   if (!raw) {
     throw new Error(`${KEY_ENV} is not set`);
   }
   const key = parseKey(raw, KEY_ENV);
-  return { currentId: LEGACY_KEY_ID, keys: new Map([[LEGACY_KEY_ID, key]]), orderedIds: [LEGACY_KEY_ID] };
+  cachedKeyRing = { currentId: LEGACY_KEY_ID, keys: new Map([[LEGACY_KEY_ID, key]]), orderedIds: [LEGACY_KEY_ID] };
+  return cachedKeyRing;
 }
 
 function isEnvelopeEnabled() {

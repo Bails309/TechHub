@@ -28,6 +28,24 @@ function buf2hex(buffer: ArrayBuffer) {
     .join('');
 }
 
+function getSecureNonce(): string {
+  const crypto = (globalThis as any)?.crypto;
+  if (crypto?.randomUUID) {
+    try {
+      return String(crypto.randomUUID()).replace(/-/g, '');
+    } catch {
+      // fallthrough to getRandomValues
+    }
+  }
+  if (crypto?.getRandomValues) {
+    const arr = new Uint8Array(16);
+    crypto.getRandomValues(arr);
+    return buf2hex(arr.buffer);
+  }
+  // Fail closed: throw if no secure RNG is available in this runtime
+  throw new Error('Secure crypto unavailable to generate CSP nonce');
+}
+
 function hex2buf(hex: string) {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
@@ -83,7 +101,7 @@ async function validateCsrfToken(token: string, sessionId: string): Promise<bool
 async function createCsrfToken(sessionId: string): Promise<string> {
   const secret = process.env.NEXTAUTH_SECRET ?? '';
   const crypto = (globalThis as any).crypto;
-  const nonce = crypto.randomUUID().replace(/-/g, '');
+  const nonce = getSecureNonce();
 
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -105,7 +123,7 @@ async function createCsrfToken(sessionId: string): Promise<string> {
 }
 
 export async function middleware(request: NextRequest) {
-  const nonce = (globalThis as any)?.crypto?.randomUUID?.();
+  const nonce = getSecureNonce();
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
 
@@ -173,6 +191,12 @@ export async function middleware(request: NextRequest) {
 
     // If the token was marked revoked by the periodic JWT check, force
     // the user to sign in again.
+    // If there is no token (user unauthenticated), redirect to sign-in.
+    if (!token) {
+      const signInUrl = request.nextUrl.clone();
+      signInUrl.pathname = '/auth/signin';
+      return NextResponse.redirect(signInUrl);
+    }
     if (token?.revoked) {
       const signInUrl = request.nextUrl.clone();
       signInUrl.pathname = '/auth/signin';

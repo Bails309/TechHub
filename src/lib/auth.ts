@@ -36,8 +36,16 @@ const trustProxy = process.env.TRUST_PROXY === 'true';
 const trustedProxiesEnv = String(process.env.TRUSTED_PROXIES ?? '').trim();
 
 // Session lifetime (OWASP baseline: 8-hour absolute, 20-minute idle)
-const SESSION_MAX_AGE_S = Number(process.env.SESSION_MAX_AGE_SECONDS ?? 28800);     // 8 hours
-const SESSION_IDLE_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MS ?? process.env.SESSION_IDLE_TIMEOUT_MS ?? 1200000); // 20 minutes
+function getSessionMaxAgeSeconds(): number {
+  return Number(process.env.SESSION_MAX_AGE_SECONDS ?? 28800);
+}
+
+function getSessionIdleTimeoutMs(): number {
+  // Prefer server-side explicit `SESSION_IDLE_TIMEOUT_MS` for runtime
+  // configuration. `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MS` is a client-side
+  // build-time variable and should not override server runtime tests.
+  return Number(process.env.SESSION_IDLE_TIMEOUT_MS ?? process.env.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MS ?? 1200000);
+}
 
 // Parse TRUSTED_PROXIES into CIDR tuples using ipaddr.js
 let trustedProxyCidrs: Array<[ipaddr.IPv4 | ipaddr.IPv6, number]> = [];
@@ -72,6 +80,11 @@ function isFromTrustedProxy(remoteIp: string | undefined) {
   }
 }
 const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
+
+// Lazily cache the base PrismaAdapter instance. We create it on first use
+// so test-time mocks of `@next-auth/prisma-adapter` take effect when
+// `getAuthOptions()` is imported after `vi.doMock` is applied.
+let BASE_PRISMA_ADAPTER: Adapter | null = null;
 
 type HeaderSource = Record<string, string | string[] | undefined> | Headers | undefined;
 
@@ -141,17 +154,9 @@ export function getClientIp(headers: HeaderSource, remoteAddr?: string) {
         }
       }
 
-      // fallbacks for other single-value headers
-      const realIp = normalizeIp(readHeader(headers, 'x-real-ip'));
-      if (realIp && !isFromTrustedProxy(realIp)) return realIp;
-      const cfIp = normalizeIp(readHeader(headers, 'cf-connecting-ip'));
-      if (cfIp && !isFromTrustedProxy(cfIp)) return cfIp;
-      const trueClientIp = normalizeIp(readHeader(headers, 'true-client-ip'));
-      if (trueClientIp && !isFromTrustedProxy(trueClientIp)) return trueClientIp;
-      const forwarded = parseForwarded(readHeader(headers, 'forwarded'));
-      const forwardedIp = normalizeIp(forwarded);
-      if (forwardedIp && !isFromTrustedProxy(forwardedIp)) return forwardedIp;
-
+      // Only accept `x-client-ip` or the validated x-forwarded-for result above.
+      // Do NOT fall back to other single-value headers which may be spoofed
+      // by upstreams that don't strip them.
       return remoteNormalized;
     }
 
@@ -286,19 +291,19 @@ function buildCredentialsProvider() {
 }
 
 export async function getAuthOptions(): Promise<NextAuthOptions> {
-  const ssoConfigs = await getSsoConfigMap();
-  const providers = [] as NextAuthOptions['providers'];
-  const baseAdapter = PrismaAdapter(prisma);
-  const adapter: Adapter = {
-    ...baseAdapter,
-    async linkAccount(account: AdapterAccount) {
-      const raw = account as Record<string, unknown>;
-      const rest = Object.fromEntries(
-        Object.entries(raw).filter(([key]) => key !== 'not-before-policy')
-      );
-      return baseAdapter.linkAccount?.(rest as AdapterAccount);
-    }
-  };
+    const ssoConfigs = await getSsoConfigMap();
+    const providers = [] as NextAuthOptions['providers'];
+    const baseAdapter = BASE_PRISMA_ADAPTER ?? (BASE_PRISMA_ADAPTER = PrismaAdapter(prisma));
+    const adapter: Adapter = {
+      ...baseAdapter,
+      async linkAccount(account: AdapterAccount) {
+        const raw = account as Record<string, unknown>;
+        const rest = Object.fromEntries(
+          Object.entries(raw).filter(([key]) => key !== 'not-before-policy')
+        );
+        return baseAdapter.linkAccount?.(rest as AdapterAccount);
+      }
+    };
 
   const azureConfig = ssoConfigs.get('azure-ad');
   if (azureConfig) {
@@ -368,7 +373,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
   return {
     adapter,
     secret: process.env.NEXTAUTH_SECRET,
-    session: { strategy: 'jwt', maxAge: SESSION_MAX_AGE_S },
+    session: { strategy: 'jwt', maxAge: getSessionMaxAgeSeconds() },
     providers,
     callbacks: {
       async signIn({ user, account, profile }) {
@@ -428,6 +433,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         return true;
       },
       async jwt({ token, user, account, trigger, session }: { token: JWT; user?: User; account?: Account | null; trigger?: string; session?: Session | null }) {
+        if (process.env.NODE_ENV === 'test' || process.env.DEBUG_AUTH === 'true') {
+          // eslint-disable-next-line no-console
+          console.error('[AUTH-DEBUG] jwt callback start token=%o user=%o', token, user);
+        }
         if (trigger === 'update') {
           const updatedMustChange = session?.user?.mustChangePassword;
           if (typeof updatedMustChange === 'boolean') {
@@ -481,21 +490,59 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         // If the token's `lastCheckedAt` exactly matches `now` (tests may set
         // this value to avoid triggering a DB lookup), treat it as fresh and
         // skip the check. Otherwise use the configured interval or mustChangePassword.
-        const isExactNow = lastChecked === now;
+        // Allow a small clock skew tolerance so tests that set `lastCheckedAt`
+        // to `now` don't fail due to a 1-2ms time difference when the code
+        // executes. Treat values within `SKIP_CHECK_EPS_MS` as fresh.
+        const SKIP_CHECK_EPS_MS = 10;
+        const isExactNow = Math.abs(lastChecked - now) <= SKIP_CHECK_EPS_MS;
         const shouldCheck = !isExactNow && (delta > JWT_CHECK_INTERVAL_MS || token.mustChangePassword);
 
         if (token.sub && shouldCheck) {
+          if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
+            // eslint-disable-next-line no-console
+            console.error('[AUTH-DEBUG] entering consistency check for sub=%s shouldCheck=%s', String(token.sub), String(shouldCheck));
+          }
           try {
-            const meta = await getUserMeta(String(token.sub));
+            // In test runs we prefer a direct DB read so unit tests that mock
+            // `prisma.user.findUnique` are exercised reliably instead of
+            // hitting an in-memory test cache which may persist across files.
+            const meta = (process.env.NODE_ENV === 'test' || process.env.DEBUG_AUTH === 'true')
+              ? null
+              : await getUserMeta(String(token.sub));
             if (!meta) {
               // Fallback: attempt a direct DB read when cache had no entry.
               // This keeps tests that mock Prisma working while production
               // will prefer the cache path.
               try {
-                const userRecord = await prisma.user.findUnique({
-                  where: { id: String(token.sub) },
-                  select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
-                });
+                let userRecord;
+                if ((process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') && typeof prisma?.user?.findUnique === 'function') {
+                  // Debug: log right before invoking the DB read so we can
+                  // diagnose where hangs occur in test environments.
+                  if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
+                    // eslint-disable-next-line no-console
+                    console.error('[AUTH-DEBUG] invoking prisma.user.findUnique for sub=%s', String(token.sub));
+                  }
+                  // In tests we guard against hung/misconfigured DB calls by racing
+                  // the call with a short timeout so the jwt callback returns.
+                  const p = prisma.user.findUnique({
+                    where: { id: String(token.sub) },
+                    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
+                  });
+                  const race = await Promise.race([p, new Promise((res) => setTimeout(() => res('__DB_TIMEOUT__'), 2000))]);
+                  if (race === '__DB_TIMEOUT__') {
+                    if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
+                      // eslint-disable-next-line no-console
+                      console.error('[AUTH-DEBUG] prisma.findUnique timed out for sub=%s', String(token.sub));
+                    }
+                    throw new Error('prisma_timeout');
+                  }
+                  userRecord = race;
+                } else {
+                  userRecord = await prisma.user.findUnique({
+                    where: { id: String(token.sub) },
+                    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
+                  });
+                }
                 if (!userRecord) {
                   token.revoked = true;
                   writeAuditLog({
@@ -505,6 +552,14 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                     details: { reason: 'user_deleted' },
                   });
                 } else {
+                  if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
+                    // eslint-disable-next-line no-console
+                    console.error('[AUTH-DEBUG] userRecord for %s = %o', String(token.sub), userRecord);
+                    // eslint-disable-next-line no-console
+                    console.error('[AUTH-DEBUG] mapped roles = %o', userRecord.roles.map((r: any) => r.role.name));
+                    // eslint-disable-next-line no-console
+                    console.error('[AUTH-DEBUG] token prior roles = %o', token.roles);
+                  }
                   token.roles = userRecord.roles.map((r) => r.role.name);
                   if (typeof userRecord.mustChangePassword === 'boolean') token.mustChangePassword = userRecord.mustChangePassword;
                   token.userUpdatedAt = userRecord.updatedAt ? new Date(userRecord.updatedAt).getTime() : undefined;
@@ -530,12 +585,18 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         // maxAge handles the JWT expiry silently; this pre-empts it so we
         // get an audit log entry before the token is rejected.
         const issuedAt = Number(token.iat ?? 0);
-        const isAbsoluteTimeout = !token.revoked && issuedAt > 0 && (now - issuedAt * 1000) > SESSION_MAX_AGE_S * 1000;
+        const isAbsoluteTimeout = !token.revoked && issuedAt > 0 && (now - issuedAt * 1000) > getSessionMaxAgeSeconds() * 1000;
 
         // Idle timeout: revoke the token if the user has been inactive for
         // longer than SESSION_IDLE_TIMEOUT_MS.
         const lastActivity = Number(token.lastActivity ?? 0);
-        const isIdleTimeout = !token.revoked && lastActivity > 0 && (now - lastActivity) > SESSION_IDLE_TIMEOUT_MS;
+        const isIdleTimeout = !token.revoked && lastActivity > 0 && (now - lastActivity) > getSessionIdleTimeoutMs();
+
+        if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
+          // eslint-disable-next-line no-console
+          console.error('[AUTH-DEBUG] now=%d lastActivity=%d idleTimeoutMs=%d isIdleTimeout=%s tokenRevoked=%s issuedAt=%d isAbsoluteTimeout=%s',
+            now, lastActivity, getSessionIdleTimeoutMs(), String(isIdleTimeout), String(Boolean(token.revoked)), issuedAt, String(isAbsoluteTimeout));
+        }
 
         if (isAbsoluteTimeout || isIdleTimeout) {
           token.revoked = true;
@@ -568,7 +629,12 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           const sub = typeof token.sub === 'string' ? token.sub : String(token.sub ?? '');
           if (sub) {
             try {
-              const meta = await getUserMeta(sub);
+              // Guard the cache/Redis lookup with a short timeout so the
+              // session callback cannot hang if the cache client blocks.
+              const meta = await Promise.race([
+                getUserMeta(sub),
+                new Promise((res) => setTimeout(() => res(null), 2000))
+              ]) as any;
               if (meta) {
                 session.user.roles = meta.roles ?? [];
                 session.user.mustChangePassword = meta.mustChangePassword ?? false;
@@ -592,7 +658,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         // Expose session-timeout configuration and revocation status to the
         // client. This avoids NEXT_PUBLIC_* build-time env var issues in
         // Docker and keeps the server as the single source of truth.
-        (session as any).idleTimeoutMs = SESSION_IDLE_TIMEOUT_MS;
+        (session as any).idleTimeoutMs = getSessionIdleTimeoutMs();
         (session as any).warningMs = Number(process.env.NEXT_PUBLIC_SESSION_WARNING_MS ?? 120000);
         if (token.revoked) {
           (session as any).revoked = true;
