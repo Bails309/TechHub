@@ -34,7 +34,7 @@ export default function PageHeader() {
     }, []);
 
     return (
-        <header className="sticky top-0 z-30 w-full h-16 glass border-b border-ink-200/50 dark:border-white/5 flex items-center px-4 md:px-8 justify-end">
+        <header className="sticky top-0 z-30 w-full h-16 glass border-b border-ink-200/50 dark:border-white/5 flex items-center px-4 lg:px-8 justify-end">
             {/* Search Input */}
             <div className="hidden sm:flex group relative items-center w-full max-w-sm rounded-full bg-ink-100/50 dark:bg-ink-900/50 border border-ink-200 dark:border-ink-800 transition-all focus-within:ring-2 focus-within:ring-ocean-500 focus-within:border-ocean-500">
                 <Search size={16} className="text-ink-400 absolute left-3" />
