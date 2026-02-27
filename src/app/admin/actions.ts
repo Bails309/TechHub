@@ -131,7 +131,7 @@ async function safeDeleteIcon(iconPath?: string) {
     // call-time to ensure we invoke the current implementation.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = await import('../../lib/storage');
-    const deleteFn = mod.deleteIcon ?? mod.default;
+    const deleteFn = (mod as any).deleteIcon ?? (mod as any).default;
     if (typeof deleteFn === 'function') {
       await deleteFn(iconPath);
     }

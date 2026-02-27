@@ -556,13 +556,13 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                     // eslint-disable-next-line no-console
                     console.error('[AUTH-DEBUG] userRecord for %s = %o', String(token.sub), userRecord);
                     // eslint-disable-next-line no-console
-                    console.error('[AUTH-DEBUG] mapped roles = %o', userRecord.roles.map((r: any) => r.role.name));
+                    console.error('[AUTH-DEBUG] mapped roles = %o', (userRecord as any).roles?.map((r: any) => r.role.name));
                     // eslint-disable-next-line no-console
                     console.error('[AUTH-DEBUG] token prior roles = %o', token.roles);
                   }
-                  token.roles = userRecord.roles.map((r) => r.role.name);
-                  if (typeof userRecord.mustChangePassword === 'boolean') token.mustChangePassword = userRecord.mustChangePassword;
-                  token.userUpdatedAt = userRecord.updatedAt ? new Date(userRecord.updatedAt).getTime() : undefined;
+                  token.roles = (userRecord as any).roles?.map((r: any) => r.role.name) ?? [];
+                  if (typeof (userRecord as any).mustChangePassword === 'boolean') token.mustChangePassword = (userRecord as any).mustChangePassword;
+                  token.userUpdatedAt = (userRecord as any).updatedAt ? new Date((userRecord as any).updatedAt).getTime() : undefined;
                   token.lastCheckedAt = now;
                 }
               } catch {
