@@ -41,6 +41,7 @@ import { hashPassword, validatePasswordComplexity } from '../../lib/password';
 import { getPasswordPolicy } from '../../lib/passwordPolicy';
 import { lookup } from 'dns/promises';
 import https from 'https';
+import http from 'http';
 import ipaddr from 'ipaddr.js';
 import { assertUrlNotPrivate, isPublicIp } from '../../lib/ssrf';
 import { getStorageConfigMapWithDeps, StorageProviderId } from '@/lib/storageConfig';
@@ -1453,7 +1454,7 @@ async function validateIssuerUrl(rawIssuer: string): Promise<ResolvedIssuer> {
 
 // SSRF protection is implemented in src/lib/ssrf.ts and imported above.
 
-async function fetchWithPinnedIp(url: string, hostname: string, address: string) {
+async function fetchWithPinnedIp(url: string, hostname: string, address: string, maxRedirects = 5) {
   if (!address) {
     throw new Error('Resolved IP address is missing');
   }
@@ -1468,18 +1469,48 @@ async function fetchWithPinnedIp(url: string, hostname: string, address: string)
     // Connect directly to the resolved IP address and use the original hostname for SNI
     // and the Host header. This avoids relying on a custom lookup callback which
     // can surface ERR_INVALID_IP_ADDRESS in some environments.
-    const requestOptions: https.RequestOptions = {
+    const isHttp = target.protocol === 'http:';
+    const client = isHttp ? http : https;
+    const defaultPort = isHttp ? 80 : 443;
+    const requestOptions: (http.RequestOptions | https.RequestOptions) = {
       protocol: target.protocol,
       hostname: resolvedAddress,
-      port: target.port || 443,
+      port: Number(target.port || defaultPort),
       path: `${target.pathname}${target.search}`,
       method: 'GET',
-      headers: { host: hostname },
-      servername: hostname
+      headers: { host: hostname }
     };
+    if (!isHttp) {
+      // servername is only relevant for TLS/SNI
+      (requestOptions as https.RequestOptions).servername = hostname;
+    }
 
-    const request = https.request(requestOptions, (response) => {
+    const request = client.request(requestOptions, (response) => {
       const status = response.statusCode ?? 0;
+
+      // Handle HTTP redirects explicitly (301, 302, 307, 308)
+      if ([301, 302, 307, 308].includes(status) && response.headers.location) {
+        const location = String(response.headers.location);
+        response.resume();
+        (async () => {
+          try {
+            if (maxRedirects <= 0) {
+              throw new Error('Too many redirects');
+            }
+            const nextUrl = new URL(location, target);
+            // Validate redirect target with existing SSRF checks
+            const validated = await validateIssuerUrl(nextUrl.toString());
+            const nextAddress = validated.addresses?.[0]?.address;
+            if (!nextAddress) throw new Error('Redirect target resolved to no valid IPs');
+            const result = await fetchWithPinnedIp(nextUrl.toString(), validated.hostname, nextAddress, maxRedirects - 1);
+            resolve(result);
+          } catch (err) {
+            reject(err instanceof Error ? err : new Error(String(err)));
+          }
+        })();
+        return;
+      }
+
       response.resume();
       resolve({ ok: status >= 200 && status < 300, status });
     });
