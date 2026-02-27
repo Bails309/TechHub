@@ -16,16 +16,6 @@ export default function TopNav() {
   const { theme } = useTheme();
   const [searchValue, setSearchValue] = useState('');
 
-  const toggleHeadings = () => {
-    try {
-      const stored = window.localStorage.getItem('techhub-portal-headings');
-      const next = stored === 'off' ? 'on' : 'off';
-      window.localStorage.setItem('techhub-portal-headings', next);
-      window.dispatchEvent(new CustomEvent('techhub-headings', { detail: next }));
-    } catch {
-      window.dispatchEvent(new CustomEvent('techhub-headings', { detail: 'on' }));
-    }
-  };
 
   const handleSearch = (value: string) => {
     setSearchValue(value);
@@ -104,16 +94,7 @@ export default function TopNav() {
             />
           </div>
           <ThemeToggle />
-          {isAuthenticated ? (
-            <button
-              type="button"
-              onClick={toggleHeadings}
-              disabled={user?.mustChangePassword}
-              className="btn-secondary btn-small disabled:opacity-50"
-            >
-              Toggle headings
-            </button>
-          ) : null}
+
           {user ? (
             <div className="flex items-center gap-3">
               {isLocalUser ? (

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ExternalLink, LayoutGrid } from 'lucide-react';
+import { LayoutGrid } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 
@@ -21,7 +21,7 @@ export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
   const [iconError, setIconError] = useState(false);
   const safeIcon = useMemo(() => sanitizeIconUrl(app.icon), [app.icon]);
 
-  const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDragStart = (event: React.DragEvent<HTMLAnchorElement>) => {
     event.dataTransfer.setData('text/plain', app.id);
     event.dataTransfer.effectAllowed = 'move';
     setIsDragging(true);
@@ -31,12 +31,12 @@ export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
     setIsDragging(false);
   };
 
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (event: React.DragEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (event: React.DragEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     const fromId = event.dataTransfer.getData('text/plain');
     if (!fromId || fromId === app.id) {
@@ -46,51 +46,42 @@ export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
   };
 
   return (
-    <div
+    <Link
+      href={`/api/launch/${app.id}`}
+      target="_blank"
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      className={`glass rounded-3xl p-5 flex flex-col gap-3 hover:shadow-glow transition ${isDragging ? 'opacity-60' : ''
+      className={`glass group relative flex flex-col items-center justify-center gap-4 rounded-3xl p-6 transition-all hover:-translate-y-1 hover:shadow-glow hover:z-10 focus:outline-none focus:ring-2 focus:ring-ocean-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-ink-900 ${isDragging ? 'opacity-50 scale-95' : ''
         }`}
+      prefetch={false}
+      title={app.description ?? app.name}
     >
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-ink-300">
-            {app.category ?? 'App'}
-          </p>
-          <div className="mt-2 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-white/10 flex items-center justify-center">
-              {safeIcon && !iconError ? (
-                <img
-                  src={safeIcon}
-                  alt=""
-                  className="h-8 w-8 object-contain"
-                  onError={() => setIconError(true)}
-                />
-              ) : (
-                <LayoutGrid size={18} className="text-ink-200" />
-              )}
-            </div>
-            <h3 className="text-lg font-serif">{app.name}</h3>
-          </div>
-        </div>
-        <ExternalLink className="text-ink-400" size={18} />
+      <div className="h-16 w-16 md:h-20 md:w-20 rounded-2xl bg-white/5 flex items-center justify-center transition-transform group-hover:scale-110">
+        {safeIcon && !iconError ? (
+          <img
+            src={safeIcon}
+            alt=""
+            className="h-12 w-12 md:h-14 md:w-14 object-contain"
+            onError={() => setIconError(true)}
+            draggable={false}
+          />
+        ) : (
+          <LayoutGrid className="h-8 w-8 md:h-10 md:w-10 text-ink-300" />
+        )}
       </div>
-      {app.description ? (
-        <p className="text-sm text-ink-200 leading-relaxed">{app.description}</p>
-      ) : null}
-      <Link
-        href={`/api/launch/${app.id}`}
-        target="_blank"
-        className="launch-button mt-auto inline-flex items-center justify-between rounded-2xl px-4 py-2 text-sm transition"
-        draggable={false}
-        prefetch={false}
-      >
-        Launch
-        <span className="text-ink-400">↗</span>
-      </Link>
-    </div>
+      <div className="text-center w-full">
+        <h3 className="truncate font-serif text-base md:text-lg font-medium tracking-tight text-ink-50 group-hover:text-white transition-colors">
+          {app.name}
+        </h3>
+        {app.category && (
+          <p className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity truncate text-xs uppercase tracking-wider text-ink-300">
+            {app.category}
+          </p>
+        )}
+      </div>
+    </Link>
   );
 }
