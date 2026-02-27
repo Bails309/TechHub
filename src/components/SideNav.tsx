@@ -24,7 +24,7 @@ export default function SideNav() {
         <>
             {/* Mobile Hamburger Toggle */}
             <button
-                className="md:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-ink-900/80 backdrop-blur-md border border-ink-800 text-ink-50 shadow-lg"
+                className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-ink-900/80 backdrop-blur-md border border-ink-800 text-ink-5 : 0 shadow-lg"
                 onClick={() => setIsMobileOpen(!isMobileOpen)}
                 aria-label="Toggle menu"
             >
@@ -34,15 +34,15 @@ export default function SideNav() {
             {/* Mobile Overlay */}
             {isMobileOpen && (
                 <div
-                    className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm"
+                    className="fixed inset-0 bg-black/60 z-40 lg:hidden backdrop-blur-sm"
                     onClick={() => setIsMobileOpen(false)}
                 />
             )}
 
             {/* Side Navigation Rail */}
             <aside
-                className={`fixed inset-y-0 left-0 z-40 w-64 md:w-20 lg:w-64 glass flex flex-col justify-between transition-transform duration-300 ease-in-out border-r border-ink-200/50 dark:border-white/5 
-        ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
+                className={`fixed inset-y-0 left-0 z-40 w-64 lg:w-64 glass flex flex-col justify-between transition-transform duration-300 ease-in-out border-r border-ink-200/50 dark:border-white/5 
+        ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
             >
                 <div className="flex flex-col flex-1 py-8 px-4 overflow-y-auto">
                     {/* Logo Section */}
@@ -68,7 +68,7 @@ export default function SideNav() {
                             className={`flex items-center gap-4 px-4 pl-3 py-3 rounded-xl transition-all group ${!isAdminPanel ? 'bg-ocean-50 dark:bg-ocean-500/10 text-ocean-600 dark:text-ocean-400 font-medium' : 'text-ink-400 hover:text-ink-900 dark:hover:text-ink-100 hover:bg-ink-50 dark:hover:bg-ink-800/50'} ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
                         >
                             <LayoutDashboard size={20} className={!isAdminPanel ? 'text-ocean-500' : 'text-ink-400 group-hover:text-ink-600 dark:group-hover:text-ink-300'} />
-                            <span className="md:hidden lg:inline whitespace-nowrap">Dashboard</span>
+                            <span className="lg:inline whitespace-nowrap">Dashboard</span>
                         </Link>
 
                         {roles.includes('admin') && (
@@ -78,7 +78,7 @@ export default function SideNav() {
                                 className={`flex items-center gap-4 px-4 pl-3 py-3 rounded-xl transition-all group ${isAdminPanel ? 'bg-ocean-50 dark:bg-ocean-500/10 text-ocean-600 dark:text-ocean-400 font-medium' : 'text-ink-400 hover:text-ink-900 dark:hover:text-ink-100 hover:bg-ink-50 dark:hover:bg-ink-800/50'} ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
                             >
                                 <Settings size={20} className={isAdminPanel ? 'text-ocean-500' : 'text-ink-400 group-hover:text-ink-600 dark:group-hover:text-ink-300'} />
-                                <span className="md:hidden lg:inline whitespace-nowrap">Administration</span>
+                                <span className="lg:inline whitespace-nowrap">Administration</span>
                             </Link>
                         )}
                     </nav>

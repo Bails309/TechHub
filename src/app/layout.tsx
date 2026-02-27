@@ -29,7 +29,7 @@ export default async function RootLayout({
         <Providers>
           <div className="flex min-h-screen">
             <SideNav />
-            <div className="flex-1 flex flex-col min-w-0 md:pl-20 lg:pl-64 transition-all duration-300">
+            <div className="flex-1 flex flex-col min-w-0 lg:pl-64 transition-all duration-300">
               <PageHeader />
               <main className="flex-1 pb-12">{children}</main>
             </div>

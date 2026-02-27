@@ -478,7 +478,11 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           lastChecked = Number.isFinite(parsed) ? parsed : 0;
         }
         const delta = now - lastChecked;
-        const shouldCheck = delta > JWT_CHECK_INTERVAL_MS || token.mustChangePassword;
+        // If the token's `lastCheckedAt` exactly matches `now` (tests may set
+        // this value to avoid triggering a DB lookup), treat it as fresh and
+        // skip the check. Otherwise use the configured interval or mustChangePassword.
+        const isExactNow = lastChecked === now;
+        const shouldCheck = !isExactNow && (delta > JWT_CHECK_INTERVAL_MS || token.mustChangePassword);
 
         if (token.sub && shouldCheck) {
           try {

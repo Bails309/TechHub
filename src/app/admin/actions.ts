@@ -226,7 +226,10 @@ export async function createApp(formData: FormData) {
 
   // If an icon file was provided, upload it before the DB transaction so
   // we can delete it if the transaction fails (avoids orphaned files).
-  if (iconFile) {
+  // Be defensive: some browsers/clients may include an empty file field
+  // (size === 0). Skip attempting to save when the file is empty to avoid
+  // the "Empty file" validation error.
+  if (iconFile && typeof (iconFile as any).size === 'number' && (iconFile as any).size > 0) {
     // validate & save (the local `saveIcon` helper performs validation)
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
@@ -507,90 +510,124 @@ export async function updateStorageConfig(
 }
 
 export async function updateApp(formData: FormData) {
-  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as const;
-  const session = await getServerAuthSession();
-  if (!session?.user?.roles?.includes('admin')) {
-    return { status: 'error', message: 'Unauthorized' } as const;
-  }
-  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
-  }
-
-
-  const parsed = updateSchema.safeParse({
-    id: formData.get('id'),
-    name: formData.get('name'),
-    url: formData.get('url'),
-    categoryId: formData.get('categoryId') || undefined,
-    description: formData.get('description') || undefined,
-    audience: formData.get('audience'),
-    roleId: formData.get('roleId') || undefined,
-    userIds: formData.getAll('userIds').map((value) => String(value))
-  });
-
-  if (!parsed.success) {
-    return { status: 'error', message: 'Invalid app details' } as const;
-  }
-
-  const iconFile = formData.get('icon');
-  const iconRemove = formData.get('iconRemove') === 'on';
-  let iconPath: string | undefined;
-
-  // Fetch existing icon path so we can remove the old file after successful update
-  const existingApp = await prisma.appLink.findUnique({ where: { id: parsed.data.id } });
-
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.appLink.update({
-        where: { id: parsed.data.id },
-        data: {
-          name: parsed.data.name,
-          url: parsed.data.url,
-          categoryId: parsed.data.categoryId || null,
-          description: parsed.data.description,
-          audience: parsed.data.audience,
-          roleId: parsed.data.audience === 'ROLE' ? parsed.data.roleId : null,
-          ...(iconRemove ? { icon: null } : {}),
-          ...(iconPath ? { icon: iconPath } : {})
+    if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as const;
+    const session = await getServerAuthSession();
+    if (!session?.user?.roles?.includes('admin')) {
+      return { status: 'error', message: 'Unauthorized' } as const;
+    }
+    if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
+      return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
+    }
+
+
+    const parsed = updateSchema.safeParse({
+      id: formData.get('id'),
+      name: formData.get('name'),
+      url: formData.get('url'),
+      categoryId: formData.get('categoryId') || undefined,
+      description: formData.get('description') || undefined,
+      audience: formData.get('audience'),
+      roleId: formData.get('roleId') || undefined,
+      userIds: formData.getAll('userIds').map((value) => String(value))
+    });
+
+    if (!parsed.success) {
+      return { status: 'error', message: 'Invalid app details' } as const;
+    }
+
+    const iconFile = formData.get('icon');
+    const iconRemove = formData.get('iconRemove') === 'on';
+    let iconPath: string | undefined;
+
+    // Fetch existing icon path so we can remove the old file after successful update
+    const existingApp = await prisma.appLink.findUnique({ where: { id: parsed.data.id } });
+
+    // If an icon file was provided, upload it before the DB transaction so
+    // we can delete it if the transaction fails (avoids orphaned files).
+    // Be defensive: skip saving if the file is empty (size === 0) to avoid
+    // the "Empty file" validation error when the client submits an empty
+    // file field (typical when only the remove checkbox is used).
+    if (iconFile && typeof (iconFile as any).size === 'number' && (iconFile as any).size > 0) {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      iconPath = await saveIcon(iconFile as File);
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.appLink.update({
+          where: { id: parsed.data.id },
+          data: {
+            name: parsed.data.name,
+            url: parsed.data.url,
+            categoryId: parsed.data.categoryId || null,
+            description: parsed.data.description,
+            audience: parsed.data.audience,
+            roleId: parsed.data.audience === 'ROLE' ? parsed.data.roleId : null,
+            ...(iconRemove ? { icon: null } : {}),
+            ...(iconPath ? { icon: iconPath } : {})
+          }
+        });
+
+        await tx.userAppAccess.deleteMany({ where: { appId: parsed.data.id } });
+        if (parsed.data.audience === 'USER' && parsed.data.userIds?.length) {
+          await tx.userAppAccess.createMany({
+            data: parsed.data.userIds.map((userId) => ({ userId, appId: parsed.data.id })),
+            skipDuplicates: true
+          });
         }
       });
-
-      await tx.userAppAccess.deleteMany({ where: { appId: parsed.data.id } });
-      if (parsed.data.audience === 'USER' && parsed.data.userIds?.length) {
-        await tx.userAppAccess.createMany({
-          data: parsed.data.userIds.map((userId) => ({ userId, appId: parsed.data.id })),
-          skipDuplicates: true
-        });
+    } catch (err) {
+      // If update failed, and we uploaded a new icon, remove it to avoid orphaned files
+      if (iconPath && existingApp?.icon !== iconPath) {
+        await safeDeleteIcon(iconPath);
       }
-    });
-  } catch (err) {
-    // If update failed, and we uploaded a new icon, remove it to avoid orphaned files
-    if (iconPath && existingApp?.icon !== iconPath) {
-      await safeDeleteIcon(iconPath);
+      // Return an error result rather than throwing so the client can display
+      // a specific message instead of hitting the generic exception handler.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        return { status: 'error', message: 'App already exists' } as const;
+      }
+      return { status: 'error', message: err instanceof Error ? err.message : 'Failed to update app' } as const;
     }
+
+    // After successful transaction, try to perform post-update tasks such as
+    // deleting the previous icon, auditing, and revalidation. These are
+    // non-critical: the DB update already committed and should be treated as
+    // successful even if cleanup steps fail. Catch and log any errors so a
+    // cleanup failure doesn't surface as a save failure to the UI.
+    try {
+      if (existingApp?.icon) {
+        if (iconRemove) {
+          await safeDeleteIcon(existingApp.icon);
+        } else if (iconPath && existingApp.icon !== iconPath) {
+          await safeDeleteIcon(existingApp.icon);
+        }
+      }
+
+      writeAuditLog({
+        category: 'admin',
+        action: 'app_updated',
+        actorId: session.user.id,
+        targetId: parsed.data.id,
+        details: { name: parsed.data.name, url: parsed.data.url },
+      });
+
+      await safeRevalidatePath('/admin');
+      await safeRevalidatePath('/');
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('Non-fatal post-update task failed for app update', err);
+    }
+
+    return { status: 'success', message: 'App updated' } as const;
+  } catch (err) {
+    // Catch any unexpected error and return a structured message so the client
+    // shows a useful error instead of the generic catch-all. Also log it.
+    // eslint-disable-next-line no-console
+    console.error('Unexpected error in updateApp action:', err);
     return { status: 'error', message: err instanceof Error ? err.message : 'Failed to update app' } as const;
   }
-
-  // After successful transaction, delete old icon file when appropriate
-  if (existingApp?.icon) {
-    if (iconRemove) {
-      await safeDeleteIcon(existingApp.icon);
-    } else if (iconPath && existingApp.icon !== iconPath) {
-      await safeDeleteIcon(existingApp.icon);
-    }
-  }
-
-  writeAuditLog({
-    category: 'admin',
-    action: 'app_updated',
-    actorId: session.user.id,
-    targetId: parsed.data.id,
-    details: { name: parsed.data.name, url: parsed.data.url },
-  });
-
-  await safeRevalidatePath('/admin');
-  await safeRevalidatePath('/');
-  return { status: 'success', message: 'App updated' } as const;
 }
 
 export async function triggerStorageCleanup(formData: FormData): Promise<AdminActionState> {
