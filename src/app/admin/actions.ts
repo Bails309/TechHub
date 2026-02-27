@@ -43,7 +43,6 @@ import { lookup } from 'dns/promises';
 import https from 'https';
 import ipaddr from 'ipaddr.js';
 import { getStorageConfigMapWithDeps, StorageProviderId } from '@/lib/storageConfig';
-import { invalidateStorageClients } from '@/lib/storage';
 import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 
@@ -57,8 +56,7 @@ const appSchemaBase = z.object({
     .refine((value) => value.startsWith('http://') || value.startsWith('https://'), {
       message: 'URL must use http or https'
     }),
-  categorySelect: z.string().optional(),
-  categoryNew: z.string().optional(),
+  categoryId: z.string().optional(),
   description: z.string().optional(),
   audience: z.enum(['PUBLIC', 'AUTHENTICATED', 'ROLE', 'USER']),
   roleId: z.string().optional(),
@@ -114,7 +112,10 @@ const storageAuthSchema = z.enum(['connection-string', 'account-key']);
 
 async function saveIcon(file: File) {
   const parsed = uploadSchema.safeParse(file);
-  if (!parsed.success) return undefined;
+  if (!parsed.success) {
+    const errorMsg = parsed.error.errors[0]?.message || 'Invalid file';
+    throw new Error(errorMsg);
+  }
   return storageSaveIcon(file);
 }
 
@@ -208,8 +209,7 @@ export async function createApp(formData: FormData) {
   const payload = appSchema.safeParse({
     name: formData.get('name'),
     url: formData.get('url'),
-    categorySelect: formData.get('categorySelect') || undefined,
-    categoryNew: formData.get('categoryNew') || undefined,
+    categoryId: formData.get('categoryId') || undefined,
     description: formData.get('description') || undefined,
     audience: formData.get('audience'),
     roleId: formData.get('roleId') || undefined,
@@ -223,32 +223,22 @@ export async function createApp(formData: FormData) {
 
   const iconFile = formData.get('icon');
   let iconPath: string | undefined;
-  if (iconFile instanceof File && iconFile.size > 0) {
-    const parsedIcon = uploadSchema.safeParse(iconFile);
-    if (!parsedIcon.success) {
-      return { status: 'error', message: 'Invalid file type or size' } as const;
-    }
-    iconPath = await saveIcon(iconFile);
-  } else {
-    iconPath = undefined;
+
+  // If an icon file was provided, upload it before the DB transaction so
+  // we can delete it if the transaction fails (avoids orphaned files).
+  if (iconFile) {
+    // validate & save (the local `saveIcon` helper performs validation)
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    iconPath = await saveIcon(iconFile as File);
   }
-
-  const normalizedNewCategory = parsed.data.categoryNew?.trim();
-  const normalizedSelect = parsed.data.categorySelect?.trim();
-  const category =
-    normalizedNewCategory && normalizedNewCategory.length > 0
-      ? normalizedNewCategory
-      : normalizedSelect && normalizedSelect !== 'none'
-        ? normalizedSelect
-        : undefined;
-
   try {
     await prisma.$transaction(async (tx) => {
       const app = await tx.appLink.create({
         data: {
           name: parsed.data.name,
           url: parsed.data.url,
-          category,
+          categoryId: parsed.data.categoryId || null,
           description: parsed.data.description,
           audience: parsed.data.audience,
           roleId: parsed.data.audience === 'ROLE' ? parsed.data.roleId : null,
@@ -360,7 +350,6 @@ export async function updateStorageConfig(
   const account = String(formData.get('account') ?? '').trim();
   const connectionString = String(formData.get('connectionString') ?? '').trim();
   const accountKey = String(formData.get('accountKey') ?? '').trim();
-  const sasTtlMinutes = Number(formData.get('sasTtlMinutes') ?? 0) || null;
   const clearSecret = formData.get('clearSecret') === 'on';
   const bucket = String(formData.get('bucket') ?? '').trim();
   const region = String(formData.get('region') ?? '').trim();
@@ -460,8 +449,7 @@ export async function updateStorageConfig(
           authMode: authMode.data,
           container,
           account: account || null,
-          endpoint: endpoint || null,
-          sasTtlMinutes: sasTtlMinutes || null
+          endpoint: endpoint || null
         }
         : {}
     : Prisma.JsonNull;
@@ -533,8 +521,7 @@ export async function updateApp(formData: FormData) {
     id: formData.get('id'),
     name: formData.get('name'),
     url: formData.get('url'),
-    categorySelect: formData.get('categorySelect') || undefined,
-    categoryNew: formData.get('categoryNew') || undefined,
+    categoryId: formData.get('categoryId') || undefined,
     description: formData.get('description') || undefined,
     audience: formData.get('audience'),
     roleId: formData.get('roleId') || undefined,
@@ -548,26 +535,6 @@ export async function updateApp(formData: FormData) {
   const iconFile = formData.get('icon');
   const iconRemove = formData.get('iconRemove') === 'on';
   let iconPath: string | undefined;
-  if (iconRemove) {
-    iconPath = undefined;
-  } else if (iconFile instanceof File && iconFile.size > 0) {
-    const parsedIcon = uploadSchema.safeParse(iconFile);
-    if (!parsedIcon.success) {
-      return { status: 'error', message: 'Invalid file type or size' } as const;
-    }
-    iconPath = await saveIcon(iconFile);
-  } else {
-    iconPath = undefined;
-  }
-
-  const normalizedNewCategory = parsed.data.categoryNew?.trim();
-  const normalizedSelect = parsed.data.categorySelect?.trim();
-  const category =
-    normalizedNewCategory && normalizedNewCategory.length > 0
-      ? normalizedNewCategory
-      : normalizedSelect && normalizedSelect !== 'none'
-        ? normalizedSelect
-        : null;
 
   // Fetch existing icon path so we can remove the old file after successful update
   const existingApp = await prisma.appLink.findUnique({ where: { id: parsed.data.id } });
@@ -579,7 +546,7 @@ export async function updateApp(formData: FormData) {
         data: {
           name: parsed.data.name,
           url: parsed.data.url,
-          category,
+          categoryId: parsed.data.categoryId || null,
           description: parsed.data.description,
           audience: parsed.data.audience,
           roleId: parsed.data.audience === 'ROLE' ? parsed.data.roleId : null,
@@ -1795,3 +1762,71 @@ export async function updateSsoConfig(
 }
 
 // Rotation actions removed — managed by single SSO_MASTER_KEY now.
+
+export async function getAppLaunchStats() {
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    throw new Error('Unauthorized');
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const stats = await prisma.auditLog.groupBy({
+    by: ['targetId'],
+    where: {
+      action: 'app_launch',
+      createdAt: { gte: thirtyDaysAgo },
+    },
+    _count: {
+      id: true,
+    },
+    orderBy: {
+      _count: {
+        id: 'desc',
+      },
+    },
+    take: 5,
+  });
+
+  const appIds = stats.map(s => s.targetId).filter((id): id is string => Boolean(id));
+  const apps = await prisma.appLink.findMany({
+    where: { id: { in: appIds } },
+    select: { id: true, name: true }
+  });
+  const nameMap = new Map(apps.map(a => [a.id, a.name]));
+
+  return stats.map(s => ({
+    name: s.targetId ? nameMap.get(s.targetId) ?? 'Unknown App' : 'Unknown App',
+    count: s._count.id
+  }));
+}
+
+export async function getUserActivityStats() {
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    throw new Error('Unauthorized');
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const audits = await prisma.auditLog.findMany({
+    where: {
+      createdAt: { gte: thirtyDaysAgo },
+    },
+    select: {
+      createdAt: true,
+    },
+  });
+
+  const dailyStats: Record<string, number> = {};
+  audits.forEach(a => {
+    const dateStr = a.createdAt.toISOString().split('T')[0];
+    dailyStats[dateStr] = (dailyStats[dateStr] || 0) + 1;
+  });
+
+  return Object.entries(dailyStats)
+    .map(([date, count]) => ({ date, count }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}

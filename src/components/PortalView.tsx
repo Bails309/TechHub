@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import AppCard from './AppCard';
+import CommandPalette from './CommandPalette';
 
 interface PortalApp {
   id: string;
@@ -16,6 +17,7 @@ interface PortalViewProps {
   apps: PortalApp[];
   isAuthenticated: boolean;
   initialOrder: string[];
+  pinnedApps?: string[];
 }
 
 function normaliseOrder(order: string[], apps: PortalApp[]) {
@@ -55,12 +57,35 @@ function moveInOrder(order: string[], fromId: string, toId: string) {
   return next;
 }
 
-// `reorderSubset` removed — logic replaced by safer reordering in `handleReorder`.
-
-export default function PortalView({ apps, isAuthenticated, initialOrder }: PortalViewProps) {
+export default function PortalView({ apps, isAuthenticated, initialOrder, pinnedApps }: PortalViewProps) {
   const [order, setOrder] = useState(() => normaliseOrder(initialOrder, apps));
-  const [headingsOn, setHeadingsOn] = useState(true);
   const [query, setQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [pinnedAppIds, setPinnedAppIds] = useState<string[]>(pinnedApps ?? []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    // If user searches via TopNav, reset category filter to 'All'
+    const handleSearch = (e: CustomEvent) => {
+      setQuery(e.detail);
+      setSelectedCategory('All');
+    };
+    window.addEventListener('techhub-search', handleSearch as EventListener);
+    return () => {
+      window.removeEventListener('techhub-search', handleSearch as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -79,43 +104,36 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
   useEffect(() => {
     if (!isAuthenticated) {
       try {
+        const storedOrder = window.localStorage.getItem('techhub-portal-order');
+        if (storedOrder) {
+          const parsedOrder = JSON.parse(storedOrder) as string[];
+          setOrder((current) => normaliseOrder(parsedOrder, apps));
+        }
+      } catch {
+        // use default
+      }
+
+      try {
+        const storedPins = window.localStorage.getItem('techhub-portal-pins');
+        if (storedPins) {
+          const parsedPins = JSON.parse(storedPins) as string[];
+          setPinnedAppIds(parsedPins);
+        }
+      } catch {
+        // use default
+      }
+    }
+  }, [apps, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      try {
         window.localStorage.setItem('techhub-portal-order', JSON.stringify(order));
       } catch {
         // ignore
       }
     }
   }, [order, isAuthenticated]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
-    try {
-      const stored = window.localStorage.getItem('techhub-portal-headings');
-      if (stored === 'off') {
-        setHeadingsOn(false);
-      }
-    } catch {
-      setHeadingsOn(true);
-    }
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<string>).detail;
-      setHeadingsOn(detail !== 'off');
-    };
-    window.addEventListener('techhub-headings', handler);
-    return () => window.removeEventListener('techhub-headings', handler);
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
-    try {
-      window.localStorage.setItem('techhub-portal-headings', headingsOn ? 'on' : 'off');
-    } catch {
-      // ignore
-    }
-  }, [headingsOn, isAuthenticated]);
 
   useEffect(() => {
     try {
@@ -129,6 +147,9 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<string>).detail;
       setQuery(detail ?? '');
+      if (detail) {
+        setSelectedCategory('All'); // Reset category when searching
+      }
     };
     window.addEventListener('techhub-search', handler);
     return () => window.removeEventListener('techhub-search', handler);
@@ -136,34 +157,51 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
 
   const orderedApps = useMemo(() => sortApps(apps, order), [apps, order]);
 
+  // Extract all unique categories present in the system, ignoring the search query
+  const allCategories = useMemo(() => {
+    const cats = new Set(orderedApps.map(app => app.category ?? 'General'));
+    return Array.from(cats).sort();
+  }, [orderedApps]);
+
   const filteredApps = useMemo(() => {
     const trimmed = query.trim().toLowerCase();
-    if (!trimmed) {
-      return orderedApps;
+    let result = orderedApps;
+
+    if (trimmed) {
+      result = result.filter((app) => {
+        const haystack = [
+          app.name,
+          app.category ?? '',
+          app.description ?? '',
+          app.url
+        ]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(trimmed);
+      });
     }
-    return orderedApps.filter((app) => {
-      const haystack = [
-        app.name,
-        app.category ?? '',
-        app.description ?? '',
-        app.url
-      ]
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(trimmed);
-    });
-  }, [orderedApps, query]);
 
-  const grouped = useMemo(() => {
-    return filteredApps.reduce<Record<string, PortalApp[]>>((acc, app) => {
-      const key = app.category ?? 'General';
-      acc[key] = acc[key] ?? [];
-      acc[key].push(app);
-      return acc;
-    }, {});
-  }, [filteredApps]);
+    if (!trimmed && selectedCategory !== 'All') {
+      result = result.filter(app => (app.category ?? 'General') === selectedCategory);
+    }
 
-  const categories = useMemo(() => Object.keys(grouped), [grouped]);
+    return result;
+  }, [orderedApps, query, selectedCategory]);
+
+  const togglePin = async (appId: string) => {
+    const nextPins = pinnedAppIds.includes(appId)
+      ? pinnedAppIds.filter((id) => id !== appId)
+      : [...pinnedAppIds, appId];
+
+    setPinnedAppIds(nextPins);
+
+    if (isAuthenticated) {
+      const { toggleFavoriteApp } = await import('../app/actions/favoriteApps');
+      await toggleFavoriteApp(appId);
+    } else {
+      window.localStorage.setItem('techhub-portal-pins', JSON.stringify(nextPins));
+    }
+  };
 
   const persistOrder = async (nextOrder: string[]) => {
     setOrder(nextOrder);
@@ -180,16 +218,13 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
   const handleReorder = (fromId: string, toId: string, contextIds?: string[]) => {
     const normalised = normaliseOrder(order, apps);
     const next = moveInOrder(normalised, fromId, toId);
-    if (contextIds) {
-      // Create a base order with the dragged id removed to avoid duplication
+    if (contextIds && contextIds.length > 0) {
       const base = normaliseOrder(order, apps);
       const baseWithoutFrom = base.filter((id) => id !== fromId);
 
-      // Determine the current items in the target subset that are present in the base
       const subset = contextIds.filter((id) => baseWithoutFrom.includes(id));
       const targetIndex = subset.indexOf(toId);
 
-      // If we can't find the target in the subset, fall back to the simple move
       if (targetIndex === -1) {
         return persistOrder(next);
       }
@@ -197,7 +232,6 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
       const nextSubset = [...subset];
       nextSubset.splice(targetIndex, 0, fromId);
 
-      // Find where the subset appears in the base order (assumes contiguous block)
       const subsetSet = new Set(subset);
       const firstIndex = baseWithoutFrom.findIndex((id) => subsetSet.has(id));
       if (firstIndex === -1) {
@@ -216,36 +250,86 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
   };
 
   const renderGrid = (list: PortalApp[], contextIds?: string[]) => (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6 animate-in fade-in zoom-in-95 duration-200">
       {list.map((app) => (
         <AppCard
           key={app.id}
           app={app}
           onReorder={handleReorder}
           contextIds={contextIds}
+          isPinned={pinnedAppIds.includes(app.id)}
+          onTogglePin={togglePin}
         />
       ))}
     </div>
   );
 
+  const pinnedItems = filteredApps.filter((app) => pinnedAppIds.includes(app.id));
+  const unpinnedItems = filteredApps.filter((app) => !pinnedAppIds.includes(app.id));
+
   return (
-    <div className="space-y-12">
-      {headingsOn ? (
-        <div className="space-y-12">
-          {categories.map((category) => (
-            <section key={category} className="space-y-6">
-              <div className="flex items-center gap-4">
-                <span className="h-px flex-1 bg-ink-800" />
-                <h2 className="font-serif text-2xl">{category}</h2>
-                <span className="h-px flex-1 bg-ink-800" />
-              </div>
-              {renderGrid(grouped[category], grouped[category].map((app) => app.id))}
-            </section>
+    <div className="space-y-8">
+      {!query && allCategories.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-8 animate-in fade-in slide-in-from-top-4">
+          <button
+            onClick={() => setSelectedCategory('All')}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedCategory === 'All'
+              ? 'bg-ink-800 text-ocean-400 dark:bg-ocean-500/10 dark:text-ocean-300 border border-ink-300 dark:border-ocean-500/20 shadow-sm'
+              : 'bg-transparent text-ink-400 hover:text-ink-100 dark:hover:bg-white/5 border border-transparent'
+              }`}
+          >
+            All Apps
+          </button>
+          {allCategories.map((category) => (
+            <button
+              key={category}
+              onClick={() => setSelectedCategory(category)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedCategory === category
+                ? 'bg-ink-800 text-ocean-400 dark:bg-ocean-500/10 dark:text-ocean-300 border border-ink-300 dark:border-ocean-500/20 shadow-sm'
+                : 'bg-transparent text-ink-400 hover:text-ink-100 dark:hover:bg-white/5 border border-transparent'
+                }`}
+            >
+              {category}
+            </button>
           ))}
         </div>
-      ) : (
-        renderGrid(filteredApps)
       )}
+
+      {filteredApps.length === 0 ? (
+        <div className="text-center py-12 text-ink-300">
+          <p className="text-lg">No applications found.</p>
+        </div>
+      ) : (
+        <div className="space-y-12">
+          {pinnedItems.length > 0 && (
+            <div>
+              <h2 className="text-xl font-medium tracking-tight text-ink-900 dark:text-ink-100 mb-6 flex items-center gap-2">
+                <span className="h-6 w-1 rounded-full bg-ocean-500"></span>
+                Pinned Apps
+              </h2>
+              {renderGrid(pinnedItems, pinnedItems.map((app) => app.id))}
+            </div>
+          )}
+
+          {unpinnedItems.length > 0 && (
+            <div>
+              {pinnedItems.length > 0 && (
+                <h2 className="text-xl font-medium tracking-tight text-ink-900 dark:text-ink-100 mb-6 flex items-center gap-2">
+                  <span className="h-6 w-1 rounded-full bg-ink-300 dark:bg-ink-700"></span>
+                  All Apps
+                </h2>
+              )}
+              {renderGrid(unpinnedItems, unpinnedItems.map((app) => app.id))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <CommandPalette
+        apps={apps as any[]} // type cast to avoid strict matching issues since it only uses id, name, category, icon, url
+        isOpen={isPaletteOpen}
+        onClose={() => setIsPaletteOpen(false)}
+      />
     </div>
   );
 }

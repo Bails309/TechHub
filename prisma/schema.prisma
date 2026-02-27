@@ -28,8 +28,20 @@ model User {
   roles         UserRole[]
   appOrder      UserAppOrder?
   appAccesses   UserAppAccess[]
+  favoriteApps  UserFavoriteApp[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  icon        String?   // Lucide icon name
+  order       Int       @default(0)
+  apps        AppLink[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model Role {
@@ -56,19 +68,31 @@ model AppLink {
   name        String      @unique
   url         String
   icon        String?
-  category    String?
+  categoryId  String?
+  categoryRef Category?   @relation(fields: [categoryId], references: [id])
   description String?
   audience    AppAudience @default(AUTHENTICATED)
   role        Role?       @relation(fields: [roleId], references: [id])
   roleId      String?
   userAccesses UserAppAccess[]
+  favoritedBy UserFavoriteApp[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
   @@index([roleId])
+  @@index([categoryId])
 }
 
 model UserAppAccess {
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  app    AppLink @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId  String
+
+  @@id([userId, appId])
+}
+
+model UserFavoriteApp {
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String
   app    AppLink @relation(fields: [appId], references: [id], onDelete: Cascade)
@@ -131,6 +155,9 @@ model AuditLog {
   @@index([actorId])
   @@index([createdAt])
   @@index([category, createdAt])
+  @@index([action, createdAt])
+  @@index([provider, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model StorageConfig {

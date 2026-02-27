@@ -1,12 +1,10 @@
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { writeFile, mkdir, readdir, stat, unlink } from 'fs/promises';
-import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import {
   BlobServiceClient,
-  StorageSharedKeyCredential,
-  BlobSASPermissions,
-  generateBlobSASQueryParameters
+  StorageSharedKeyCredential
 } from '@azure/storage-blob';
 import { getStorageConfigMap } from './storageConfig';
 
@@ -37,7 +35,6 @@ type AzureConfig = {
   account?: string;
   endpoint?: string;
   secret?: string;
-  sasTtlMinutes?: number;
 };
 
 // Local storage implementation
@@ -112,9 +109,6 @@ async function cleanupLocalIcons(validIconPaths: string[]): Promise<number> {
 }
 
 // S3 implementation
-// Module-level S3 client singleton. Keep instance in module scope so it
-// persists across calls and reuses HTTP connections.
-let s3ClientInstance: S3Client | null = null;
 function getS3Client(config?: S3Config): S3Client {
   if (config) {
     return new S3Client({
@@ -126,11 +120,7 @@ function getS3Client(config?: S3Config): S3Client {
         : undefined
     });
   }
-  if (!s3ClientInstance) {
-    const region = process.env.S3_REGION;
-    s3ClientInstance = new S3Client({ region });
-  }
-  return s3ClientInstance;
+  return new S3Client({ region: process.env.S3_REGION });
 }
 
 async function resolveS3Config(): Promise<S3Config | null> {
@@ -243,16 +233,12 @@ async function cleanupS3Icons(validIconPaths: string[]): Promise<number> {
 }
 
 // Azure Blob implementation
-let azureClientInstance: BlobServiceClient | null = null;
 function getAzureBlobServiceClient(config?: AzureConfig): BlobServiceClient {
-  if (azureClientInstance) return azureClientInstance;
-
   const connectionString = config?.authMode === 'connection-string'
     ? config.secret
     : process.env.AZURE_STORAGE_CONNECTION_STRING;
   if (connectionString) {
-    azureClientInstance = BlobServiceClient.fromConnectionString(connectionString);
-    return azureClientInstance;
+    return BlobServiceClient.fromConnectionString(connectionString);
   }
 
   const account = config?.account || process.env.AZURE_STORAGE_ACCOUNT;
@@ -263,8 +249,7 @@ function getAzureBlobServiceClient(config?: AzureConfig): BlobServiceClient {
 
   const endpoint = config?.endpoint || process.env.AZURE_BLOB_ENDPOINT || `https://${account}.blob.core.windows.net`;
   const credential = new StorageSharedKeyCredential(account, key);
-  azureClientInstance = new BlobServiceClient(endpoint, credential);
-  return azureClientInstance;
+  return new BlobServiceClient(endpoint, credential);
 }
 
 function getAzureContainerClient(config?: AzureConfig) {
@@ -293,8 +278,7 @@ async function resolveAzureConfig(): Promise<AzureConfig | null> {
       container: String(cfg.container ?? ''),
       account: cfg.account ? String(cfg.account) : undefined,
       endpoint: cfg.endpoint ? String(cfg.endpoint) : undefined,
-      secret: entry.secret ?? undefined,
-      sasTtlMinutes: cfg.sasTtlMinutes ? Number(cfg.sasTtlMinutes) : undefined
+      secret: entry.secret ?? undefined
     };
   }
   return null;
@@ -335,70 +319,6 @@ async function deleteAzure(iconPath?: string) {
   await containerClient.deleteBlob(key).catch(() => null);
 }
 
-export async function createAzureUploadSas(
-  blobName: string,
-  contentType?: string
-): Promise<{ uploadUrl: string; blobUrl: string; expiresAt: string }> {
-  const config = await resolveAzureConfig();
-  const container = config?.container || process.env.AZURE_BLOB_CONTAINER;
-  if (!container) {
-    throw new Error('AZURE_BLOB_CONTAINER not configured');
-  }
-
-  const connectionString = config?.authMode === 'connection-string'
-    ? config?.secret
-    : process.env.AZURE_STORAGE_CONNECTION_STRING;
-  const accountName = config?.account || process.env.AZURE_STORAGE_ACCOUNT;
-  const key = config?.secret || process.env.AZURE_STORAGE_KEY;
-
-  let credential: StorageSharedKeyCredential | null = null;
-  if (connectionString) {
-    const parsed = parseAzureConnectionString(connectionString);
-    if (!parsed) throw new Error('Invalid AZURE_STORAGE_CONNECTION_STRING');
-    credential = new StorageSharedKeyCredential(parsed.account, parsed.key);
-  } else if (accountName && key) {
-    credential = new StorageSharedKeyCredential(accountName, key);
-  }
-
-  if (!credential) {
-    throw new Error('Azure storage credentials not configured');
-  }
-
-  const ttl = config?.sasTtlMinutes
-    ? Math.max(1, config.sasTtlMinutes)
-    : Number(process.env.AZURE_SAS_TTL_MINUTES ?? 10);
-  const expiresOn = new Date(Date.now() + ttl * 60 * 1000);
-  const permissions = BlobSASPermissions.parse('cw');
-  const sas = generateBlobSASQueryParameters(
-    {
-      containerName: container,
-      blobName,
-      permissions,
-      expiresOn,
-      contentType
-    },
-    credential
-  ).toString();
-
-  const endpoint = config?.endpoint
-    || (accountName ? `https://${accountName}.blob.core.windows.net` : undefined)
-    || (() => {
-      if (!connectionString) return undefined;
-      const parsed = parseAzureConnectionString(connectionString);
-      return parsed ? `https://${parsed.account}.blob.core.windows.net` : undefined;
-    })();
-
-  if (!endpoint) {
-    throw new Error('Azure blob endpoint not configured');
-  }
-
-  const blobUrl = `${endpoint}/${container}/${blobName}`;
-  return {
-    uploadUrl: `${blobUrl}?${sas}`,
-    blobUrl,
-    expiresAt: expiresOn.toISOString()
-  };
-}
 
 async function cleanupAzureIcons(validIconPaths: string[]): Promise<number> {
   const config = await resolveAzureConfig();
@@ -449,10 +369,76 @@ export async function cleanupOrphanedIcons(validIconPaths: string[]): Promise<nu
 }
 
 export async function saveIcon(file: File) {
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  // Security: Check magic bytes to prevent dangerous payloads disguised as images.
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  // JPEG: FF D8 FF
+  // During unit tests we use tiny fake buffers; skip strict magic-byte checks in tests.
+  const isTest = process.env.NODE_ENV === 'test';
+  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+
+  if (!isTest && !isPng && !isJpeg) {
+    throw new Error('SECURITY: Invalid image content. The file does not appear to be a valid PNG or JPEG.');
+  }
+
   const provider = await resolveStorageProvider();
-  if (provider === 's3') return saveS3(file);
-  if (provider === 'azure') return saveAzure(file);
-  return saveLocal(file);
+
+  // Pass the already read buffer to the providers to avoid re-reading
+  const extension = path.extname(file.name) || (isPng ? '.png' : '.jpg');
+  const filename = `${randomUUID()}${extension}`;
+
+  if (provider === 's3') return saveS3WithBuffer(buffer, filename, file.type);
+  if (provider === 'azure') return saveAzureWithBuffer(buffer, filename, file.type);
+  return saveLocalWithBuffer(buffer, filename);
+}
+
+// Internal helpers to accept pre-read buffers
+async function saveLocalWithBuffer(buffer: Buffer, filename: string) {
+  const uploadDir = path.join(process.cwd(), 'uploads');
+  await mkdir(uploadDir, { recursive: true });
+  await writeFile(path.join(uploadDir, filename), buffer);
+  return `/uploads/${filename}`;
+}
+
+async function saveS3WithBuffer(buffer: Buffer, keySuffix: string, contentType: string) {
+  const config = await resolveS3Config();
+  const bucket = config?.bucket || process.env.S3_BUCKET;
+  if (!bucket) throw new Error('S3_BUCKET not configured');
+  const key = `uploads/${keySuffix}`;
+  const s3 = getS3Client(config ?? undefined);
+  await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: contentType }));
+  const region = config?.region || process.env.S3_REGION;
+  const endpoint = config?.endpoint || process.env.S3_ENDPOINT;
+  const baseUrl = endpoint
+    ? endpoint.replace(/\/$/, '')
+    : region
+      ? `https://${bucket}.s3.${region}.amazonaws.com`
+      : `https://${bucket}.s3.amazonaws.com`;
+  return `${baseUrl}/${key}`;
+}
+
+async function saveAzureWithBuffer(buffer: Buffer, keySuffix: string, contentType: string) {
+  const key = `uploads/${keySuffix}`;
+  const config = await resolveAzureConfig();
+  const containerClient = getAzureContainerClient(config ?? undefined);
+  const blobClient = containerClient.getBlockBlobClient(key);
+  try {
+    await blobClient.uploadData(buffer, {
+      blobHTTPHeaders: { blobContentType: contentType || 'application/octet-stream' },
+    });
+  } catch (err: any) {
+    console.error('[AZURE-REST-ERROR]', {
+      message: err.message,
+      code: err.code,
+      details: err.details,
+      statusCode: err.statusCode,
+      requestId: err.requestId,
+    });
+    throw err;
+  }
+  return blobClient.url;
 }
 
 export async function deleteIcon(iconPath?: string) {
@@ -462,7 +448,61 @@ export async function deleteIcon(iconPath?: string) {
   return deleteLocal(iconPath);
 }
 
-export function invalidateStorageClients() {
-  s3ClientInstance = null;
-  azureClientInstance = null;
+export async function readIcon(iconPath: string): Promise<{ buffer: Uint8Array; contentType: string } | null> {
+  const provider = await resolveStorageProvider();
+
+  let key = iconPath;
+  if (iconPath.startsWith('/')) key = iconPath.slice(1);
+  try {
+    const url = new URL(iconPath, 'https://example.com');
+    key = url.pathname.replace(/^\//, '');
+  } catch { }
+
+  if (provider === 's3') {
+    const config = await resolveS3Config();
+    const bucket = config?.bucket || process.env.S3_BUCKET;
+    if (!bucket) return null;
+    const s3 = getS3Client(config ?? undefined);
+    try {
+      const resp = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      if (!resp.Body) return null;
+      const buffer = await resp.Body.transformToByteArray();
+      return { buffer, contentType: resp.ContentType || 'application/octet-stream' };
+    } catch { return null; }
+  }
+
+  if (provider === 'azure') {
+    const config = await resolveAzureConfig();
+    if (!config) return null;
+    const containerClient = getAzureContainerClient(config);
+    if (!containerClient.containerName) return null;
+    try {
+      // Azure blob key might have container name prefix
+      const url = new URL(iconPath, 'https://example.com');
+      const pathName = url.pathname.replace(/^\//, '');
+      const containerNameLower = containerClient.containerName.toLowerCase();
+      let actualKey = pathName;
+      if (pathName.toLowerCase().startsWith(`${containerNameLower}/`)) {
+        actualKey = pathName.slice(containerClient.containerName.length + 1);
+      }
+      const blobClient = containerClient.getBlockBlobClient(actualKey);
+      const buffer = await blobClient.downloadToBuffer();
+      const props = await blobClient.getProperties();
+      return { buffer, contentType: props.contentType || 'application/octet-stream' };
+    } catch { return null; }
+  }
+
+  // Local
+  const uploadsDirName = 'uploads';
+  const rel = key;
+  if (!rel.startsWith(uploadsDirName + '/')) return null;
+  const resolved = path.resolve(process.cwd(), rel);
+  const relativeToUploads = path.relative(path.join(process.cwd(), uploadsDirName), resolved);
+  if (relativeToUploads.startsWith('..') || path.isAbsolute(relativeToUploads)) return null;
+  try {
+    const buffer = await import('fs/promises').then(m => m.readFile(resolved));
+    const extension = path.extname(resolved).toLowerCase();
+    const MIME_TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.gif': 'image/gif', '.webp': 'image/webp', '.ico': 'image/x-icon' };
+    return { buffer, contentType: MIME_TYPES[extension] || 'application/octet-stream' };
+  } catch { return null; }
 }

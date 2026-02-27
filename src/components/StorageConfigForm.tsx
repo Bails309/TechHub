@@ -21,7 +21,6 @@ export type StorageFormConfig = {
   secretValid?: boolean | null;
   updatedAt?: string | null;
   source?: 'db' | 'env' | null;
-  sasTtlMinutes?: number | null;
 };
 
 type ActionState = {
@@ -60,8 +59,8 @@ function ProviderCard({ title, description, source, children }: ProviderCardProp
 
 function StatusBadge({ state }: { state: ActionState }) {
   if (state.status === 'idle') return null;
-  const tone = state.status === 'success' ? 'text-emerald-300' : 'text-rose-300';
-  return <p className={`text-xs ${tone}`}>{state.message}</p>;
+  const tone = state.status === 'success' ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300';
+  return <p className={`text-xs font-medium ${tone}`}>{state.message}</p>;
 }
 
 export default function StorageConfigForm({
@@ -81,9 +80,6 @@ export default function StorageConfigForm({
   const [localState, localAction] = useFormState(updateStorageConfig, initialState);
   const [s3State, s3Action] = useFormState(updateStorageConfig, initialState);
   const [azureState, azureAction] = useFormState(updateStorageConfig, initialState);
-  const [sasState, setSasState] = useState<{ status: 'idle' | 'success' | 'error'; message: string }>(initialState);
-  const [sasResponse, setSasResponse] = useState<{ uploadUrl: string; blobUrl: string; expiresAt: string } | null>(null);
-
   const [localForm, setLocalForm] = useState(() => ({
     enabled: local?.enabled ?? selectedProvider === 'local'
   }));
@@ -107,8 +103,7 @@ export default function StorageConfigForm({
     account: azure?.account ?? '',
     connectionString: '',
     accountKey: '',
-    clearSecret: false,
-    sasTtlMinutes: azure?.sasTtlMinutes ?? null
+    clearSecret: false
   }));
 
   useEffect(() => {
@@ -143,38 +138,9 @@ export default function StorageConfigForm({
       account: azure?.account ?? '',
       connectionString: '',
       accountKey: '',
-      clearSecret: false,
-      sasTtlMinutes: azure?.sasTtlMinutes ?? null
+      clearSecret: false
     });
-  }, [azure?.enabled, azure?.container, azure?.endpoint, azure?.authMode, azure?.account, azure?.sasTtlMinutes]);
-
-  async function handleSasRequest() {
-    setSasState({ status: 'idle', message: '' });
-    setSasResponse(null);
-    try {
-      const res = await fetch('/api/storage/sas', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-csrf-token': getCsrfTokenFromCookie()
-        },
-        body: JSON.stringify({ filename: 'icon.png', contentType: 'image/png' })
-      });
-      const payload = await res.json();
-      if (!res.ok) {
-        setSasState({ status: 'error', message: payload?.error || 'Failed to create SAS' });
-        return;
-      }
-      setSasResponse({
-        uploadUrl: payload.uploadUrl,
-        blobUrl: payload.blobUrl,
-        expiresAt: payload.expiresAt
-      });
-      setSasState({ status: 'success', message: 'SAS token generated' });
-    } catch (error) {
-      setSasState({ status: 'error', message: error instanceof Error ? error.message : 'Failed to create SAS' });
-    }
-  }
+  }, [azure?.enabled, azure?.container, azure?.endpoint, azure?.authMode, azure?.account]);
 
   return (
     <div className="space-y-6">
@@ -212,10 +178,10 @@ export default function StorageConfigForm({
         </p>
       </div>
       {!hasMasterKey ? (
-        <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+        <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
           <p className="font-semibold">SSO master key required</p>
-          <p className="mt-1 text-xs text-amber-100">
-            Set <span className="text-amber-50">SSO_MASTER_KEY</span> in your environment to
+          <p className="mt-1 text-xs text-amber-600 dark:text-amber-100">
+            Set <span className="font-mono bg-amber-500/10 px-1 rounded dark:text-amber-50">SSO_MASTER_KEY</span> in your environment to
             save encrypted storage secrets.
           </p>
         </div>
@@ -368,7 +334,7 @@ export default function StorageConfigForm({
       {selectedProvider === 'azure' ? (
         <ProviderCard
           title="Azure Blob Storage"
-          description="Manage Azure Blob credentials, container settings, and SAS token generation."
+          description="Manage Azure Blob credentials and container settings."
           source={azure?.source}
         >
           {hasMasterKey && azure?.hasSecret && azure?.secretValid === false ? (
@@ -396,7 +362,7 @@ export default function StorageConfigForm({
                 name="authMode"
                 defaultValue={azureForm.authMode}
                 options={[
-                  { value: 'connection-string', label: 'Connection string' },
+                  { value: 'connection-string', label: 'Connection string (SAS)' },
                   { value: 'account-key', label: 'Account name + key' }
                 ]}
                 onChange={(value) =>
@@ -415,27 +381,18 @@ export default function StorageConfigForm({
               />
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <input
-                name="endpoint"
-                placeholder="Endpoint (optional)"
-                value={azureForm.endpoint}
-                onChange={(event) => setAzureForm((current) => ({ ...current, endpoint: event.target.value }))}
-                className="input-field"
-              />
-              <input
-                name="sasTtlMinutes"
-                type="number"
-                min={1}
-                placeholder="SAS TTL (minutes)"
-                value={azureForm.sasTtlMinutes ?? ''}
-                onChange={(event) =>
-                  setAzureForm((current) => ({
-                    ...current,
-                    sasTtlMinutes: event.target.value ? Number(event.target.value) : null
-                  }))
-                }
-                className="input-field"
-              />
+              <div className="space-y-1">
+                <input
+                  name="endpoint"
+                  placeholder="Endpoint (optional)"
+                  value={azureForm.endpoint}
+                  onChange={(event) => setAzureForm((current) => ({ ...current, endpoint: event.target.value }))}
+                  className="input-field"
+                />
+                <p className="px-1 text-[10px] text-ink-400">
+                  Override the default Azure URL. Use for Azurite (local emulator) or private custom endpoints.
+                </p>
+              </div>
             </div>
             {azureForm.authMode === 'connection-string' ? (
               <input
@@ -475,7 +432,7 @@ export default function StorageConfigForm({
               />
               Clear stored secret
             </label>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="submit"
                 name="intent"
@@ -492,26 +449,8 @@ export default function StorageConfigForm({
               >
                 Test connection
               </button>
-              <button
-                type="button"
-                onClick={handleSasRequest}
-                className="btn-secondary btn-small"
-              >
-                Generate SAS token
-              </button>
             </div>
             <StatusBadge state={azureState} />
-            <StatusBadge state={sasState} />
-            {sasResponse ? (
-              <div className="rounded-2xl border border-ink-800 bg-black/20 p-3 text-xs text-ink-200">
-                <p className="text-ink-300">Upload URL</p>
-                <p className="break-all text-ink-100 mt-1">{sasResponse.uploadUrl}</p>
-                <p className="text-ink-300 mt-3">Blob URL</p>
-                <p className="break-all text-ink-100 mt-1">{sasResponse.blobUrl}</p>
-                <p className="text-ink-300 mt-3">Expires</p>
-                <p className="text-ink-100 mt-1">{sasResponse.expiresAt}</p>
-              </div>
-            ) : null}
           </form>
         </ProviderCard>
       ) : null}

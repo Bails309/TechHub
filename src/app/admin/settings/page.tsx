@@ -77,7 +77,6 @@ export default async function SettingsPage() {
                 | 'connection-string'
                 | 'account-key'
                 | undefined,
-            sasTtlMinutes: (azureStorageConfig.config as Record<string, unknown> | null)?.sasTtlMinutes as number | undefined,
             hasSecret: Boolean(azureStorageConfig.secretEnc),
             secretValid: azureStorageSecretValid,
             updatedAt: azureStorageConfig.updatedAt.toISOString(),
@@ -119,7 +118,7 @@ export default async function SettingsPage() {
 
     return (
         <div className="px-6 md:px-12 py-12 space-y-8">
-            <section className="card-panel md:p-8">
+            <section className="card-panel">
                 <h1 className="font-serif text-3xl">Settings</h1>
                 <p className="text-ink-200 mt-2">
                     Manage roles, password policy, and upload storage configuration.

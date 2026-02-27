@@ -50,7 +50,7 @@ export default async function UsersPage({
 
     return (
         <div className="px-6 md:px-12 py-12 space-y-8">
-            <section className="card-panel md:p-8">
+            <section className="card-panel">
                 <h1 className="font-serif text-3xl">User management</h1>
                 <p className="text-ink-200 mt-2">
                     Create users, assign roles, and manage access.

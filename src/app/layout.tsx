@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import { headers } from 'next/headers';
 import './globals.css';
-import TopNav from '../components/TopNav';
+import SideNav from '../components/SideNav';
+import PageHeader from '../components/PageHeader';
 import Providers from '../components/Providers';
 import SessionGuard from '../components/SessionGuard';
 
@@ -26,8 +27,13 @@ export default async function RootLayout({
       </head>
       <body>
         <Providers>
-          <TopNav />
-          <main>{children}</main>
+          <div className="flex min-h-screen">
+            <SideNav />
+            <div className="flex-1 flex flex-col min-w-0 md:pl-20 lg:pl-64 transition-all duration-300">
+              <PageHeader />
+              <main className="flex-1 pb-12">{children}</main>
+            </div>
+          </div>
           <SessionGuard />
         </Providers>
       </body>

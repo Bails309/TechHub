@@ -1,11 +1,22 @@
 import { prisma } from '../../lib/prisma';
 import Link from 'next/link';
-import { AppWindow, Users, KeyRound, Settings } from 'lucide-react';
+import { AppWindow, Users, KeyRound, Settings, LayoutGrid } from 'lucide-react';
+import AnalyticsDashboard from './AnalyticsDashboard';
+import { getAppLaunchStats, getUserActivityStats } from './actions';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminDashboard() {
-  const [totalApps, totalUsers, ssoConfigs, storageConfigs, totalRoles, recentAudits] = await Promise.all([
+  const [
+    totalApps,
+    totalUsers,
+    ssoConfigs,
+    storageConfigs,
+    totalRoles,
+    recentAudits,
+    launchStats,
+    activityStats
+  ] = await Promise.all([
     prisma.appLink.count(),
     prisma.user.count(),
     prisma.ssoConfig.findMany({ where: { enabled: true } }),
@@ -15,6 +26,8 @@ export default async function AdminDashboard() {
       orderBy: { createdAt: 'desc' },
       take: 5,
     }),
+    getAppLaunchStats(),
+    getUserActivityStats(),
   ]);
 
   const activeSsoCount = ssoConfigs.length;
@@ -66,7 +79,7 @@ export default async function AdminDashboard() {
 
   return (
     <div className="px-6 md:px-12 py-12 space-y-8">
-      <section className="glass rounded-[36px] p-8">
+      <section className="card-panel">
         <h1 className="font-serif text-3xl">Admin command centre</h1>
         <p className="text-ink-200 mt-2">
           Manage apps, users, SSO providers, and system settings.
@@ -80,7 +93,7 @@ export default async function AdminDashboard() {
             <Link
               key={card.href}
               href={card.href}
-              className="glass rounded-[28px] p-6 hover:border-ocean-500/30 border border-transparent transition group"
+              className="glass rounded-[32px] p-6 hover:border-ocean-500/30 border border-transparent transition group"
             >
               <div className="flex items-center gap-3 mb-4">
                 <div className="rounded-full bg-ocean-500/10 p-2">
@@ -98,8 +111,10 @@ export default async function AdminDashboard() {
         })}
       </div>
 
+      <AnalyticsDashboard launchStats={launchStats} activityStats={activityStats} />
+
       <div className="grid gap-6 md:grid-cols-2">
-        <section className="glass rounded-[36px] p-8 md:col-span-2">
+        <section className="card-panel md:col-span-2">
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-serif text-2xl">Recent activity</h2>
             <Link href="/admin/audit" className="text-xs font-medium text-ocean-400 hover:text-ocean-300 transition px-4 py-2 rounded-full bg-ocean-500/10 hover:bg-ocean-500/20">

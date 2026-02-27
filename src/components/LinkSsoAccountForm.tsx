@@ -135,8 +135,8 @@ export default function LinkSsoAccountForm({ linkSsoAccount }: LinkSsoAccountFor
         <p
           className={
             state.status === 'success'
-              ? 'text-emerald-300 text-xs md:col-span-2'
-              : 'text-rose-300 text-xs md:col-span-2'
+              ? 'text-emerald-600 dark:text-emerald-300 text-xs md:col-span-2 font-medium'
+              : 'text-rose-600 dark:text-rose-300 text-xs md:col-span-2 font-medium'
           }
         >
           {state.message}
