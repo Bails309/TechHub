@@ -8,10 +8,8 @@ function buildCsp(nonce: string) {
     "base-uri 'self'",
     "form-action 'self'",
     "img-src 'self' data: blob: https:",
-    // Avoid 'unsafe-inline' to enforce nonce-based style execution. If you
-    // must support legacy browsers that don't accept nonces, consider the
-    // security trade-off before re-adding 'unsafe-inline'.
-    "style-src 'self' 'unsafe-inline' 'nonce-" + nonce + "'",
+    // Style sources: allow self and nonced styles.
+    "style-src 'self' 'nonce-" + nonce + "'",
     "font-src 'self' https: data:",
     // Avoid 'unsafe-inline' to ensure scripts execute only when covered
     // by the server-generated nonce or strict-dynamic+trusted sources.

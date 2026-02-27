@@ -18,9 +18,11 @@ Security is a core pillar of TechHub. The application implements multiple layers
 - **Server-Side Validation**: Every Administrative Server Action enforces strict role checks using `getServerAuthSession`.
 - **Pre-Provisioning**: The `REQUIRE_PREPROVISIONED_USERS` flag prevents unknown users from self-registering via SSO, ensuring only authorized employees gain access.
 
-## 3. Infrastructure Security
+## 3. Infrastructure & Network Security
 
-- **Reverse Proxy**: Nginx provides a buffer against the public internet, adding a layer of TLS termination and strict header enforcement.
+- **Standalone Hardening**: TechHub consolidates its security posture within the application layer. This makes it compatible with modern cloud ingresses (Azure Container Apps, AWS ALB) and standard reverse proxies.
+- **Native Security Headers**: HSTS, Content Security Policy (CSP), X-Frame-Options, and No-Sniff are enforced directly in the middleware and application configuration.
+- **Strict CSP**: The application implements a **Strict CSP** using server-generated nonces for every request. It explicitly forbids `'unsafe-inline'` for both scripts and styles, mitigating XSS risks even if an attacker manages to inject markup.
 - **Redis-Backed Rate Limiting**: In production, rate limiting is centralized in Redis. This prevents "password spraying" or DoS attacks that target multiple container instances simultaneously.
 - **Database Hardening**:
   - **Pre-Start Checks**: The application refuses to start in production if weak database passwords (e.g., `techhub/techhub`) are detected.
@@ -29,7 +31,7 @@ Security is a core pillar of TechHub. The application implements multiple layers
 ## 4. Audit Logging
 
 Every security-relevant event is captured in a permanent audit log:
-- **Login Events**: Successes, failures (including "missing client IP" diagnostics), and sign-outs.
+- **Login Events**: Successes, failures, and sign-outs.
 - **User Management**: Role updates, password changes, and account deletions.
 - **App Management**: Catalogue updates and storage cleanup jobs.
 

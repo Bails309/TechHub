@@ -31,7 +31,7 @@ export async function GET(
             try {
                 const refererUrl = new URL(referer);
                 // Simple origin check (port/protocol independent for local dev/Docker scenarios)
-                // In production behind nginx, Host is preserved.
+                // In production behind a proxy (like Azure Ingress), Host is preserved.
                 if (refererUrl.host === host) {
                     isTrustedReferer = true;
                 }

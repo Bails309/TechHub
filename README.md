@@ -1,35 +1,61 @@
 # TechHub 🚀
 
-**TechHub** is a high-performance, secure, admin-managed internal application portal. Built with **Next.js**, **Prisma**, and **Docker**, it serves as the central jumping-off point for your organization's internal tools and services.
+**TechHub** is a premium, high-performance administrative dashboard and internal application portal. Built with **Next.js**, **Prisma**, and **Docker**, it provides a centralized, secure, and visually stunning entry point for all your organization's internal tools.
+
+![TechHub Hero Carousel](docs/images/dashboard_dark.png)
 
 [![Next.js](https://img.shields.io/badge/Framework-Next.js-black?logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/Language-TypeScript-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![Security](https://img.shields.io/badge/Security-Hardened-emerald)](docs/security.md)
+[![Docker](https://img.shields.io/badge/Deployment-Standalone_Container-blue?logo=docker)](https://www.docker.com/)
 
 ---
 
-## ✨ Key Features
+## ✨ Visual Showcase
 
-- **Centralized App Management**: Admins can add, categorize, and control visibility for internal apps.
-- **Smart User Assignment**: High-performance autocomplete for assigning apps to specific users (no more loading massive user lists).
-- **Flexible Storage**: First-class support for Local Storage, AWS S3, and Azure Blob Storage.
-- **Security First**: 
-  - Integrated SSO (Azure AD, Keycloak) and Local Credentials.
-  - Robust Password Policies & Mandatory Password Change.
-  - Session protection (Idle & Absolute timeouts).
-  - Rate Limiting and CSRF protection.
-- **Automated Maintenance**: Built-in tools for cleaning up orphaned storage objects.
-- **Full Auditing**: Detailed audit logs for all administrative and security actions.
+````carousel
+![Modern Dark Dashboard](docs/images/dashboard_dark.png)
+<!-- slide -->
+![Sleek Light Dashboard](docs/images/dashboard_light.png)
+<!-- slide -->
+![Admin Analytics Dashboard](docs/images/admin_analytics.png)
+<!-- slide -->
+![Command Palette (Ctrl+K)](docs/images/command_palette.png)
+<!-- slide -->
+![Pinned Apps & Personalization](docs/images/pinned_apps.png)
+<!-- slide -->
+![Modern Side Navigation](docs/images/sidebar.png)
+<!-- slide -->
+![Refined Admin Controls](docs/images/admin_nav.png)
+````
 
 ---
 
-## 🏛️ Architecture & Security
+## 💎 Key Features
 
-To maintain a clean and focused workspace, we've moved deep technical documentation to dedicated guides:
+- **🚀 Ultra-Fast Experience**: Powered by Next.js App Router with skeleton loading and smooth transitions.
+- **🔍 Command Palette (Ctrl+K)**: Instant access to apps, admin pages, and settings from anywhere.
+- **📌 Personalized Dashboards**: Users can pin their most-used apps for quick access.
+- **📊 Real-time Analytics**: Built-in charts and logs for tracking app popularity and system activity.
+- **🎨 Dynamic Theming**: Fully optimized Light and Dark modes with glassmorphism aesthetics.
+- **🛡️ Native Security**:
+  - **Embedded Security Headers**: HSTS, Strict CSP, and X-Frame protection built directly into the app core.
+  - **Strict Nonce-based CSP**: Forbids `'unsafe-inline'` for both scripts and styles, providing top-tier protection against XSS.
+  - **SSO Integration**: Out-of-the-box support for Azure AD and Keycloak.
+  - **Hardened Auth**: Robust password policies and session protection.
+  - **Audit Logging**: Comprehensive trails for every administrative action.
+- **☁️ Flexible Storage**: Support for Local, AWS S3, and Azure Blob storage.
+- **🛠️ Admin Empowerment**: Easily manage apps, categories, users, and global site configurations (including custom logos).
 
-- 🏗️ **[Architecture Overview](docs/architecture.md)** — Learn about the data flow between Nginx, Next.js, Redis, and Storage Providers.
-- 🛡️ **[Security & Hardening](docs/security.md)** — A detailed breakdown of our session management, RBAC, and rate-limiting strategies.
-- ☁️ **[Storage Providers](docs/azure-blob.md)** — Detailed instructions for S3 and Azure Blob integration.
+---
+
+## 🏗️ Architecture
+
+TechHub is designed as a **Standalone Container** architecture. It is fully self-contained and ready to be deployed behind any modern cloud ingress or reverse proxy.
+
+- **Frontend/Backend**: Next.js (React) unified App Router.
+- **Database**: PostgreSQL (managed via Prisma).
+- **Cache**: Redis for session management and rate limiting.
+- **Security**: Hardened at the application layer; no sidecar proxy required for core safety. Fully strictly nonced CSP.
 
 ---
 
@@ -44,21 +70,25 @@ To maintain a clean and focused workspace, we've moved deep technical documentat
 # 1. Clone & Copy environment template
 cp .env.example .env
 
-# 2. Spin up the infrastructure (DB, Redis, Nginx, App)
+# 2. Spin up the infrastructure
 docker-compose up -d --build
 
-# 3. Check logs for your unique admin password (if not set in .env)
+# 3. Access your initial admin credentials
 docker-compose logs app | grep "SEED"
 ```
 
 ### 3. Visit the Portal
-Open `http://localhost:3000` (or your configured `DOMAIN`).
+Open `http://localhost` (or your configured `PORT`, e.g., `http://localhost:8082`).
+
+---
+
+## 🌩️ Production Deployment
+
+For detailed instructions on deploying TechHub to production environments (Azure, AWS, etc.), see our [Production Deployment Guide](docs/DEPLOYMENT.md).
 
 ---
 
 ## 🛠️ Local Development
-
-If you prefer to run the application layer natively on your host:
 
 ```bash
 # Install dependencies
@@ -78,42 +108,12 @@ npm run dev
 
 ---
 
-## ⚙️ Environment Configuration
-
-TechHub uses centralized environment variables. The main required keys are:
-
-| Category | Key | Description |
-|----------|-----|-------------|
-| **Core** | `NEXTAUTH_SECRET` | Required for session encryption. |
-| **Auth** | `SSO_MASTER_KEY` | Key for encrypting stored SSO secrets. |
-| **Storage**| `STORAGE_PROVIDER` | `local`, `s3`, or `azure`. |
-| **Production** | `RATE_LIMIT_STORE` | Must be `redis` in production. |
-
-*See [.env.example](.env.example) for a complete list of all 50+ configuration options.*
-
----
-
-## 🧪 Testing
-
-TechHub features a comprehensive test suite powered by **Vitest**.
-
-```bash
-# Run unit & integration tests
-npm test
-
-# Run tests in a Docker container (recommended for parity with CI)
-docker-compose run --rm app npm test
-```
-See [TESTING.md](TESTING.md) for detailed test scenarios.
-
----
-
 ## 🤝 Contributing
 
-We welcome contributions! Please ensure you:
-1. Run `npm run lint` before committing.
-2. Follow the security guidelines in [docs/security.md](docs/security.md).
-3. **Never** commit secrets.
+We welcome contributions! Please follow our modern dev workflow:
+1. Ensure `npm run lint` passes.
+2. Follow the design system outlined in `globals.css`.
+3. Test your changes with `npm test`.
 
 ---
 
