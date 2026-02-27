@@ -52,7 +52,7 @@ export function sanitizeIconUrl(
         // Same-origin local uploads
         if (url.origin === new URL(base).origin) {
             if (!url.pathname.startsWith('/uploads/')) return null;
-            return url.pathname; // return only the path, not a full URL
+            return url.toString(); // return absolute URL for consistency across SSR/CSR
         }
 
         // S3 URLs: must match the EXACT configured hostname (if provided) and path must start with /uploads/
@@ -65,7 +65,10 @@ export function sanitizeIconUrl(
             if (allowedS3Hostname && url.hostname !== allowedS3Hostname) {
                 return null;
             }
-            return url.toString(); // Preserve full S3 URL
+            // Convert to same-origin proxied URL so the server can fetch private
+            // S3 objects and stream them to the client.
+            if (base) return new URL(url.pathname, base).toString();
+            return url.pathname;
         }
 
         // Azure Blob Storage URLs
@@ -78,9 +81,11 @@ export function sanitizeIconUrl(
         ) {
             const idx = url.pathname.indexOf('/uploads/');
             if (idx !== -1) {
-                return url.toString(); // Preserve full Azure Blob URL
+                if (base) return new URL(url.pathname.substring(idx), base).toString();
+                return url.pathname.substring(idx); // Convert to proxy route
             }
-            return url.toString();
+            if (base) return new URL(url.pathname, base).toString();
+            return url.pathname;
         }
 
         return null;

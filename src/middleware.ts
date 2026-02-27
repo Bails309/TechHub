@@ -28,6 +28,58 @@ function buf2hex(buffer: ArrayBuffer) {
     .join('');
 }
 
+function hex2buf(hex: string) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+function timingSafeEqual(a: string, b: string) {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+async function validateCsrfToken(token: string, sessionId: string): Promise<boolean> {
+  const secret = process.env.NEXTAUTH_SECRET ?? '';
+  if (!token || !sessionId || !secret) return false;
+
+  const dotIdx = token.indexOf('.');
+  if (dotIdx < 1) return false;
+
+  const nonce = token.slice(0, dotIdx);
+  const sig = token.slice(dotIdx + 1);
+  if (!nonce || !sig) return false;
+
+  const crypto = (globalThis as any).crypto;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  try {
+    const signature = await crypto.subtle.sign(
+      'HMAC',
+      key,
+      enc.encode(nonce + ':' + sessionId)
+    );
+
+    const sigHex = buf2hex(signature);
+    return timingSafeEqual(sigHex, sig);
+  } catch (err) {
+    return false;
+  }
+}
+
 async function createCsrfToken(sessionId: string): Promise<string> {
   const secret = process.env.NEXTAUTH_SECRET ?? '';
   const crypto = (globalThis as any).crypto;
@@ -78,15 +130,25 @@ export async function middleware(request: NextRequest) {
     const isSecure = forwardedProto === 'https' || request.nextUrl.protocol === 'https:';
     // Only set the CSRF cookie for authenticated users (who have a session)
     if (sessionId) {
-      const newToken = await createCsrfToken(sessionId);
-      response.cookies.set({
-        name: 'XSRF-TOKEN',
-        value: newToken,
-        httpOnly: false,
-        sameSite: 'strict',
-        secure: isSecure,
-        path: '/'
-      });
+      const existing = request.cookies.get('XSRF-TOKEN')?.value;
+      const isValid = existing ? await validateCsrfToken(existing, sessionId) : false;
+      if (!isValid) {
+        const newToken = await createCsrfToken(sessionId);
+        // Limit lifetime and use SameSite lax to allow typical top-level navigations
+        // while still protecting against cross-site requests. Use secure in prod
+        // when the request appears secure.
+        const maxAge = 60 * 60; // 1 hour
+        const secureFlag = process.env.NODE_ENV === 'production' ? true : isSecure;
+        response.cookies.set({
+          name: 'XSRF-TOKEN',
+          value: newToken,
+          httpOnly: false,
+          sameSite: 'lax',
+          secure: secureFlag,
+          path: '/',
+          maxAge
+        });
+      }
     }
   }
 

@@ -154,8 +154,8 @@ async function saveS3(file: File) {
     : region
       ? `https://${bucket}.s3.${region}.amazonaws.com`
       : `https://${bucket}.s3.amazonaws.com`;
-  const url = `${baseUrl}/${key}`;
-  return url;
+  // Return canonical same-origin path for DB storage (e.g. /uploads/<key>)
+  return `/${key}`;
 }
 
 async function deleteS3(iconPath?: string) {
@@ -294,7 +294,8 @@ async function saveAzure(file: File) {
   await blobClient.uploadData(buffer, {
     blobHTTPHeaders: { blobContentType: file.type || 'application/octet-stream' },
   });
-  return blobClient.url;
+  // Return canonical same-origin path to be stored in DB (e.g. /uploads/<key>)
+  return `/${key}`;
 }
 
 async function deleteAzure(iconPath?: string) {
@@ -416,7 +417,8 @@ async function saveS3WithBuffer(buffer: Buffer, keySuffix: string, contentType: 
     : region
       ? `https://${bucket}.s3.${region}.amazonaws.com`
       : `https://${bucket}.s3.amazonaws.com`;
-  return `${baseUrl}/${key}`;
+  // Persist canonical path for consistency with local storage (e.g. /uploads/<key>)
+  return `/${key}`;
 }
 
 async function saveAzureWithBuffer(buffer: Buffer, keySuffix: string, contentType: string) {
@@ -438,7 +440,8 @@ async function saveAzureWithBuffer(buffer: Buffer, keySuffix: string, contentTyp
     });
     throw err;
   }
-  return blobClient.url;
+  // Return canonical same-origin path to be stored in DB (e.g. /uploads/<key>)
+  return `/${key}`;
 }
 
 export async function deleteIcon(iconPath?: string) {
