@@ -100,15 +100,32 @@ async function main() {
     }
   ];
 
+  // Ensure Category records exist for sample apps and build a name->id map
+  const uniqueCategories = Array.from(new Set(sampleApps.map(s => s.category).filter(Boolean)));
+  const categoryMap = new Map<string, string>();
+  for (const [i, name] of uniqueCategories.entries()) {
+    const cat = await prisma.category.upsert({
+      where: { name },
+      update: {},
+      create: { name, order: i }
+    });
+    categoryMap.set(name, cat.id);
+  }
+
   for (const app of sampleApps) {
     const existing = await prisma.appLink.findFirst({ where: { url: app.url } });
     if (existing) {
       continue;
     }
 
-    await prisma.appLink.create({
-      data: app
-    });
+    const { category, ...rest } = app as any;
+    const data: any = { ...rest };
+    if (category) {
+      const categoryId = categoryMap.get(category);
+      if (categoryId) data.categoryId = categoryId;
+    }
+
+    await prisma.appLink.create({ data });
   }
 }
 
