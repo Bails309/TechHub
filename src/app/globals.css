@@ -75,6 +75,16 @@
   .tab-inactive {
     @apply text-ink-300 hover:text-ink-100 hover:bg-white/5 border border-transparent;
   }
+
+  /* Utilities */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }
 
 :root {

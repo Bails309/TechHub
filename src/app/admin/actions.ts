@@ -47,6 +47,7 @@ import { assertUrlNotPrivate, isPublicIp } from '../../lib/ssrf';
 import { getStorageConfigMapWithDeps, StorageProviderId } from '@/lib/storageConfig';
 import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
+import { createDefaultHttpClient } from '@azure/core-rest-pipeline';
 
 export type AdminActionState = { status: 'idle' | 'success' | 'error'; message: string };
 
@@ -104,8 +105,10 @@ const uploadSchema = z
   .refine((file) => file.size > 0, { message: 'Empty file' })
   .refine((file) => file.size <= MAX_ICON_BYTES, { message: 'File too large' })
   .refine((file) => {
-    const extension = path.extname(file.name).toLowerCase();
-    return ALLOWED_ICON_EXTENSIONS.has(extension) && ALLOWED_ICON_MIME_TYPES.has(file.type);
+    // Do not trust the uploaded filename for extension checks. Validate
+    // by MIME type here and rely on server-side magic-byte checks during
+    // saving to determine the final extension.
+    return ALLOWED_ICON_MIME_TYPES.has(file.type);
   }, { message: 'Invalid file type' });
 
 const storageProviderSchema = z.enum(['local', 's3', 'azure']);
@@ -148,6 +151,138 @@ function parseAzureConnectionString(raw: string) {
   return { account: accountMatch[1], key: keyMatch[1] };
 }
 
+function extractAzureBlobEndpoint(raw: string): string | null {
+  const endpointMatch = raw.match(/BlobEndpoint=([^;]+)/i);
+  if (endpointMatch?.[1]) return endpointMatch[1];
+
+  const accountMatch = raw.match(/AccountName=([^;]+)/i);
+  const protocolMatch = raw.match(/DefaultEndpointsProtocol=([^;]+)/i);
+  const suffixMatch = raw.match(/EndpointSuffix=([^;]+)/i);
+  const account = accountMatch?.[1];
+  if (!account) return null;
+  const protocol = protocolMatch?.[1] || 'https';
+  const suffix = suffixMatch?.[1] || 'core.windows.net';
+  return `${protocol}://${account}.blob.${suffix}`;
+}
+
+type PinnedEndpoint = {
+  url: URL;
+  hostname: string;
+  address: string;
+  family: 4 | 6;
+};
+
+async function resolvePinnedEndpoint(rawUrl: string): Promise<PinnedEndpoint> {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error('Endpoint must be a valid URL');
+  }
+
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error('Endpoint must use http or https');
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
+    throw new Error('Endpoint must be a public hostname');
+  }
+
+  const isIpLiteral = ipaddr.isValid(hostname);
+  if (isIpLiteral) {
+    if (!isPublicIp(hostname)) throw new Error('Endpoint must be a public IP address');
+    const normalized = ipaddr.process(hostname).toNormalizedString();
+    return { url, hostname, address: normalized, family: ipaddr.process(hostname).kind() === 'ipv6' ? 6 : 4 };
+  }
+
+  const records = await lookup(hostname, { all: true, verbatim: true });
+  if (!records.length) throw new Error('Endpoint host could not be resolved');
+
+  const validRecords = records
+    .filter((record) => Boolean(record.address) && (record.family === 4 || record.family === 6))
+    .map((record) => ({ address: String(record.address), family: record.family as 4 | 6 }))
+    .filter((record) => isPublicIp(record.address));
+
+  if (!validRecords.length) throw new Error('Endpoint host resolved to no public IPs');
+
+  const ordered = [...validRecords].sort((a, b) => a.family - b.family);
+  const chosen = ordered[0];
+  const normalized = ipaddr.process(chosen.address).toNormalizedString();
+  return { url, hostname, address: normalized, family: chosen.family };
+}
+
+function createPinnedAgents(address: string, family: 4 | 6) {
+  const lookupFn = (hostname: string, options: any, callback?: (err: NodeJS.ErrnoException | null, address: string, family: number) => void) => {
+    const cb = typeof options === 'function' ? options : callback;
+    if (!cb) return;
+    cb(null, address, family);
+  };
+  return {
+    httpAgent: new http.Agent({ lookup: lookupFn }),
+    httpsAgent: new https.Agent({ lookup: lookupFn })
+  };
+}
+
+function createPinnedHttpClient(address: string, family: 4 | 6) {
+  const { httpAgent, httpsAgent } = createPinnedAgents(address, family);
+  const defaultClient = createDefaultHttpClient();
+  return {
+    async sendRequest(request: any) {
+      const isHttps = String(request?.url ?? '').startsWith('https:');
+      request.agent = isHttps ? httpsAgent : httpAgent;
+      return defaultClient.sendRequest(request);
+    }
+  };
+}
+
+// Minimal request handler compatible with AWS SDK v3 expected shape.
+// We only implement what's necessary for `HeadBucketCommand` (no body streaming).
+function createPinnedAwsRequestHandler(address: string, family: 4 | 6) {
+  const { httpAgent, httpsAgent } = createPinnedAgents(address, family);
+
+  return {
+    // `handle` will be invoked with a request-like object from the SDK
+    handle: async (req: any) => {
+      return await new Promise((resolve, reject) => {
+        try {
+          const isHttps = (req.protocol || 'https:').startsWith('https');
+          const client = isHttps ? https : http;
+          const defaultPort = isHttps ? 443 : 80;
+          const opts: any = {
+            protocol: isHttps ? 'https:' : 'http:',
+            hostname: address,
+            port: req.port || defaultPort,
+            method: req.method || 'GET',
+            path: `${req.path || '/'}${req.query ? '?' + req.query : ''}`,
+            headers: { ...(req.headers || {}), host: req.headers?.Host ?? req.headers?.host ?? req.hostname }
+          };
+          if (isHttps) opts.servername = req.hostname || req.headers?.host;
+          opts.agent = isHttps ? httpsAgent : httpAgent;
+
+          const r = client.request(opts, (res) => {
+            const headers: Record<string, string> = {};
+            for (const [k, v] of Object.entries(res.headers || {})) {
+              if (Array.isArray(v)) headers[k] = v.join(',');
+              else if (typeof v === 'string') headers[k] = v;
+            }
+            // Consume body and discard
+            res.on('data', () => {});
+            res.on('end', () => {
+              resolve({ response: { statusCode: res.statusCode || 0, headers } });
+            });
+          });
+          r.on('error', (err) => reject(err));
+          r.setTimeout(5000, () => r.destroy(new Error('Request timed out')));
+          r.end();
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }
+  } as any;
+}
+
 async function testAzureStorageConnection(args: {
   authMode: 'connection-string' | 'account-key';
   connectionString?: string;
@@ -159,11 +294,24 @@ async function testAzureStorageConnection(args: {
   let client: BlobServiceClient | null = null;
   if (args.authMode === 'connection-string') {
     if (!args.connectionString) throw new Error('Connection string is required');
+    const derivedEndpoint = extractAzureBlobEndpoint(args.connectionString);
+    if (derivedEndpoint) {
+      const pinned = await resolvePinnedEndpoint(derivedEndpoint);
+      // Validate reachability to the container endpoint using pinned IP
+      const checkUrl = `${pinned.url.origin}/${args.container}?restype=container`;
+      const resp = await fetchWithPinnedIp(checkUrl, pinned.hostname, pinned.address);
+      if (!resp.ok) throw new Error(`Azure blob endpoint unreachable (${resp.status})`);
+    }
     client = BlobServiceClient.fromConnectionString(args.connectionString);
   } else {
     if (!args.account || !args.accountKey) throw new Error('Account name and key are required');
     const endpoint = args.endpoint || `https://${args.account}.blob.core.windows.net`;
-    if (args.endpoint) await assertUrlNotPrivate(args.endpoint);
+    if (args.endpoint) {
+      const pinned = await resolvePinnedEndpoint(args.endpoint);
+      const checkUrl = `${pinned.url.origin}/${args.container}?restype=container`;
+      const resp = await fetchWithPinnedIp(checkUrl, pinned.hostname, pinned.address);
+      if (!resp.ok) throw new Error(`Azure blob endpoint unreachable (${resp.status})`);
+    }
     const credential = new StorageSharedKeyCredential(args.account, args.accountKey);
     client = new BlobServiceClient(endpoint, credential);
   }
@@ -180,14 +328,19 @@ async function testS3StorageConnection(args: {
   secretAccessKey?: string;
   forcePathStyle?: boolean;
 }) {
-  if (args.endpoint) await assertUrlNotPrivate(args.endpoint);
+  let requestHandler: any | undefined;
+  if (args.endpoint) {
+    const pinned = await resolvePinnedEndpoint(args.endpoint);
+    requestHandler = createPinnedAwsRequestHandler(pinned.address, pinned.family);
+  }
   const client = new S3Client({
     region: args.region || process.env.S3_REGION,
     endpoint: args.endpoint || process.env.S3_ENDPOINT,
     forcePathStyle: args.forcePathStyle ?? (process.env.S3_FORCE_PATH_STYLE === 'true'),
     credentials: args.accessKeyId && args.secretAccessKey
       ? { accessKeyId: args.accessKeyId, secretAccessKey: args.secretAccessKey }
-      : undefined
+      : undefined,
+    requestHandler
   });
   await client.send(new HeadBucketCommand({ Bucket: args.bucket }));
 }
@@ -340,6 +493,118 @@ export async function deleteApp(formData: FormData) {
   await safeRevalidatePath('/admin');
   await safeRevalidatePath('/');
   return { status: 'success', message: 'App deleted' } as const;
+}
+
+export async function updateSiteLogos(formData: FormData) {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as const;
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) return { status: 'error', message: 'Unauthorized' } as const;
+
+  const logoLightFile = formData.get('logoLight');
+  const logoDarkFile = formData.get('logoDark');
+  const removeLight = formData.get('removeLogoLight') === 'on' || formData.get('removeLogoLight') === '1';
+  const removeDark = formData.get('removeLogoDark') === 'on' || formData.get('removeLogoDark') === '1';
+
+  // Fetch existing singleton
+  const existing = await prisma.siteConfig.findFirst();
+  let newLogoLight = existing?.logoLight ?? existing?.logo ?? null;
+  let newLogoDark = existing?.logoDark ?? existing?.logo ?? null;
+
+  const toDelete: string[] = [];
+
+  if (logoLightFile && typeof (logoLightFile as any).size === 'number' && (logoLightFile as any).size > 0) {
+    // @ts-ignore - FormData File type
+    const saved = await saveIcon(logoLightFile as File);
+    if (saved) {
+      if (newLogoLight) toDelete.push(newLogoLight);
+      newLogoLight = saved;
+    }
+  }
+
+  if (logoDarkFile && typeof (logoDarkFile as any).size === 'number' && (logoDarkFile as any).size > 0) {
+    // @ts-ignore
+    const saved = await saveIcon(logoDarkFile as File);
+    if (saved) {
+      if (newLogoDark) toDelete.push(newLogoDark);
+      newLogoDark = saved;
+    }
+  }
+
+  // Handle explicit removals
+  if (removeLight) {
+    if (newLogoLight) {
+      toDelete.push(newLogoLight);
+    }
+    newLogoLight = null;
+  }
+  if (removeDark) {
+    if (newLogoDark) {
+      toDelete.push(newLogoDark);
+    }
+    newLogoDark = null;
+  }
+
+  // Optionally copy a single uploaded logo to both themes when requested
+  const useSameLogo = formData.get('useSameLogo') === 'on' || formData.get('useSameLogo') === '1';
+  if (useSameLogo) {
+    // If the user chose to remove one theme's logo while opting to "use same logo",
+    // interpret that as removing both themes' logos.
+    if (removeLight || removeDark) {
+      if (newLogoLight) toDelete.push(newLogoLight);
+      if (newLogoDark) toDelete.push(newLogoDark);
+      newLogoLight = null;
+      newLogoDark = null;
+    } else {
+      // If a new light logo was uploaded, ensure dark is set to the same value (overwrite if needed)
+      if (newLogoLight) {
+        if (newLogoDark !== newLogoLight) {
+          if (existing?.logoDark && existing.logoDark !== newLogoLight) toDelete.push(existing.logoDark);
+          newLogoDark = newLogoLight;
+        }
+      }
+      // If a new dark logo was uploaded, ensure light is set to the same value (overwrite if needed)
+      if (newLogoDark) {
+        if (newLogoLight !== newLogoDark) {
+          if (existing?.logoLight && existing.logoLight !== newLogoDark) toDelete.push(existing.logoLight);
+          newLogoLight = newLogoDark;
+        }
+      }
+    }
+  }
+
+  // Maintain legacy `logo` column for backward compatibility.
+  // If both theme-specific logos are null, also clear `logo`.
+  // If a single theme logo is present and `logo` differs, update it to point at that file.
+  const newLegacyLogo = newLogoLight ?? newLogoDark ?? null;
+  if (existing?.logo && existing.logo !== newLegacyLogo) {
+    toDelete.push(existing.logo);
+  }
+
+  // Persist changes: create or update singleton
+  try {
+    if (existing) {
+      await prisma.siteConfig.update({ where: { id: existing.id }, data: { logoLight: newLogoLight, logoDark: newLogoDark, logo: newLegacyLogo } });
+    } else {
+      await prisma.siteConfig.create({ data: { logoLight: newLogoLight, logoDark: newLogoDark, logo: newLegacyLogo } });
+    }
+  } catch (err) {
+    // cleanup uploaded files on failure
+    for (const p of toDelete) {
+      try { await safeDeleteIcon(p); } catch {}
+    }
+    throw err;
+  }
+
+  // remove replaced or removed files
+  for (const p of toDelete) {
+    try { await safeDeleteIcon(p); } catch {}
+  }
+
+  writeAuditLog({ category: 'admin', action: 'site_logos_updated', actorId: session.user.id });
+  await safeRevalidatePath('/');
+  // Signal the client it should perform a full reload to ensure layout-level server components update.
+  // Returning an extra `reload` flag is safe; client checks for it and reloads.
+  return { status: 'success', message: 'Site logos updated', reload: true } as const;
 }
 
 export async function updateStorageConfig(

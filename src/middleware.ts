@@ -143,7 +143,7 @@ export async function middleware(request: NextRequest) {
   // can't be replayed across sessions or forged without the secret.
   if (request.method === 'GET') {
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    const sessionId = (token?.sub as string) ?? '';
+    const sessionId = token?.sub ?? '';
     const forwardedProto = request.headers.get('x-forwarded-proto');
     const isSecure = forwardedProto === 'https' || request.nextUrl.protocol === 'https:';
     // Only set the CSRF cookie for authenticated users (who have a session)

@@ -447,8 +447,8 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           // read it from the decoded token and log the correct audit action.
           // When a logoutReason is present, return immediately — the signOut
           // event is solely responsible for the audit entry.
-          if ((session as any)?.logoutReason) {
-            token.logoutReason = (session as any).logoutReason;
+          if (session?.logoutReason) {
+            token.logoutReason = session.logoutReason;
             return token;
           }
         }
@@ -612,7 +612,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         // --- Activity Tracking ---
         // ONLY update the idle timer on initial login (user) or explicit interaction (update).
         // Background hits (like Next.js prefetching) will no longer reset the timer.
-        if (user || (trigger === 'update' && (session as any)?.interacted)) {
+        if (user || (trigger === 'update' && session?.interacted)) {
           token.lastActivity = now;
         }
 
@@ -658,10 +658,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         // Expose session-timeout configuration and revocation status to the
         // client. This avoids NEXT_PUBLIC_* build-time env var issues in
         // Docker and keeps the server as the single source of truth.
-        (session as any).idleTimeoutMs = getSessionIdleTimeoutMs();
-        (session as any).warningMs = Number(process.env.NEXT_PUBLIC_SESSION_WARNING_MS ?? 120000);
+        session.idleTimeoutMs = getSessionIdleTimeoutMs();
+        session.warningMs = Number(process.env.NEXT_PUBLIC_SESSION_WARNING_MS ?? 120000);
         if (token.revoked) {
-          (session as any).revoked = true;
+          session.revoked = true;
         }
 
         return session;
@@ -683,12 +683,12 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         // before calling signOut). This is the ONLY reliable way to capture
         // the reason because NextAuth's signOut handler does NOT run the
         // jwt callback — it just decodes the raw cookie.
-        const reason = (token as any)?.logoutReason;
+        const reason = token?.logoutReason;
         if (reason === 'idle_timeout' || reason === 'absolute_timeout') {
           await writeAuditLog({
             category: 'auth',
             action: 'session_terminated',
-            targetId: (token as any)?.sub ?? null,
+            targetId: token?.sub ?? null,
             details: { reason },
           });
           return;
@@ -696,13 +696,13 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
         // If the token was already revoked (e.g. server-side detection),
         // we've already logged the termination event.
-        if ((token as any)?.revoked) return;
+        if (token?.revoked) return;
 
         // Normal manual logout
         await writeAuditLog({
           category: 'auth',
           action: 'logout',
-          actorId: (token as any)?.sub ?? null,
+          actorId: token?.sub ?? null,
         });
       },
     },
@@ -722,7 +722,7 @@ export async function getServerAuthSession() {
       // Minimal session resembling an admin user used only when the
       // UNSAFE_TEST_AUTH guard is explicitly set. Tests should prefer
       // dependency injection or mocks instead of this fallback.
-      return { user: { id: 'admin', roles: ['admin'], authProvider: 'credentials', mustChangePassword: false } } as any;
+      return { user: { id: 'admin', roles: ['admin'], authProvider: 'credentials', mustChangePassword: false } } as unknown as Session;
     }
     throw new Error(
       'getServerAuthSession: test fallback disabled. For a fallback set UNSAFE_TEST_AUTH=true in your test environment, or use dependency injection/mocks.'

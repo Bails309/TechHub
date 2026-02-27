@@ -15,7 +15,7 @@ describe('CSRF HMAC-signed tokens', () => {
       const token = createCsrfToken(SESSION_ID);
       expect(token).toContain('.');
       const [nonce, sig] = token.split('.');
-      expect(nonce.length).toBe(64); // 32 bytes hex
+      expect(nonce.length).toBe(32); // 16 bytes hex
       expect(sig.length).toBe(64);   // SHA-256 hex
     });
 

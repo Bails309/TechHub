@@ -19,7 +19,7 @@ export default function AdminTabs() {
 
   return (
     <div className="px-6 md:px-12 pt-6">
-      <nav className="glass rounded-full px-2 py-1.5 flex items-center gap-1 overflow-x-auto shadow-inner border-white/5 bg-white/5">
+      <nav className="glass rounded-full px-2 py-1.5 flex items-center gap-1 overflow-x-auto no-scrollbar shadow-inner border-white/5 bg-white/5">
         {tabs.map((tab) => {
           const isActive = tab.exact
             ? pathname === tab.href
@@ -40,6 +40,6 @@ export default function AdminTabs() {
           );
         })}
       </nav>
-    </div>
+    </div >
   );
 }

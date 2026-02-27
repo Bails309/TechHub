@@ -11,7 +11,7 @@ async function main() {
     const apps = await prisma.$queryRaw<{
         id: string;
         category: string | null;
-    }[]>`SELECT id, category FROM "AppLink" WHERE category IS NOT NULL`;
+    }[]>`SELECT id, category FROM "AppLink" WHERE "category" IS NOT NULL`;
 
     const uniqueCategories = Array.from(new Set(apps.map(a => a.category as string)));
 

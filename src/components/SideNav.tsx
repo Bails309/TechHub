@@ -7,8 +7,9 @@ import { signOut, useSession } from 'next-auth/react';
 import { useState } from 'react';
 import ThemeToggle from './ThemeToggle';
 import { useTheme } from './ThemeProvider';
+import { chooseLogo } from '../lib/siteConfig';
 
-export default function SideNav() {
+export default function SideNav({ logo, logoLight, logoDark }: { logo?: string; logoLight?: string; logoDark?: string }) {
     const { data: session } = useSession();
     const user = session?.user;
     const roles = user?.roles ?? [];
@@ -51,13 +52,13 @@ export default function SideNav() {
                         onClick={() => setIsMobileOpen(false)}
                         className={`flex items-center gap-3 mb-12 mx-auto lg:mx-0 ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
                     >
-                        <div className="h-12 w-auto shrink-0">
-                            <img
-                                src={theme === 'dark' ? '/capita-logo-dark.png' : '/capita-logo.png'}
-                                alt="TechHub logo"
-                                className="h-full w-full object-contain"
-                            />
-                        </div>
+                            <div className="h-12 w-auto shrink-0">
+                                <img
+                                    src={chooseLogo(theme, { logo, logoLight, logoDark })}
+                                    alt="TechHub logo"
+                                    className="h-full w-full object-contain"
+                                />
+                            </div>
                     </Link>
 
                     {/* Navigation Links */}
@@ -105,7 +106,7 @@ export default function SideNav() {
                             <button
                                 type="button"
                                 onClick={() => signOut({ callbackUrl: '/auth/signin' })}
-                                className="flex items-center gap-3 p-3 rounded-xl bg-ink-900 dark:bg-ink-50 text-white dark:text-ink-900 hover:bg-ink-800 dark:hover:bg-white transition-colors justify-center lg:justify-start mx-auto lg:mx-0 w-full"
+                                className="flex items-center gap-3 p-3 rounded-xl bg-ink-900 dark:bg-white/5 border border-transparent dark:border-white/10 text-white dark:text-ink-300 hover:bg-ink-800 dark:hover:bg-white/10 dark:hover:text-white transition-all justify-center lg:justify-start mx-auto lg:mx-0 w-full"
                             >
                                 <LogIn size={18} className="shrink-0" />
                                 <div className="flex flex-col items-start md:hidden lg:flex overflow-hidden">

@@ -1,7 +1,8 @@
-'use client';
+"use client";
 
 import type { ReactNode } from 'react';
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
 
 type AdminActionFormProps = {
@@ -22,6 +23,7 @@ export default function AdminActionForm({
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [tone, setTone] = useState<'success' | 'error' | null>(null);
+  const router = useRouter();
 
   return (
     <form
@@ -41,11 +43,25 @@ export default function AdminActionForm({
                 } else {
                   setMessage(state.message || successMessage);
                   setTone('success');
+                  // If the action requested a full reload (layout-level server data), do it.
+                  // The server action can return `{ reload: true }` to request this.
+                  // Prefer a soft refresh otherwise.
+                  try {
+                    const anyState = state as unknown as Record<string, unknown>;
+                    if (anyState.reload) {
+                      window.location.reload();
+                    } else {
+                      router.refresh();
+                    }
+                  } catch {
+                    // ignore in environments where router may not be available
+                  }
                 }
-              } else {
-                setMessage(successMessage);
-                setTone('success');
-              }
+                } else {
+                  setMessage(successMessage);
+                  setTone('success');
+                  try { router.refresh(); } catch {}
+                }
             } catch (err: unknown) {
               function isNextRedirectLike(error: unknown) {
                 if (typeof error !== 'object' || error === null) return false;

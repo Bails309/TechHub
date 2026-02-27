@@ -24,7 +24,7 @@ function getSecret(): string {
  * Returns `nonce.signature`.
  */
 export function createCsrfToken(sessionId: string): string {
-  const nonce = randomBytes(32).toString('hex');
+  const nonce = randomBytes(16).toString('hex');
   const sig = createHmac('sha256', getSecret())
     .update(nonce + ':' + sessionId)
     .digest('hex');
