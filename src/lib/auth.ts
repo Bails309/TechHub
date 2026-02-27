@@ -36,8 +36,16 @@ const trustProxy = process.env.TRUST_PROXY === 'true';
 const trustedProxiesEnv = String(process.env.TRUSTED_PROXIES ?? '').trim();
 
 // Session lifetime (OWASP baseline: 8-hour absolute, 20-minute idle)
-const SESSION_MAX_AGE_S = Number(process.env.SESSION_MAX_AGE_SECONDS ?? 28800);     // 8 hours
-const SESSION_IDLE_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MS ?? process.env.SESSION_IDLE_TIMEOUT_MS ?? 1200000); // 20 minutes
+function getSessionMaxAgeSeconds(): number {
+  return Number(process.env.SESSION_MAX_AGE_SECONDS ?? 28800);
+}
+
+function getSessionIdleTimeoutMs(): number {
+  // Prefer server-side explicit `SESSION_IDLE_TIMEOUT_MS` for runtime
+  // configuration. `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MS` is a client-side
+  // build-time variable and should not override server runtime tests.
+  return Number(process.env.SESSION_IDLE_TIMEOUT_MS ?? process.env.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MS ?? 1200000);
+}
 
 // Parse TRUSTED_PROXIES into CIDR tuples using ipaddr.js
 let trustedProxyCidrs: Array<[ipaddr.IPv4 | ipaddr.IPv6, number]> = [];
@@ -368,7 +376,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
   return {
     adapter,
     secret: process.env.NEXTAUTH_SECRET,
-    session: { strategy: 'jwt', maxAge: SESSION_MAX_AGE_S },
+    session: { strategy: 'jwt', maxAge: getSessionMaxAgeSeconds() },
     providers,
     callbacks: {
       async signIn({ user, account, profile }) {
@@ -485,6 +493,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         const shouldCheck = !isExactNow && (delta > JWT_CHECK_INTERVAL_MS || token.mustChangePassword);
 
         if (token.sub && shouldCheck) {
+          if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
+            // eslint-disable-next-line no-console
+            console.error('[AUTH-DEBUG] entering consistency check for sub=%s shouldCheck=%s', String(token.sub), String(shouldCheck));
+          }
           try {
             const meta = await getUserMeta(String(token.sub));
             if (!meta) {
@@ -492,10 +504,29 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
               // This keeps tests that mock Prisma working while production
               // will prefer the cache path.
               try {
-                const userRecord = await prisma.user.findUnique({
-                  where: { id: String(token.sub) },
-                  select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
-                });
+                let userRecord;
+                if ((process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') && typeof prisma?.user?.findUnique === 'function') {
+                  // In tests we guard against hung/misconfigured DB calls by racing
+                  // the call with a short timeout so the jwt callback returns.
+                  const p = prisma.user.findUnique({
+                    where: { id: String(token.sub) },
+                    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
+                  });
+                  const race = await Promise.race([p, new Promise((res) => setTimeout(() => res('__DB_TIMEOUT__'), 2000))]);
+                  if (race === '__DB_TIMEOUT__') {
+                    if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
+                      // eslint-disable-next-line no-console
+                      console.error('[AUTH-DEBUG] prisma.findUnique timed out for sub=%s', String(token.sub));
+                    }
+                    throw new Error('prisma_timeout');
+                  }
+                  userRecord = race;
+                } else {
+                  userRecord = await prisma.user.findUnique({
+                    where: { id: String(token.sub) },
+                    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
+                  });
+                }
                 if (!userRecord) {
                   token.revoked = true;
                   writeAuditLog({
@@ -530,12 +561,18 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         // maxAge handles the JWT expiry silently; this pre-empts it so we
         // get an audit log entry before the token is rejected.
         const issuedAt = Number(token.iat ?? 0);
-        const isAbsoluteTimeout = !token.revoked && issuedAt > 0 && (now - issuedAt * 1000) > SESSION_MAX_AGE_S * 1000;
+        const isAbsoluteTimeout = !token.revoked && issuedAt > 0 && (now - issuedAt * 1000) > getSessionMaxAgeSeconds() * 1000;
 
         // Idle timeout: revoke the token if the user has been inactive for
         // longer than SESSION_IDLE_TIMEOUT_MS.
         const lastActivity = Number(token.lastActivity ?? 0);
-        const isIdleTimeout = !token.revoked && lastActivity > 0 && (now - lastActivity) > SESSION_IDLE_TIMEOUT_MS;
+        const isIdleTimeout = !token.revoked && lastActivity > 0 && (now - lastActivity) > getSessionIdleTimeoutMs();
+
+        if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
+          // eslint-disable-next-line no-console
+          console.error('[AUTH-DEBUG] now=%d lastActivity=%d idleTimeoutMs=%d isIdleTimeout=%s tokenRevoked=%s issuedAt=%d isAbsoluteTimeout=%s',
+            now, lastActivity, getSessionIdleTimeoutMs(), String(isIdleTimeout), String(Boolean(token.revoked)), issuedAt, String(isAbsoluteTimeout));
+        }
 
         if (isAbsoluteTimeout || isIdleTimeout) {
           token.revoked = true;
@@ -592,7 +629,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         // Expose session-timeout configuration and revocation status to the
         // client. This avoids NEXT_PUBLIC_* build-time env var issues in
         // Docker and keeps the server as the single source of truth.
-        (session as any).idleTimeoutMs = SESSION_IDLE_TIMEOUT_MS;
+        (session as any).idleTimeoutMs = getSessionIdleTimeoutMs();
         (session as any).warningMs = Number(process.env.NEXT_PUBLIC_SESSION_WARNING_MS ?? 120000);
         if (token.revoked) {
           (session as any).revoked = true;
