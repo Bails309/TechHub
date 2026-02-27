@@ -73,11 +73,11 @@ export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
         )}
       </div>
       <div className="text-center w-full">
-        <h3 className="truncate font-serif text-base md:text-lg font-medium tracking-tight text-ink-50 group-hover:text-white transition-colors">
+        <h3 className="truncate font-serif text-base md:text-lg font-medium tracking-tight text-ink-900 dark:text-ink-50 group-hover:text-ocean-600 dark:group-hover:text-white transition-colors">
           {app.name}
         </h3>
         {app.category && (
-          <p className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity truncate text-xs uppercase tracking-wider text-ink-300">
+          <p className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity truncate text-xs uppercase tracking-wider text-ink-500 dark:text-ink-300">
             {app.category}
           </p>
         )}
