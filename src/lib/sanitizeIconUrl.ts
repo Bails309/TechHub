@@ -65,7 +65,7 @@ export function sanitizeIconUrl(
             if (allowedS3Hostname && url.hostname !== allowedS3Hostname) {
                 return null;
             }
-            return url.pathname; // Convert to proxy route
+            return url.toString(); // Preserve full S3 URL
         }
 
         // Azure Blob Storage URLs
@@ -78,9 +78,9 @@ export function sanitizeIconUrl(
         ) {
             const idx = url.pathname.indexOf('/uploads/');
             if (idx !== -1) {
-                return url.pathname.substring(idx); // Convert to proxy route
+                return url.toString(); // Preserve full Azure Blob URL
             }
-            return url.pathname;
+            return url.toString();
         }
 
         return null;

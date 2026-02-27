@@ -224,6 +224,14 @@ export async function createApp(formData: FormData) {
   const iconFile = formData.get('icon');
   let iconPath: string | undefined;
 
+  // If an icon file was provided, upload it before the DB transaction so
+  // we can delete it if the transaction fails (avoids orphaned files).
+  if (iconFile) {
+    // validate & save (the local `saveIcon` helper performs validation)
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    iconPath = await saveIcon(iconFile as File);
+  }
   try {
     await prisma.$transaction(async (tx) => {
       const app = await tx.appLink.create({
