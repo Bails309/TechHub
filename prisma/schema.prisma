@@ -156,6 +156,9 @@ model AuditLog {
   @@index([actorId])
   @@index([createdAt])
   @@index([category, createdAt])
+  @@index([action, createdAt])
+  @@index([provider, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model StorageConfig {
