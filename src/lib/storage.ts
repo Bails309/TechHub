@@ -11,13 +11,14 @@ import { getStorageConfigMap } from './storageConfig';
 const STORAGE_PROVIDER = process.env.STORAGE_PROVIDER || 'local';
 
 async function resolveStorageProvider() {
-  const envProvider = (process.env.STORAGE_PROVIDER || 'local') as 'local' | 's3' | 'azure';
-  if (envProvider !== 'local') return envProvider;
+  // Prefer database configuration as the source of truth. Fall back to
+  // the environment variable only when nothing is explicitly enabled.
   const map = await getStorageConfigMap();
   if (map.get('s3')?.enabled) return 's3';
   if (map.get('azure')?.enabled) return 'azure';
   if (map.get('local')?.enabled) return 'local';
-  return envProvider;
+
+  return (process.env.STORAGE_PROVIDER || 'local') as 'local' | 's3' | 'azure';
 }
 
 type S3Config = {

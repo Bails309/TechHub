@@ -1,9 +1,10 @@
 'use client';
 
-import { Trash2, Edit2, GripVertical } from 'lucide-react';
+import { Edit2, GripVertical } from 'lucide-react';
 import { deleteCategory } from './actions';
 import { useState } from 'react';
 import CategoryForm from './CategoryForm';
+import DeleteCategoryForm from '@/components/DeleteCategoryForm';
 
 export default function CategoryList({ categories }: { categories: any[] }) {
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -50,15 +51,11 @@ export default function CategoryList({ categories }: { categories: any[] }) {
                                 >
                                     <Edit2 size={18} />
                                 </button>
-                                <form action={async () => {
-                                    if (confirm('Are you sure you want to delete this category? Apps will be unlinked.')) {
-                                        await deleteCategory(category.id);
-                                    }
-                                }}>
-                                    <button className="p-2 hover:bg-white/5 rounded-lg text-ink-400 hover:text-red-400 transition" title="Delete Category">
-                                        <Trash2 size={18} />
-                                    </button>
-                                </form>
+                                <DeleteCategoryForm
+                                    id={category.id}
+                                    name={category.name}
+                                    action={deleteCategory}
+                                />
                             </div>
                         </div>
                     )}
