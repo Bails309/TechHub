@@ -495,6 +495,118 @@ export async function deleteApp(formData: FormData) {
   return { status: 'success', message: 'App deleted' } as const;
 }
 
+export async function updateSiteLogos(formData: FormData) {
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as const;
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) return { status: 'error', message: 'Unauthorized' } as const;
+
+  const logoLightFile = formData.get('logoLight');
+  const logoDarkFile = formData.get('logoDark');
+  const removeLight = formData.get('removeLogoLight') === 'on' || formData.get('removeLogoLight') === '1';
+  const removeDark = formData.get('removeLogoDark') === 'on' || formData.get('removeLogoDark') === '1';
+
+  // Fetch existing singleton
+  const existing = await prisma.siteConfig.findFirst();
+  let newLogoLight = existing?.logoLight ?? existing?.logo ?? null;
+  let newLogoDark = existing?.logoDark ?? existing?.logo ?? null;
+
+  const toDelete: string[] = [];
+
+  if (logoLightFile && typeof (logoLightFile as any).size === 'number' && (logoLightFile as any).size > 0) {
+    // @ts-ignore - FormData File type
+    const saved = await saveIcon(logoLightFile as File);
+    if (saved) {
+      if (newLogoLight) toDelete.push(newLogoLight);
+      newLogoLight = saved;
+    }
+  }
+
+  if (logoDarkFile && typeof (logoDarkFile as any).size === 'number' && (logoDarkFile as any).size > 0) {
+    // @ts-ignore
+    const saved = await saveIcon(logoDarkFile as File);
+    if (saved) {
+      if (newLogoDark) toDelete.push(newLogoDark);
+      newLogoDark = saved;
+    }
+  }
+
+  // Handle explicit removals
+  if (removeLight) {
+    if (newLogoLight) {
+      toDelete.push(newLogoLight);
+    }
+    newLogoLight = null;
+  }
+  if (removeDark) {
+    if (newLogoDark) {
+      toDelete.push(newLogoDark);
+    }
+    newLogoDark = null;
+  }
+
+  // Optionally copy a single uploaded logo to both themes when requested
+  const useSameLogo = formData.get('useSameLogo') === 'on' || formData.get('useSameLogo') === '1';
+  if (useSameLogo) {
+    // If the user chose to remove one theme's logo while opting to "use same logo",
+    // interpret that as removing both themes' logos.
+    if (removeLight || removeDark) {
+      if (newLogoLight) toDelete.push(newLogoLight);
+      if (newLogoDark) toDelete.push(newLogoDark);
+      newLogoLight = null;
+      newLogoDark = null;
+    } else {
+      // If a new light logo was uploaded, ensure dark is set to the same value (overwrite if needed)
+      if (newLogoLight) {
+        if (newLogoDark !== newLogoLight) {
+          if (existing?.logoDark && existing.logoDark !== newLogoLight) toDelete.push(existing.logoDark);
+          newLogoDark = newLogoLight;
+        }
+      }
+      // If a new dark logo was uploaded, ensure light is set to the same value (overwrite if needed)
+      if (newLogoDark) {
+        if (newLogoLight !== newLogoDark) {
+          if (existing?.logoLight && existing.logoLight !== newLogoDark) toDelete.push(existing.logoLight);
+          newLogoLight = newLogoDark;
+        }
+      }
+    }
+  }
+
+  // Maintain legacy `logo` column for backward compatibility.
+  // If both theme-specific logos are null, also clear `logo`.
+  // If a single theme logo is present and `logo` differs, update it to point at that file.
+  const newLegacyLogo = newLogoLight ?? newLogoDark ?? null;
+  if (existing?.logo && existing.logo !== newLegacyLogo) {
+    toDelete.push(existing.logo);
+  }
+
+  // Persist changes: create or update singleton
+  try {
+    if (existing) {
+      await prisma.siteConfig.update({ where: { id: existing.id }, data: { logoLight: newLogoLight, logoDark: newLogoDark, logo: newLegacyLogo } });
+    } else {
+      await prisma.siteConfig.create({ data: { logoLight: newLogoLight, logoDark: newLogoDark, logo: newLegacyLogo } });
+    }
+  } catch (err) {
+    // cleanup uploaded files on failure
+    for (const p of toDelete) {
+      try { await safeDeleteIcon(p); } catch {}
+    }
+    throw err;
+  }
+
+  // remove replaced or removed files
+  for (const p of toDelete) {
+    try { await safeDeleteIcon(p); } catch {}
+  }
+
+  writeAuditLog({ category: 'admin', action: 'site_logos_updated', actorId: session.user.id });
+  await safeRevalidatePath('/');
+  // Signal the client it should perform a full reload to ensure layout-level server components update.
+  // Returning an extra `reload` flag is safe; client checks for it and reloads.
+  return { status: 'success', message: 'Site logos updated', reload: true } as const;
+}
+
 export async function updateStorageConfig(
   _prevState: AdminActionState,
   formData: FormData

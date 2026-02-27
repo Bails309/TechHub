@@ -2,19 +2,22 @@ import { prisma } from '../../../lib/prisma';
 import { decryptSecret, hasSecretKey } from '../../../lib/crypto';
 import StorageConfigForm from '../../../components/StorageConfigForm';
 import AdminActionForm from '../../../components/AdminActionForm';
+import LogoUpload from '../../../components/LogoUpload';
 import {
     createRole,
     deleteRole,
     updatePasswordPolicy,
+    updateSiteLogos,
 } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
-    const [rolesList, passwordPolicy, storageConfigs] = await Promise.all([
+    const [rolesList, passwordPolicy, storageConfigs, siteConfig] = await Promise.all([
         prisma.role.findMany({ orderBy: { name: 'asc' } }),
         prisma.passwordPolicy.findFirst(),
         prisma.storageConfig.findMany(),
+        prisma.siteConfig.findFirst(),
     ]);
 
     const storageMap = new Map(storageConfigs.map((item) => [item.provider, item]));
@@ -268,6 +271,29 @@ export default async function SettingsPage() {
                     azure={azureStorageConfigPayload}
                     hasMasterKey={canValidateSecrets}
                 />
+            </section>
+
+            <section className="card-panel md:p-8">
+                <h2 className="font-serif text-2xl mb-6">Site logos</h2>
+                <p className="text-ink-200 mb-4">Upload optional light and dark theme logos. Leave empty to keep existing.</p>
+                <p className="text-xs text-ink-400 mb-4">Max file size: 2 MB. Accepted formats: PNG, JPEG. Recommended: small, optimized images (e.g. 120×32 px). Display max height: 48px (h-12). Suggested max width: 240px. For Retina displays consider uploading a 2× image (e.g. 240×64 px).</p>
+                <AdminActionForm action={updateSiteLogos} successMessage="Logos updated" className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4 items-center">
+                        <div>
+                            <LogoUpload name="logoLight" label="Light theme logo" current={siteConfig?.logoLight ?? siteConfig?.logo ?? null} recommendedSize="120×32 px" />
+                        </div>
+                        <div>
+                            <LogoUpload name="logoDark" label="Dark theme logo" current={siteConfig?.logoDark ?? siteConfig?.logo ?? null} recommendedSize="120×32 px" />
+                        </div>
+                    </div>
+                    <div className="mt-2">
+                        <label className="flex items-center gap-2 text-sm text-ink-400">
+                            <input type="checkbox" name="useSameLogo" className="h-4 w-4" />
+                            Use same logo for both themes
+                        </label>
+                    </div>
+                    <button type="submit" className="btn-primary btn-small">Save logos</button>
+                </AdminActionForm>
             </section>
         </div>
     );

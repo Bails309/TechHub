@@ -7,8 +7,9 @@ import { signOut, useSession } from 'next-auth/react';
 import { useState } from 'react';
 import ThemeToggle from './ThemeToggle';
 import { useTheme } from './ThemeProvider';
+import { chooseLogo } from '../lib/siteConfig';
 
-export default function SideNav() {
+export default function SideNav({ logo, logoLight, logoDark }: { logo?: string; logoLight?: string; logoDark?: string }) {
     const { data: session } = useSession();
     const user = session?.user;
     const roles = user?.roles ?? [];
@@ -51,13 +52,13 @@ export default function SideNav() {
                         onClick={() => setIsMobileOpen(false)}
                         className={`flex items-center gap-3 mb-12 mx-auto lg:mx-0 ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
                     >
-                        <div className="h-12 w-auto shrink-0">
-                            <img
-                                src={theme === 'dark' ? '/capita-logo-dark.png' : '/capita-logo.png'}
-                                alt="TechHub logo"
-                                className="h-full w-full object-contain"
-                            />
-                        </div>
+                            <div className="h-12 w-auto shrink-0">
+                                <img
+                                    src={chooseLogo(theme, { logo, logoLight, logoDark })}
+                                    alt="TechHub logo"
+                                    className="h-full w-full object-contain"
+                                />
+                            </div>
                     </Link>
 
                     {/* Navigation Links */}

@@ -188,3 +188,12 @@ model PasswordHistory {
   hash      String
   createdAt DateTime @default(now())
 }
+
+model SiteConfig {
+  id         String   @id @default(cuid())
+  // Canonical same-origin paths to uploaded logo files (e.g. /uploads/<key>)
+  logo       String?  // legacy single logo (fallback)
+  logoLight  String?
+  logoDark   String?
+  updatedAt  DateTime @updatedAt
+}
