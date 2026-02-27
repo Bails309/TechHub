@@ -267,7 +267,7 @@ function createPinnedAwsRequestHandler(address: string, family: 4 | 6) {
               else if (typeof v === 'string') headers[k] = v;
             }
             // Consume body and discard
-            res.on('data', () => {});
+            res.on('data', () => { });
             res.on('end', () => {
               resolve({ response: { statusCode: res.statusCode || 0, headers } });
             });
@@ -590,14 +590,14 @@ export async function updateSiteLogos(formData: FormData) {
   } catch (err) {
     // cleanup uploaded files on failure
     for (const p of toDelete) {
-      try { await safeDeleteIcon(p); } catch {}
+      try { await safeDeleteIcon(p); } catch { }
     }
     throw err;
   }
 
   // remove replaced or removed files
   for (const p of toDelete) {
-    try { await safeDeleteIcon(p); } catch {}
+    try { await safeDeleteIcon(p); } catch { }
   }
 
   writeAuditLog({ category: 'admin', action: 'site_logos_updated', actorId: session.user.id });
@@ -2152,22 +2152,17 @@ export async function getUserActivityStats() {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const audits = await prisma.auditLog.findMany({
-    where: {
-      createdAt: { gte: thirtyDaysAgo },
-    },
-    select: {
-      createdAt: true,
-    },
-  });
+  // Group by day using PostgreSQL date_trunc for high performance.
+  // This avoids fetching potentially thousands of records into memory.
+  const stats = await prisma.$queryRaw<any[]>`
+    SELECT 
+      TO_CHAR(DATE_TRUNC('day', "createdAt"), 'YYYY-MM-DD') as date,
+      COUNT(*)::int as count
+    FROM "AuditLog"
+    WHERE "createdAt" >= ${thirtyDaysAgo}
+    GROUP BY DATE_TRUNC('day', "createdAt")
+    ORDER BY DATE_TRUNC('day', "createdAt") ASC
+  `;
 
-  const dailyStats: Record<string, number> = {};
-  audits.forEach(a => {
-    const dateStr = a.createdAt.toISOString().split('T')[0];
-    dailyStats[dateStr] = (dailyStats[dateStr] || 0) + 1;
-  });
-
-  return Object.entries(dailyStats)
-    .map(([date, count]) => ({ date, count }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  return stats;
 }
