@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import AppCard from './AppCard';
+import CommandPalette from './CommandPalette';
 
 interface PortalApp {
   id: string;
@@ -58,7 +59,31 @@ function moveInOrder(order: string[], fromId: string, toId: string) {
 export default function PortalView({ apps, isAuthenticated, initialOrder }: PortalViewProps) {
   const [order, setOrder] = useState(() => normaliseOrder(initialOrder, apps));
   const [query, setQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | 'All'>('All');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    // If user searches via TopNav, reset category filter to 'All'
+    const handleSearch = (e: CustomEvent) => {
+      setQuery(e.detail);
+      setSelectedCategory('All');
+    };
+    window.addEventListener('techhub-search', handleSearch as EventListener);
+    return () => {
+      window.removeEventListener('techhub-search', handleSearch as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -231,6 +256,12 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
       ) : (
         renderGrid(filteredApps, filteredApps.map(app => app.id))
       )}
+
+      <CommandPalette
+        apps={apps as any[]} // type cast to avoid strict matching issues since it only uses id, name, category, icon, url
+        isOpen={isPaletteOpen}
+        onClose={() => setIsPaletteOpen(false)}
+      />
     </div>
   );
 }
