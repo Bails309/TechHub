@@ -105,8 +105,10 @@ const uploadSchema = z
   .refine((file) => file.size > 0, { message: 'Empty file' })
   .refine((file) => file.size <= MAX_ICON_BYTES, { message: 'File too large' })
   .refine((file) => {
-    const extension = path.extname(file.name).toLowerCase();
-    return ALLOWED_ICON_EXTENSIONS.has(extension) && ALLOWED_ICON_MIME_TYPES.has(file.type);
+    // Do not trust the uploaded filename for extension checks. Validate
+    // by MIME type here and rely on server-side magic-byte checks during
+    // saving to determine the final extension.
+    return ALLOWED_ICON_MIME_TYPES.has(file.type);
   }, { message: 'Invalid file type' });
 
 const storageProviderSchema = z.enum(['local', 's3', 'azure']);

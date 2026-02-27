@@ -39,11 +39,14 @@ type AzureConfig = {
 
 // Local storage implementation
 async function saveLocal(file: File) {
-  const extension = path.extname(file.name) || '.png';
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
+  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : '.bin');
   const filename = `${randomUUID()}${extension}`;
   const uploadDir = path.join(process.cwd(), 'uploads');
   await mkdir(uploadDir, { recursive: true });
-  const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(path.join(uploadDir, filename), buffer);
   return `/uploads/${filename}`;
 }
@@ -142,9 +145,12 @@ async function saveS3(file: File) {
   const config = await resolveS3Config();
   const bucket = config?.bucket || process.env.S3_BUCKET;
   if (!bucket) throw new Error('S3_BUCKET not configured');
-  const extension = path.extname(file.name) || '.png';
-  const key = `uploads/${randomUUID()}${extension}`;
   const buffer = Buffer.from(await file.arrayBuffer());
+  const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
+  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : '.bin');
+  const key = `uploads/${randomUUID()}${extension}`;
   const s3 = getS3Client(config ?? undefined);
   await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: file.type }));
   const region = config?.region || process.env.S3_REGION;
@@ -285,9 +291,12 @@ async function resolveAzureConfig(): Promise<AzureConfig | null> {
 }
 
 async function saveAzure(file: File) {
-  const extension = path.extname(file.name) || '.png';
-  const key = `uploads/${randomUUID()}${extension}`;
   const buffer = Buffer.from(await file.arrayBuffer());
+  const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
+  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : '.bin');
+  const key = `uploads/${randomUUID()}${extension}`;
   const config = await resolveAzureConfig();
   const containerClient = getAzureContainerClient(config ?? undefined);
   const blobClient = containerClient.getBlockBlobClient(key);
@@ -387,7 +396,9 @@ export async function saveIcon(file: File) {
   const provider = await resolveStorageProvider();
 
   // Pass the already read buffer to the providers to avoid re-reading
-  const extension = path.extname(file.name) || (isPng ? '.png' : '.jpg');
+  // Determine the extension solely from the magic-byte validation to avoid
+  // trusting the original file name (prevents stored XSS via .html etc.).
+  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : '.bin');
   const filename = `${randomUUID()}${extension}`;
 
   if (provider === 's3') return saveS3WithBuffer(buffer, filename, file.type);
