@@ -48,7 +48,7 @@ export default async function Home() {
   const [apps, appOrder, averageLatencyValue, favoriteAppIds] = await Promise.all([
     prisma.appLink.findMany({
       where: { OR: audienceFilters },
-      orderBy: [{ category: 'asc' }, { name: 'asc' }],
+      orderBy: [{ categoryRef: { name: 'asc' } }, { name: 'asc' }],
       include: { categoryRef: true }
     }),
     session?.user?.id ? prisma.userAppOrder.findUnique({
@@ -58,7 +58,7 @@ export default async function Home() {
     session?.user?.id ? import('./actions/getFavoriteApps').then(m => m.getFavoriteApps()) : Promise.resolve([])
   ]);
 
-  const categories = Array.from(new Set(apps.map((app) => app.categoryRef?.name ?? app.category ?? 'General')));
+  const categories = Array.from(new Set(apps.map((app) => app.categoryRef?.name ?? 'General')));
   const displayLatency = averageLatencyValue ?? '< 1s';
 
   return (
@@ -75,7 +75,7 @@ export default async function Home() {
           name: app.name,
           url: app.url,
           description: app.description,
-          category: app.categoryRef?.name ?? app.category ?? 'General',
+          category: app.categoryRef?.name ?? 'General',
           icon: sanitizeIconUrl(app.icon, process.env.NEXTAUTH_URL || 'http://localhost:3000', allowedS3Hostname)
         }))}
         isAuthenticated={Boolean(session)}

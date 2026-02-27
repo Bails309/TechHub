@@ -68,7 +68,6 @@ model AppLink {
   name        String      @unique
   url         String
   icon        String?
-  category    String?
   categoryId  String?
   categoryRef Category?   @relation(fields: [categoryId], references: [id])
   description String?

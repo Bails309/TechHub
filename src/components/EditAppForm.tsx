@@ -12,7 +12,6 @@ interface EditAppFormProps {
     id: string;
     name: string;
     url: string;
-    category: string | null;
     description: string | null;
     audience: 'PUBLIC' | 'AUTHENTICATED' | 'ROLE' | 'USER';
     roleId: string | null;

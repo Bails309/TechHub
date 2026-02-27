@@ -19,7 +19,10 @@ export default function AnalyticsDashboard({ launchStats, activityStats }: Analy
                     <div className="rounded-full bg-ocean-500/10 p-2 text-ocean-400">
                         <BarChart2 size={20} />
                     </div>
-                    <h2 className="font-serif text-2xl">Popular Apps</h2>
+                    <div>
+                        <h2 className="font-serif text-2xl">Popular Apps</h2>
+                        <p className="text-[10px] text-ink-400 uppercase tracking-widest font-medium">Last 30 days</p>
+                    </div>
                 </div>
                 <div className="space-y-4">
                     {launchStats.map((stat, i) => (
@@ -48,7 +51,10 @@ export default function AnalyticsDashboard({ launchStats, activityStats }: Analy
                     <div className="rounded-full bg-indigo-500/10 p-2 text-indigo-400">
                         <TrendingUp size={20} />
                     </div>
-                    <h2 className="font-serif text-2xl">System Activity</h2>
+                    <div>
+                        <h2 className="font-serif text-2xl">System Activity</h2>
+                        <p className="text-[10px] text-ink-400 uppercase tracking-widest font-medium">Last 30 days</p>
+                    </div>
                 </div>
                 <div className="flex items-end gap-1 h-32 px-2 relative border-b border-ink-800">
                     {activityStats.map((stat, i) => (

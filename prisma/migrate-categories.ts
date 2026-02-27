@@ -6,10 +6,12 @@ async function main() {
     console.log('Starting category migration...');
 
     // 1. Get all unique category strings from AppLink
-    const apps = await prisma.appLink.findMany({
-        select: { id: true, category: true },
-        where: { category: { not: null } },
-    });
+    // The Prisma schema no longer exposes the legacy `category` string column,
+    // so read it via a raw SQL query to avoid type errors.
+    const apps = await prisma.$queryRaw<{
+        id: string;
+        category: string | null;
+    }[]>`SELECT id, category FROM "AppLink" WHERE category IS NOT NULL`;
 
     const uniqueCategories = Array.from(new Set(apps.map(a => a.category as string)));
 
