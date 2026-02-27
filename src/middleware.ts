@@ -172,6 +172,7 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const exactPaths = [
+    '/',
     '/auth/signin',
     '/auth/post-login',
     '/auth/change-password',
@@ -179,14 +180,19 @@ export async function middleware(request: NextRequest) {
   ];
 
   const apiDirectories = [
-    '/api/auth'
+    '/api/auth',
+    '/api/launch'
   ];
 
   const isExactAllowed = exactPaths.includes(pathname);
   const isApiAllowed = apiDirectories.some((dir) => pathname === dir || pathname.startsWith(dir + '/'));
+  // Public interactive flows (like launch confirmation) should be reachable
+  // by unauthenticated users. Allow any `/launch-confirm/*` routes.
+  const isLaunchConfirm = pathname.startsWith('/launch-confirm');
   const isAllowed = isExactAllowed || isApiAllowed;
+  const finalAllowed = isAllowed || isLaunchConfirm;
 
-  if (!isAllowed) {
+  if (!finalAllowed) {
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
 
     // If the token was marked revoked by the periodic JWT check, force
