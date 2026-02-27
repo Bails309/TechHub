@@ -173,6 +173,12 @@ export async function middleware(request: NextRequest) {
 
     // If the token was marked revoked by the periodic JWT check, force
     // the user to sign in again.
+    // If there is no token (user unauthenticated), redirect to sign-in.
+    if (!token) {
+      const signInUrl = request.nextUrl.clone();
+      signInUrl.pathname = '/auth/signin';
+      return NextResponse.redirect(signInUrl);
+    }
     if (token?.revoked) {
       const signInUrl = request.nextUrl.clone();
       signInUrl.pathname = '/auth/signin';
