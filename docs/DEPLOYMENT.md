@@ -87,7 +87,9 @@ When deployment includes database changes, run the Prisma migration deploy comma
 ### 2. First-Time Setup & Seeding
 If you are deploying to a brand new database, you must initialize it with the required seed data (e.g., initial admin account, default settings).
 - **Recommended**: Run as a one-time **Azure Container Job**.
-- **Command**: `npm run prisma:seed`
+- **ACA Job Configuration**:
+  - **Command override**: `npm`
+  - **Arguments override**: `run`, `prisma:seed`
 - **Behavior**: The seeding script is designed to be idempotent; it will only create the initial admin and required records if they do not already exist.
 
 ### 3. Automation Strategy (ACA)
@@ -125,8 +127,7 @@ One common source of confusion when moving from local development to Azure Conta
 If the initial generated administrator password is lost or rotate and reset is required:
 
 1. **Set Environment Variable**: Configure the `ADMIN_PASSWORD` variable in your Azure Container Job or App with a new strong password.
-2. **Execute Seeding**: Run the database seeding command:
-   ```bash
-   npm run prisma:seed
-   ```
+2. **Execute Seeding**: Run the database seeding command via an **Azure Container Job**.
+   - **Command override**: `npm`
+   - **Arguments override**: `run prisma:seed`
 3. **Verification**: The script will update the existing administrator's password and reset their `mustChangePassword` flag to `true`, forcing a change upon next login.
