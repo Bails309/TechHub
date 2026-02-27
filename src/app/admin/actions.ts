@@ -56,8 +56,7 @@ const appSchemaBase = z.object({
     .refine((value) => value.startsWith('http://') || value.startsWith('https://'), {
       message: 'URL must use http or https'
     }),
-  categorySelect: z.string().optional(),
-  categoryNew: z.string().optional(),
+  categoryId: z.string().optional(),
   description: z.string().optional(),
   audience: z.enum(['PUBLIC', 'AUTHENTICATED', 'ROLE', 'USER']),
   roleId: z.string().optional(),
@@ -210,8 +209,7 @@ export async function createApp(formData: FormData) {
   const payload = appSchema.safeParse({
     name: formData.get('name'),
     url: formData.get('url'),
-    categorySelect: formData.get('categorySelect') || undefined,
-    categoryNew: formData.get('categoryNew') || undefined,
+    categoryId: formData.get('categoryId') || undefined,
     description: formData.get('description') || undefined,
     audience: formData.get('audience'),
     roleId: formData.get('roleId') || undefined,
@@ -225,24 +223,6 @@ export async function createApp(formData: FormData) {
 
   const iconFile = formData.get('icon');
   let iconPath: string | undefined;
-  if (iconFile instanceof File && iconFile.size > 0) {
-    try {
-      iconPath = await saveIcon(iconFile);
-    } catch (err) {
-      return { status: 'error', message: err instanceof Error ? err.message : 'Failed to save icon' } as const;
-    }
-  } else {
-    iconPath = undefined;
-  }
-
-  const normalizedNewCategory = parsed.data.categoryNew?.trim();
-  const normalizedSelect = parsed.data.categorySelect?.trim();
-  const category =
-    normalizedNewCategory && normalizedNewCategory.length > 0
-      ? normalizedNewCategory
-      : normalizedSelect && normalizedSelect !== 'none'
-        ? normalizedSelect
-        : undefined;
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -250,7 +230,7 @@ export async function createApp(formData: FormData) {
         data: {
           name: parsed.data.name,
           url: parsed.data.url,
-          category,
+          categoryId: parsed.data.categoryId || null,
           description: parsed.data.description,
           audience: parsed.data.audience,
           roleId: parsed.data.audience === 'ROLE' ? parsed.data.roleId : null,
@@ -533,8 +513,7 @@ export async function updateApp(formData: FormData) {
     id: formData.get('id'),
     name: formData.get('name'),
     url: formData.get('url'),
-    categorySelect: formData.get('categorySelect') || undefined,
-    categoryNew: formData.get('categoryNew') || undefined,
+    categoryId: formData.get('categoryId') || undefined,
     description: formData.get('description') || undefined,
     audience: formData.get('audience'),
     roleId: formData.get('roleId') || undefined,
@@ -548,26 +527,6 @@ export async function updateApp(formData: FormData) {
   const iconFile = formData.get('icon');
   const iconRemove = formData.get('iconRemove') === 'on';
   let iconPath: string | undefined;
-  if (iconRemove) {
-    iconPath = undefined;
-  } else if (iconFile instanceof File && iconFile.size > 0) {
-    try {
-      iconPath = await saveIcon(iconFile);
-    } catch (err) {
-      return { status: 'error', message: err instanceof Error ? err.message : 'Failed to save icon' } as const;
-    }
-  } else {
-    iconPath = undefined;
-  }
-
-  const normalizedNewCategory = parsed.data.categoryNew?.trim();
-  const normalizedSelect = parsed.data.categorySelect?.trim();
-  const category =
-    normalizedNewCategory && normalizedNewCategory.length > 0
-      ? normalizedNewCategory
-      : normalizedSelect && normalizedSelect !== 'none'
-        ? normalizedSelect
-        : null;
 
   // Fetch existing icon path so we can remove the old file after successful update
   const existingApp = await prisma.appLink.findUnique({ where: { id: parsed.data.id } });
@@ -579,7 +538,7 @@ export async function updateApp(formData: FormData) {
         data: {
           name: parsed.data.name,
           url: parsed.data.url,
-          category,
+          categoryId: parsed.data.categoryId || null,
           description: parsed.data.description,
           audience: parsed.data.audience,
           roleId: parsed.data.audience === 'ROLE' ? parsed.data.roleId : null,
@@ -1795,3 +1754,71 @@ export async function updateSsoConfig(
 }
 
 // Rotation actions removed — managed by single SSO_MASTER_KEY now.
+
+export async function getAppLaunchStats() {
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    throw new Error('Unauthorized');
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const stats = await prisma.auditLog.groupBy({
+    by: ['targetId'],
+    where: {
+      action: 'app_launch',
+      createdAt: { gte: thirtyDaysAgo },
+    },
+    _count: {
+      id: true,
+    },
+    orderBy: {
+      _count: {
+        id: 'desc',
+      },
+    },
+    take: 5,
+  });
+
+  const appIds = stats.map(s => s.targetId).filter((id): id is string => Boolean(id));
+  const apps = await prisma.appLink.findMany({
+    where: { id: { in: appIds } },
+    select: { id: true, name: true }
+  });
+  const nameMap = new Map(apps.map(a => [a.id, a.name]));
+
+  return stats.map(s => ({
+    name: s.targetId ? nameMap.get(s.targetId) ?? 'Unknown App' : 'Unknown App',
+    count: s._count.id
+  }));
+}
+
+export async function getUserActivityStats() {
+  const session = await getServerAuthSession();
+  if (!session?.user?.roles?.includes('admin')) {
+    throw new Error('Unauthorized');
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const audits = await prisma.auditLog.findMany({
+    where: {
+      createdAt: { gte: thirtyDaysAgo },
+    },
+    select: {
+      createdAt: true,
+    },
+  });
+
+  const dailyStats: Record<string, number> = {};
+  audits.forEach(a => {
+    const dateStr = a.createdAt.toISOString().split('T')[0];
+    dailyStats[dateStr] = (dailyStats[dateStr] || 0) + 1;
+  });
+
+  return Object.entries(dailyStats)
+    .map(([date, count]) => ({ date, count }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}

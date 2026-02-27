@@ -33,6 +33,17 @@ model User {
   updatedAt     DateTime  @updatedAt
 }
 
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  icon        String?   // Lucide icon name
+  order       Int       @default(0)
+  apps        AppLink[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
 model Role {
   id        String     @id @default(cuid())
   name      String     @unique
@@ -58,6 +69,8 @@ model AppLink {
   url         String
   icon        String?
   category    String?
+  categoryId  String?
+  categoryRef Category?   @relation(fields: [categoryId], references: [id])
   description String?
   audience    AppAudience @default(AUTHENTICATED)
   role        Role?       @relation(fields: [roleId], references: [id])
@@ -68,6 +81,7 @@ model AppLink {
   updatedAt   DateTime    @updatedAt
 
   @@index([roleId])
+  @@index([categoryId])
 }
 
 model UserAppAccess {

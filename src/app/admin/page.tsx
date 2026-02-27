@@ -1,11 +1,22 @@
 import { prisma } from '../../lib/prisma';
 import Link from 'next/link';
-import { AppWindow, Users, KeyRound, Settings } from 'lucide-react';
+import { AppWindow, Users, KeyRound, Settings, LayoutGrid } from 'lucide-react';
+import AnalyticsDashboard from './AnalyticsDashboard';
+import { getAppLaunchStats, getUserActivityStats } from './actions';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminDashboard() {
-  const [totalApps, totalUsers, ssoConfigs, storageConfigs, totalRoles, recentAudits] = await Promise.all([
+  const [
+    totalApps,
+    totalUsers,
+    ssoConfigs,
+    storageConfigs,
+    totalRoles,
+    recentAudits,
+    launchStats,
+    activityStats
+  ] = await Promise.all([
     prisma.appLink.count(),
     prisma.user.count(),
     prisma.ssoConfig.findMany({ where: { enabled: true } }),
@@ -15,6 +26,8 @@ export default async function AdminDashboard() {
       orderBy: { createdAt: 'desc' },
       take: 5,
     }),
+    getAppLaunchStats(),
+    getUserActivityStats(),
   ]);
 
   const activeSsoCount = ssoConfigs.length;
@@ -97,6 +110,8 @@ export default async function AdminDashboard() {
           );
         })}
       </div>
+
+      <AnalyticsDashboard launchStats={launchStats} activityStats={activityStats} />
 
       <div className="grid gap-6 md:grid-cols-2">
         <section className="card-panel md:col-span-2">

@@ -25,7 +25,7 @@ export default async function AppsPage({
         Number.isFinite(requestedAppPage) && requestedAppPage > 0 ? requestedAppPage : 1;
     const appsSkip = (appPage - 1) * pageSize;
 
-    const [apps, rolesList, categories, totalApps, users] = await Promise.all([
+    const [apps, rolesList, categoryRecords, totalApps] = await Promise.all([
         prisma.appLink.findMany({
             orderBy: { createdAt: 'desc' },
             include: {
@@ -33,29 +33,20 @@ export default async function AppsPage({
                     include: {
                         user: { select: { id: true, name: true, email: true } }
                     }
-                }
+                },
+                categoryRef: true
             },
             skip: appsSkip,
             take: pageSize,
         }),
         prisma.role.findMany({ orderBy: { name: 'asc' } }),
-        prisma.appLink.findMany({
-            distinct: ['category'],
-            select: { category: true },
-            where: { category: { not: null } },
-            orderBy: { category: 'asc' },
-        }),
-        prisma.appLink.count(),
+        prisma.category.findMany({ orderBy: { order: 'asc' } }),
         prisma.appLink.count(),
     ]);
 
-    const categoryOptions = categories
-        .map((item) => item.category)
-        .filter((item): item is string => Boolean(item));
-
     const categorySelectOptions = [
-        { value: 'none', label: 'Select existing' },
-        ...categoryOptions.map((category) => ({ value: category, label: category })),
+        { value: '', label: 'No category' },
+        ...categoryRecords.map((cat) => ({ value: cat.id, label: cat.name })),
     ];
 
     const audienceOptions = [
@@ -91,7 +82,7 @@ export default async function AppsPage({
             <section className="card-panel">
                 <h2 className="font-serif text-2xl mb-6">Add a new app</h2>
                 <NewAppForm
-                    categorySelectOptions={categorySelectOptions}
+                    categoryOptions={categorySelectOptions}
                     audienceOptions={audienceOptions}
                     roleOptions={roleOptions}
                     action={createApp}
@@ -143,9 +134,9 @@ export default async function AppsPage({
                                         <div className="flex-1 min-w-0">
                                             <p className="font-semibold text-ink-100">{app.name}</p>
                                             <p className="text-xs text-ink-400">{app.url}</p>
-                                            {app.category && (
+                                            {app.categoryRef?.name && (
                                                 <span className="inline-block mt-1 text-[10px] uppercase tracking-wider text-ocean-400 bg-ocean-500/10 px-2 py-0.5 rounded-full">
-                                                    {app.category}
+                                                    {app.categoryRef.name}
                                                 </span>
                                             )}
                                         </div>
@@ -161,7 +152,7 @@ export default async function AppsPage({
                                 <div className="p-5 border-t border-white/5 bg-black/10">
                                     <EditAppForm
                                         app={app}
-                                        categorySelectOptions={categorySelectOptions}
+                                        categoryOptions={categorySelectOptions}
                                         audienceOptions={audienceOptions}
                                         roleOptions={roleOptions}
                                         initialUsers={app.userAccesses.map((item) => item.user)}

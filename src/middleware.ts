@@ -11,7 +11,7 @@ function buildCsp(nonce: string) {
     // Avoid 'unsafe-inline' to enforce nonce-based style execution. If you
     // must support legacy browsers that don't accept nonces, consider the
     // security trade-off before re-adding 'unsafe-inline'.
-    "style-src 'self' 'nonce-" + nonce + "'",
+    "style-src 'self' 'unsafe-inline' 'nonce-" + nonce + "'",
     "font-src 'self' https: data:",
     // Avoid 'unsafe-inline' to ensure scripts execute only when covered
     // by the server-generated nonce or strict-dynamic+trusted sources.

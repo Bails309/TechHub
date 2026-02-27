@@ -8,14 +8,14 @@ import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 import UserAutocomplete from './UserAutocomplete';
 
 interface NewAppFormProps {
-  categorySelectOptions: SelectOption[];
+  categoryOptions: SelectOption[];
   audienceOptions: SelectOption[];
   roleOptions: SelectOption[];
   action: (formData: FormData) => void | Promise<{ status: 'success' | 'error'; message: string }>;
 }
 
 export default function NewAppForm({
-  categorySelectOptions,
+  categoryOptions,
   audienceOptions,
   roleOptions,
   action
@@ -89,19 +89,9 @@ export default function NewAppForm({
         required
         className="input-field"
       />
-      <div className="space-y-2">
+      <div className="md:col-span-2 space-y-2">
         <label className="text-xs uppercase tracking-[0.2em] text-ink-400">Category</label>
-        <SelectField name="categorySelect" options={categorySelectOptions} defaultValue="none" />
-      </div>
-      <div className="space-y-2">
-        <label className="text-xs uppercase tracking-[0.2em] text-ink-400">
-          New category
-        </label>
-        <input
-          name="categoryNew"
-          placeholder="Type a new category"
-          className="input-field"
-        />
+        <SelectField name="categoryId" options={categoryOptions} defaultValue="" />
       </div>
       <SelectField
         name="audience"

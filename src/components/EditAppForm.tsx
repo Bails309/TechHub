@@ -16,9 +16,10 @@ interface EditAppFormProps {
     description: string | null;
     audience: 'PUBLIC' | 'AUTHENTICATED' | 'ROLE' | 'USER';
     roleId: string | null;
+    categoryId: string | null;
     icon?: string | null;
   };
-  categorySelectOptions: SelectOption[];
+  categoryOptions: SelectOption[];
   audienceOptions: SelectOption[];
   roleOptions: SelectOption[];
   initialUsers: UserOption[];
@@ -27,7 +28,7 @@ interface EditAppFormProps {
 
 export default function EditAppForm({
   app,
-  categorySelectOptions,
+  categoryOptions,
   audienceOptions,
   roleOptions,
   initialUsers,
@@ -105,14 +106,10 @@ export default function EditAppForm({
         className="input-field"
       />
       <SelectField
-        name="categorySelect"
-        options={categorySelectOptions}
-        defaultValue={app.category ?? 'none'}
-      />
-      <input
-        name="categoryNew"
-        placeholder="New category"
-        className="input-field"
+        name="categoryId"
+        options={categoryOptions}
+        defaultValue={app.categoryId ?? ''}
+        className="md:col-span-2"
       />
       <SelectField
         name="audience"
