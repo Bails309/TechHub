@@ -4,6 +4,7 @@ import path from 'path';
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  output: 'standalone',
   webpack(config) {
     config.resolve = config.resolve || {};
     config.resolve.alias = config.resolve.alias || {};

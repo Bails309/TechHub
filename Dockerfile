@@ -26,23 +26,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
 RUN npm install -g npm@11.10.1
 ENV NODE_ENV=production
 ENV PORT=3000
+# Faster networking for standalone mode
+ENV HOSTNAME="0.0.0.0"
+
 COPY --from=builder /app/public ./public
+
+# Automatically leverage output traces to reduce image size
+# https://nextjs.org/docs/advanced-features/output-file-tracing
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+# Prisma client is needed if not bundled in standalone
 COPY --from=builder /app/prisma ./prisma
+
 RUN mkdir -p /app/uploads
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-	# The Next.js build output in `/.next` contains the compiled server code.
-	# Copying the `src` directory into the runtime image is unnecessary when
-	# using the standard Next build output. If you switch to Next's
-	# `output: 'standalone'` mode, prefer copying `/.next/standalone` and
-	# `/.next/static` instead and omit `src` entirely.
-	# COPY --from=builder /app/src ./src
-	RUN mkdir -p /app/uploads
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/tsconfig.json ./tsconfig.json
-COPY --from=builder /app/next-env.d.ts ./next-env.d.ts
-COPY --from=builder /app/eslint.config.cjs ./eslint.config.cjs
+
 # Include utility scripts required at runtime (prestart checks, healthchecks)
 COPY --from=builder /app/scripts ./scripts
+
 EXPOSE 3000
-CMD ["npm", "start"]
+
+# Use node直接启动 instead of npm start to avoid shell overhead and 
+# to ensure signals (SIGTERM) are handled correctly.
+CMD ["node", "server.js"]

@@ -72,3 +72,25 @@ TechHub includes native security headers via `next.config.mjs`. When deployed be
 - [ ] **Storage Setup**: Configure Azure Blob Storage via the **Admin > Settings** UI (or via env vars).
 - [ ] **SSO Configuration**: Connect your Azure AD (Entra ID) client via the **Admin > SSO** UI.
 - [ ] **Admin Account**: Verify the initial seed admin can log in and change their password.
+
+---
+
+## 🗄️ Database Lifecycle Management
+
+In production, database changes and initial setup should be handled explicitly to ensure the web application starts reliably.
+
+### 1. Schema Updates (Migrations)
+When deployment includes database changes, run the Prisma migration deploy command.
+- **Recommended**: Run as an **Azure Container Job** using the same image.
+- **Command**: `npx prisma migrate deploy`
+
+### 2. First-Time Setup & Seeding
+If you are deploying to a brand new database, you must initialize it with the required seed data (e.g., initial admin account, default settings).
+- **Recommended**: Run as a one-time **Azure Container Job**.
+- **Command**: `npm run prisma:seed`
+- **Behavior**: The seeding script is designed to be idempotent; it will only create the initial admin and required records if they do not already exist.
+
+### 3. Automation Strategy (ACA)
+For a fully automated CI/CD pipeline, consider:
+1. **Init Container**: Not supported natively in ACA, but you can use an **Azure Container Job** triggered before the App Update.
+2. **Manual Trigger**: If preferred, run the commands via the Azure CLI or Portal for the first-time setup.
