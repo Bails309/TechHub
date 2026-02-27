@@ -42,6 +42,7 @@ import { getPasswordPolicy } from '../../lib/passwordPolicy';
 import { lookup } from 'dns/promises';
 import https from 'https';
 import ipaddr from 'ipaddr.js';
+import { assertUrlNotPrivate, isPublicIp } from '../../lib/ssrf';
 import { getStorageConfigMapWithDeps, StorageProviderId } from '@/lib/storageConfig';
 import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
@@ -151,6 +152,7 @@ async function testAzureStorageConnection(args: {
   } else {
     if (!args.account || !args.accountKey) throw new Error('Account name and key are required');
     const endpoint = args.endpoint || `https://${args.account}.blob.core.windows.net`;
+    if (args.endpoint) await assertUrlNotPrivate(args.endpoint);
     const credential = new StorageSharedKeyCredential(args.account, args.accountKey);
     client = new BlobServiceClient(endpoint, credential);
   }
@@ -167,6 +169,7 @@ async function testS3StorageConnection(args: {
   secretAccessKey?: string;
   forcePathStyle?: boolean;
 }) {
+  if (args.endpoint) await assertUrlNotPrivate(args.endpoint);
   const client = new S3Client({
     region: args.region || process.env.S3_REGION,
     endpoint: args.endpoint || process.env.S3_ENDPOINT,
@@ -1371,14 +1374,7 @@ function normalizeIssuer(value: string) {
   return value.replace(/\/+$/, '');
 }
 
-function isPublicIp(address: string) {
-  try {
-    const parsed = ipaddr.process(address);
-    return parsed.range() === 'unicast';
-  } catch {
-    return false;
-  }
-}
+// Use shared `isPublicIp` from src/lib/ssrf
 
 type ResolvedIssuer = {
   normalized: string;
@@ -1454,6 +1450,8 @@ async function validateIssuerUrl(rawIssuer: string): Promise<ResolvedIssuer> {
     addresses: [{ address: hostname, family: literal.kind() === 'ipv6' ? 6 : 4 }]
   };
 }
+
+// SSRF protection is implemented in src/lib/ssrf.ts and imported above.
 
 async function fetchWithPinnedIp(url: string, hostname: string, address: string) {
   if (!address) {

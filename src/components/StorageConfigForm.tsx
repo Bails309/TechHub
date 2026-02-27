@@ -95,6 +95,8 @@ export default function StorageConfigForm({
     clearSecret: false
   }));
 
+  
+
   const [azureForm, setAzureForm] = useState(() => ({
     enabled: azure?.enabled ?? false,
     container: azure?.container ?? '',
@@ -127,7 +129,9 @@ export default function StorageConfigForm({
       forcePathStyle: s3?.forcePathStyle ?? false,
       clearSecret: false
     });
-  }, [s3?.enabled, s3?.bucket, s3?.region, s3?.endpoint, s3?.accessKeyId, s3?.forcePathStyle, selectedProvider]);
+  }, [s3?.enabled, s3?.bucket, s3?.region, s3?.accessKeyId, s3?.forcePathStyle, selectedProvider]);
+
+  
 
   useEffect(() => {
     setAzureForm({
@@ -140,7 +144,9 @@ export default function StorageConfigForm({
       accountKey: '',
       clearSecret: false
     });
-  }, [azure?.enabled, azure?.container, azure?.endpoint, azure?.authMode, azure?.account]);
+  }, [azure?.enabled, azure?.container, azure?.authMode, azure?.account]);
+
+  
 
   return (
     <div className="space-y-6">
@@ -266,19 +272,13 @@ export default function StorageConfigForm({
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <input
-                name="endpoint"
-                placeholder="Endpoint (optional)"
-                value={s3Form.endpoint}
-                onChange={(event) => setS3Form((current) => ({ ...current, endpoint: event.target.value }))}
-                className="input-field"
-              />
-              <input
                 name="accessKeyId"
                 placeholder="Access key ID"
                 value={s3Form.accessKeyId}
                 onChange={(event) => setS3Form((current) => ({ ...current, accessKeyId: event.target.value }))}
                 className="input-field"
               />
+              <div />
             </div>
             <input
               name="secretAccessKey"
@@ -381,18 +381,8 @@ export default function StorageConfigForm({
               />
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <input
-                  name="endpoint"
-                  placeholder="Endpoint (optional)"
-                  value={azureForm.endpoint}
-                  onChange={(event) => setAzureForm((current) => ({ ...current, endpoint: event.target.value }))}
-                  className="input-field"
-                />
-                <p className="px-1 text-[10px] text-ink-400">
-                  Override the default Azure URL. Use for Azurite (local emulator) or private custom endpoints.
-                </p>
-              </div>
+              <div />
+              <div />
             </div>
             {azureForm.authMode === 'connection-string' ? (
               <input
