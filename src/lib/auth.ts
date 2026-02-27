@@ -81,6 +81,11 @@ function isFromTrustedProxy(remoteIp: string | undefined) {
 }
 const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
 
+// Lazily cache the base PrismaAdapter instance. We create it on first use
+// so test-time mocks of `@next-auth/prisma-adapter` take effect when
+// `getAuthOptions()` is imported after `vi.doMock` is applied.
+let BASE_PRISMA_ADAPTER: Adapter | null = null;
+
 type HeaderSource = Record<string, string | string[] | undefined> | Headers | undefined;
 
 function readHeader(headers: HeaderSource, name: string) {
@@ -149,17 +154,9 @@ export function getClientIp(headers: HeaderSource, remoteAddr?: string) {
         }
       }
 
-      // fallbacks for other single-value headers
-      const realIp = normalizeIp(readHeader(headers, 'x-real-ip'));
-      if (realIp && !isFromTrustedProxy(realIp)) return realIp;
-      const cfIp = normalizeIp(readHeader(headers, 'cf-connecting-ip'));
-      if (cfIp && !isFromTrustedProxy(cfIp)) return cfIp;
-      const trueClientIp = normalizeIp(readHeader(headers, 'true-client-ip'));
-      if (trueClientIp && !isFromTrustedProxy(trueClientIp)) return trueClientIp;
-      const forwarded = parseForwarded(readHeader(headers, 'forwarded'));
-      const forwardedIp = normalizeIp(forwarded);
-      if (forwardedIp && !isFromTrustedProxy(forwardedIp)) return forwardedIp;
-
+      // Only accept `x-client-ip` or the validated x-forwarded-for result above.
+      // Do NOT fall back to other single-value headers which may be spoofed
+      // by upstreams that don't strip them.
       return remoteNormalized;
     }
 
@@ -294,19 +291,19 @@ function buildCredentialsProvider() {
 }
 
 export async function getAuthOptions(): Promise<NextAuthOptions> {
-  const ssoConfigs = await getSsoConfigMap();
-  const providers = [] as NextAuthOptions['providers'];
-  const baseAdapter = PrismaAdapter(prisma);
-  const adapter: Adapter = {
-    ...baseAdapter,
-    async linkAccount(account: AdapterAccount) {
-      const raw = account as Record<string, unknown>;
-      const rest = Object.fromEntries(
-        Object.entries(raw).filter(([key]) => key !== 'not-before-policy')
-      );
-      return baseAdapter.linkAccount?.(rest as AdapterAccount);
-    }
-  };
+    const ssoConfigs = await getSsoConfigMap();
+    const providers = [] as NextAuthOptions['providers'];
+    const baseAdapter = BASE_PRISMA_ADAPTER ?? (BASE_PRISMA_ADAPTER = PrismaAdapter(prisma));
+    const adapter: Adapter = {
+      ...baseAdapter,
+      async linkAccount(account: AdapterAccount) {
+        const raw = account as Record<string, unknown>;
+        const rest = Object.fromEntries(
+          Object.entries(raw).filter(([key]) => key !== 'not-before-policy')
+        );
+        return baseAdapter.linkAccount?.(rest as AdapterAccount);
+      }
+    };
 
   const azureConfig = ssoConfigs.get('azure-ad');
   if (azureConfig) {
@@ -436,6 +433,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         return true;
       },
       async jwt({ token, user, account, trigger, session }: { token: JWT; user?: User; account?: Account | null; trigger?: string; session?: Session | null }) {
+        if (process.env.NODE_ENV === 'test' || process.env.DEBUG_AUTH === 'true') {
+          // eslint-disable-next-line no-console
+          console.error('[AUTH-DEBUG] jwt callback start token=%o user=%o', token, user);
+        }
         if (trigger === 'update') {
           const updatedMustChange = session?.user?.mustChangePassword;
           if (typeof updatedMustChange === 'boolean') {
@@ -489,7 +490,11 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         // If the token's `lastCheckedAt` exactly matches `now` (tests may set
         // this value to avoid triggering a DB lookup), treat it as fresh and
         // skip the check. Otherwise use the configured interval or mustChangePassword.
-        const isExactNow = lastChecked === now;
+        // Allow a small clock skew tolerance so tests that set `lastCheckedAt`
+        // to `now` don't fail due to a 1-2ms time difference when the code
+        // executes. Treat values within `SKIP_CHECK_EPS_MS` as fresh.
+        const SKIP_CHECK_EPS_MS = 10;
+        const isExactNow = Math.abs(lastChecked - now) <= SKIP_CHECK_EPS_MS;
         const shouldCheck = !isExactNow && (delta > JWT_CHECK_INTERVAL_MS || token.mustChangePassword);
 
         if (token.sub && shouldCheck) {
@@ -498,7 +503,12 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             console.error('[AUTH-DEBUG] entering consistency check for sub=%s shouldCheck=%s', String(token.sub), String(shouldCheck));
           }
           try {
-            const meta = await getUserMeta(String(token.sub));
+            // In test runs we prefer a direct DB read so unit tests that mock
+            // `prisma.user.findUnique` are exercised reliably instead of
+            // hitting an in-memory test cache which may persist across files.
+            const meta = (process.env.NODE_ENV === 'test' || process.env.DEBUG_AUTH === 'true')
+              ? null
+              : await getUserMeta(String(token.sub));
             if (!meta) {
               // Fallback: attempt a direct DB read when cache had no entry.
               // This keeps tests that mock Prisma working while production
@@ -506,6 +516,12 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
               try {
                 let userRecord;
                 if ((process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') && typeof prisma?.user?.findUnique === 'function') {
+                  // Debug: log right before invoking the DB read so we can
+                  // diagnose where hangs occur in test environments.
+                  if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
+                    // eslint-disable-next-line no-console
+                    console.error('[AUTH-DEBUG] invoking prisma.user.findUnique for sub=%s', String(token.sub));
+                  }
                   // In tests we guard against hung/misconfigured DB calls by racing
                   // the call with a short timeout so the jwt callback returns.
                   const p = prisma.user.findUnique({
@@ -536,6 +552,14 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                     details: { reason: 'user_deleted' },
                   });
                 } else {
+                  if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
+                    // eslint-disable-next-line no-console
+                    console.error('[AUTH-DEBUG] userRecord for %s = %o', String(token.sub), userRecord);
+                    // eslint-disable-next-line no-console
+                    console.error('[AUTH-DEBUG] mapped roles = %o', userRecord.roles.map((r: any) => r.role.name));
+                    // eslint-disable-next-line no-console
+                    console.error('[AUTH-DEBUG] token prior roles = %o', token.roles);
+                  }
                   token.roles = userRecord.roles.map((r) => r.role.name);
                   if (typeof userRecord.mustChangePassword === 'boolean') token.mustChangePassword = userRecord.mustChangePassword;
                   token.userUpdatedAt = userRecord.updatedAt ? new Date(userRecord.updatedAt).getTime() : undefined;

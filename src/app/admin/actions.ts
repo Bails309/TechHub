@@ -124,7 +124,17 @@ async function saveIcon(file: File) {
 async function safeDeleteIcon(iconPath?: string) {
   if (!iconPath) return;
   try {
-    await storageDeleteIcon(iconPath);
+    // Dynamically import the storage module so test-time mocks and
+    // runtime replacements are respected. Some test runners or
+    // module-aliasing can cause the top-level imported symbol to
+    // not point at the mocked function used in tests, so resolve at
+    // call-time to ensure we invoke the current implementation.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = await import('../../lib/storage');
+    const deleteFn = mod.deleteIcon ?? mod.default;
+    if (typeof deleteFn === 'function') {
+      await deleteFn(iconPath);
+    }
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn('Failed to delete old icon', iconPath, err);
