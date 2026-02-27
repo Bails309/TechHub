@@ -629,7 +629,12 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           const sub = typeof token.sub === 'string' ? token.sub : String(token.sub ?? '');
           if (sub) {
             try {
-              const meta = await getUserMeta(sub);
+              // Guard the cache/Redis lookup with a short timeout so the
+              // session callback cannot hang if the cache client blocks.
+              const meta = await Promise.race([
+                getUserMeta(sub),
+                new Promise((res) => setTimeout(() => res(null), 2000))
+              ]) as any;
               if (meta) {
                 session.user.roles = meta.roles ?? [];
                 session.user.mustChangePassword = meta.mustChangePassword ?? false;
