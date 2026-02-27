@@ -72,3 +72,61 @@ TechHub includes native security headers via `next.config.mjs`. When deployed be
 - [ ] **Storage Setup**: Configure Azure Blob Storage via the **Admin > Settings** UI (or via env vars).
 - [ ] **SSO Configuration**: Connect your Azure AD (Entra ID) client via the **Admin > SSO** UI.
 - [ ] **Admin Account**: Verify the initial seed admin can log in and change their password.
+
+---
+
+## 🗄️ Database Lifecycle Management
+
+In production, database changes and initial setup should be handled explicitly to ensure the web application starts reliably.
+
+### 1. Schema Updates (Migrations)
+When deployment includes database changes, run the Prisma migration deploy command.
+- **Recommended**: Run as an **Azure Container Job** using the same image.
+- **Command**: `npx prisma migrate deploy`
+
+### 2. First-Time Setup & Seeding
+If you are deploying to a brand new database, you must initialize it with the required seed data (e.g., initial admin account, default settings).
+- **Recommended**: Run as a one-time **Azure Container Job**.
+- **Command**: `npm run prisma:seed`
+- **Behavior**: The seeding script is designed to be idempotent; it will only create the initial admin and required records if they do not already exist.
+
+### 3. Automation Strategy (ACA)
+For a fully automated CI/CD pipeline, consider:
+1. **Init Container**: Not supported natively in ACA, but you can use an **Azure Container Job** triggered before the App Update.
+### 4. Forcing an Image Pull (latest tag)
+If you are using the `latest` tag and have pushed a new version, Azure Container Apps might not pull it automatically. To force a pull:
+
+- **Via Azure CLI**:
+  ```bash
+  az containerapp update -n <app-name> -g <resource-group> --image <registry>/<image>:latest
+  ```
+- **Via Portal**:
+  1. Navigate to your **Container App**.
+  2. Go to **Containers**.
+  3. Click **Edit and deploy**.
+  4. Select the container and click **Edit**.
+  5. (Optional) Append a dummy environment variable to force a configuration change, or just click **Save** and **Deploy**. This will create a new revision and force a pull.
+
+---
+
+## 💡 Key Concept: Port Mapping vs. docker-compose
+
+One common source of confusion when moving from local development to Azure Container Apps is how ports are handled:
+
+1. **ACA ignores `docker-compose.yml`**: Azure Container Apps does not read your `docker-compose` files. It only uses the **Image** and the **Target Port** defined in the Azure Portal or via the CLI.
+2. **Target Port**: This MUST match the port your application is actually listening on *inside* the container (port 3000 in this project).
+3. **Internal vs. External**: Azure's Ingress automatically maps public HTTP (80) and HTTPS (443) traffic to your defined **Target Port**. You do not need to (and cannot) specify a "host port" like you do in `80:3000` locally.
+4. **Environment Variables**: The `PORT` environment variable inside your container should match the **Target Port** configured in the Azure Ingress settings.
+
+---
+
+## 🔐 Admin Password Recovery
+
+If the initial generated administrator password is lost or rotate and reset is required:
+
+1. **Set Environment Variable**: Configure the `ADMIN_PASSWORD` variable in your Azure Container Job or App with a new strong password.
+2. **Execute Seeding**: Run the database seeding command:
+   ```bash
+   npm run prisma:seed
+   ```
+3. **Verification**: The script will update the existing administrator's password and reset their `mustChangePassword` flag to `true`, forcing a change upon next login.

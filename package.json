@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "npm run prisma:push && next dev",
     "build": "next build",
-    "start": "npm run prisma:push && next start",
+    "start": "next start",
     "prestart": "node ./scripts/check-env.js",
     "lint": "eslint src --ext .ts,.tsx --no-error-on-unmatched-pattern",
     "prisma:generate": "prisma generate",
