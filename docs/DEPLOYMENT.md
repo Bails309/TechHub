@@ -93,4 +93,40 @@ If you are deploying to a brand new database, you must initialize it with the re
 ### 3. Automation Strategy (ACA)
 For a fully automated CI/CD pipeline, consider:
 1. **Init Container**: Not supported natively in ACA, but you can use an **Azure Container Job** triggered before the App Update.
-2. **Manual Trigger**: If preferred, run the commands via the Azure CLI or Portal for the first-time setup.
+### 4. Forcing an Image Pull (latest tag)
+If you are using the `latest` tag and have pushed a new version, Azure Container Apps might not pull it automatically. To force a pull:
+
+- **Via Azure CLI**:
+  ```bash
+  az containerapp update -n <app-name> -g <resource-group> --image <registry>/<image>:latest
+  ```
+- **Via Portal**:
+  1. Navigate to your **Container App**.
+  2. Go to **Containers**.
+  3. Click **Edit and deploy**.
+  4. Select the container and click **Edit**.
+  5. (Optional) Append a dummy environment variable to force a configuration change, or just click **Save** and **Deploy**. This will create a new revision and force a pull.
+
+---
+
+## 💡 Key Concept: Port Mapping vs. docker-compose
+
+One common source of confusion when moving from local development to Azure Container Apps is how ports are handled:
+
+1. **ACA ignores `docker-compose.yml`**: Azure Container Apps does not read your `docker-compose` files. It only uses the **Image** and the **Target Port** defined in the Azure Portal or via the CLI.
+2. **Target Port**: This MUST match the port your application is actually listening on *inside* the container (port 3000 in this project).
+3. **Internal vs. External**: Azure's Ingress automatically maps public HTTP (80) and HTTPS (443) traffic to your defined **Target Port**. You do not need to (and cannot) specify a "host port" like you do in `80:3000` locally.
+4. **Environment Variables**: The `PORT` environment variable inside your container should match the **Target Port** configured in the Azure Ingress settings.
+
+---
+
+## 🔐 Admin Password Recovery
+
+If the initial generated administrator password is lost or rotate and reset is required:
+
+1. **Set Environment Variable**: Configure the `ADMIN_PASSWORD` variable in your Azure Container Job or App with a new strong password.
+2. **Execute Seeding**: Run the database seeding command:
+   ```bash
+   npm run prisma:seed
+   ```
+3. **Verification**: The script will update the existing administrator's password and reset their `mustChangePassword` flag to `true`, forcing a change upon next login.

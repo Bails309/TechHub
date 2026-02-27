@@ -33,21 +33,23 @@ async function main() {
   const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });
   const adminUser = existingAdmin
     ? await prisma.user.update({
-        where: { id: existingAdmin.id },
-        data: {
-          mustChangePassword: existingAdmin.passwordHash
-            ? await bcrypt.compare(adminPassword, existingAdmin.passwordHash)
-            : existingAdmin.mustChangePassword
-        }
-      })
+      where: { id: existingAdmin.id },
+      data: {
+        // If explicitly provided via env, reset the password hash
+        passwordHash: process.env.ADMIN_PASSWORD
+          ? await bcrypt.hash(adminPassword, SALT_ROUNDS)
+          : existingAdmin.passwordHash,
+        mustChangePassword: true
+      }
+    })
     : await prisma.user.create({
-        data: {
-          email: adminEmail,
-          name: 'TechHub Admin',
-          passwordHash: await bcrypt.hash(adminPassword, SALT_ROUNDS),
-          mustChangePassword: true
-        }
-      });
+      data: {
+        email: adminEmail,
+        name: 'TechHub Admin',
+        passwordHash: await bcrypt.hash(adminPassword, SALT_ROUNDS),
+        mustChangePassword: true
+      }
+    });
 
   await prisma.userRole.upsert({
     where: { userId_roleId: { userId: adminUser.id, roleId: adminRole.id } },
