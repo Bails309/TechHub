@@ -288,6 +288,28 @@ html[data-theme='light'] .bg-ink-800\/80 {
   background-color: rgba(255, 255, 255, 0.9);
 }
 
+/* --- Skeleton Loading Animations --- */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.05) 4%, rgba(255, 255, 255, 0.1) 25%, rgba(255, 255, 255, 0.05) 36%);
+  background-size: 1000px 100%;
+}
+
+html[data-theme='light'] .skeleton {
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.05) 4%, rgba(0, 0, 0, 0.1) 25%, rgba(0, 0, 0, 0.05) 36%);
+  background-size: 1000px 100%;
+}
+
 /* --- Semantic Component Overrides --- */
 html[data-theme='light'] .card-panel {
   background-color: rgba(255, 255, 255, 0.75);

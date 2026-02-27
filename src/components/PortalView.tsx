@@ -184,7 +184,7 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
   };
 
   const renderGrid = (list: PortalApp[], contextIds?: string[]) => (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6 animate-in fade-in zoom-in-95 duration-200">
       {list.map((app) => (
         <AppCard
           key={app.id}
@@ -203,8 +203,8 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
           <button
             onClick={() => setSelectedCategory('All')}
             className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedCategory === 'All'
-                ? 'bg-ink-800 text-ocean-400 dark:bg-ocean-500/10 dark:text-ocean-300 border border-ink-300 dark:border-ocean-500/20 shadow-sm'
-                : 'bg-transparent text-ink-400 hover:text-ink-100 dark:hover:bg-white/5 border border-transparent'
+              ? 'bg-ink-800 text-ocean-400 dark:bg-ocean-500/10 dark:text-ocean-300 border border-ink-300 dark:border-ocean-500/20 shadow-sm'
+              : 'bg-transparent text-ink-400 hover:text-ink-100 dark:hover:bg-white/5 border border-transparent'
               }`}
           >
             All Apps
@@ -214,8 +214,8 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
               key={category}
               onClick={() => setSelectedCategory(category)}
               className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedCategory === category
-                  ? 'bg-ink-800 text-ocean-400 dark:bg-ocean-500/10 dark:text-ocean-300 border border-ink-300 dark:border-ocean-500/20 shadow-sm'
-                  : 'bg-transparent text-ink-400 hover:text-ink-100 dark:hover:bg-white/5 border border-transparent'
+                ? 'bg-ink-800 text-ocean-400 dark:bg-ocean-500/10 dark:text-ocean-300 border border-ink-300 dark:border-ocean-500/20 shadow-sm'
+                : 'bg-transparent text-ink-400 hover:text-ink-100 dark:hover:bg-white/5 border border-transparent'
                 }`}
             >
               {category}
