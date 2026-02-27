@@ -17,6 +17,7 @@ interface PortalViewProps {
   apps: PortalApp[];
   isAuthenticated: boolean;
   initialOrder: string[];
+  pinnedApps?: string[];
 }
 
 function normaliseOrder(order: string[], apps: PortalApp[]) {
@@ -56,11 +57,12 @@ function moveInOrder(order: string[], fromId: string, toId: string) {
   return next;
 }
 
-export default function PortalView({ apps, isAuthenticated, initialOrder }: PortalViewProps) {
+export default function PortalView({ apps, isAuthenticated, initialOrder, pinnedApps }: PortalViewProps) {
   const [order, setOrder] = useState(() => normaliseOrder(initialOrder, apps));
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [pinnedAppIds, setPinnedAppIds] = useState<string[]>(pinnedApps ?? []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -95,6 +97,30 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
         }
       } catch {
         setOrder((current) => normaliseOrder(current, apps));
+      }
+    }
+  }, [apps, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      try {
+        const storedOrder = window.localStorage.getItem('techhub-portal-order');
+        if (storedOrder) {
+          const parsedOrder = JSON.parse(storedOrder) as string[];
+          setOrder((current) => normaliseOrder(parsedOrder, apps));
+        }
+      } catch {
+        // use default
+      }
+
+      try {
+        const storedPins = window.localStorage.getItem('techhub-portal-pins');
+        if (storedPins) {
+          const parsedPins = JSON.parse(storedPins) as string[];
+          setPinnedAppIds(parsedPins);
+        }
+      } catch {
+        // use default
       }
     }
   }, [apps, isAuthenticated]);
@@ -162,6 +188,21 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
     return result;
   }, [orderedApps, query, selectedCategory]);
 
+  const togglePin = async (appId: string) => {
+    const nextPins = pinnedAppIds.includes(appId)
+      ? pinnedAppIds.filter((id) => id !== appId)
+      : [...pinnedAppIds, appId];
+
+    setPinnedAppIds(nextPins);
+
+    if (isAuthenticated) {
+      const { toggleFavoriteApp } = await import('../app/actions/favoriteApps');
+      await toggleFavoriteApp(appId);
+    } else {
+      window.localStorage.setItem('techhub-portal-pins', JSON.stringify(nextPins));
+    }
+  };
+
   const persistOrder = async (nextOrder: string[]) => {
     setOrder(nextOrder);
     if (!isAuthenticated) {
@@ -216,10 +257,15 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
           app={app}
           onReorder={handleReorder}
           contextIds={contextIds}
+          isPinned={pinnedAppIds.includes(app.id)}
+          onTogglePin={togglePin}
         />
       ))}
     </div>
   );
+
+  const pinnedItems = filteredApps.filter((app) => pinnedAppIds.includes(app.id));
+  const unpinnedItems = filteredApps.filter((app) => !pinnedAppIds.includes(app.id));
 
   return (
     <div className="space-y-8">
@@ -254,7 +300,29 @@ export default function PortalView({ apps, isAuthenticated, initialOrder }: Port
           <p className="text-lg">No applications found.</p>
         </div>
       ) : (
-        renderGrid(filteredApps, filteredApps.map(app => app.id))
+        <div className="space-y-12">
+          {pinnedItems.length > 0 && (
+            <div>
+              <h2 className="text-xl font-medium tracking-tight text-ink-900 dark:text-ink-100 mb-6 flex items-center gap-2">
+                <span className="h-6 w-1 rounded-full bg-ocean-500"></span>
+                Pinned Apps
+              </h2>
+              {renderGrid(pinnedItems, pinnedItems.map((app) => app.id))}
+            </div>
+          )}
+
+          {unpinnedItems.length > 0 && (
+            <div>
+              {pinnedItems.length > 0 && (
+                <h2 className="text-xl font-medium tracking-tight text-ink-900 dark:text-ink-100 mb-6 flex items-center gap-2">
+                  <span className="h-6 w-1 rounded-full bg-ink-300 dark:bg-ink-700"></span>
+                  All Apps
+                </h2>
+              )}
+              {renderGrid(unpinnedItems, unpinnedItems.map((app) => app.id))}
+            </div>
+          )}
+        </div>
       )}
 
       <CommandPalette

@@ -45,7 +45,7 @@ export default async function Home() {
     }
   }
 
-  const [apps, appOrder, averageLatencyValue] = await Promise.all([
+  const [apps, appOrder, averageLatencyValue, favoriteAppIds] = await Promise.all([
     prisma.appLink.findMany({
       where: { OR: audienceFilters },
       orderBy: [{ category: 'asc' }, { name: 'asc' }]
@@ -53,7 +53,8 @@ export default async function Home() {
     session?.user?.id ? prisma.userAppOrder.findUnique({
       where: { userId: session.user.id }
     }) : null,
-    getAverageLatency()
+    getAverageLatency(),
+    session?.user?.id ? import('./actions/getFavoriteApps').then(m => m.getFavoriteApps()) : Promise.resolve([])
   ]);
 
   const categories = Array.from(new Set(apps.map((app) => app.category ?? 'General')));
@@ -78,6 +79,7 @@ export default async function Home() {
         }))}
         isAuthenticated={Boolean(session)}
         initialOrder={Array.isArray(appOrder?.order) ? (appOrder?.order as string[]) : []}
+        pinnedApps={favoriteAppIds}
       />
     </div>
   );

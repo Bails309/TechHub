@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LayoutGrid } from 'lucide-react';
+import { LayoutGrid, Star } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 
@@ -14,9 +14,11 @@ export interface AppCardProps {
   };
   onReorder: (fromId: string, toId: string, contextIds?: string[]) => void;
   contextIds?: string[];
+  isPinned?: boolean;
+  onTogglePin?: (appId: string) => void;
 }
 
-export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
+export default function AppCard({ app, onReorder, contextIds, isPinned = false, onTogglePin }: AppCardProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [iconError, setIconError] = useState(false);
   const safeIcon = useMemo(() => sanitizeIconUrl(app.icon), [app.icon]);
@@ -59,7 +61,30 @@ export default function AppCard({ app, onReorder, contextIds }: AppCardProps) {
       prefetch={false}
       title={app.description ?? app.name}
     >
-      <div className="h-16 w-16 md:h-20 md:w-20 rounded-2xl bg-white/5 flex items-center justify-center transition-transform group-hover:scale-110">
+      {/* Pin Button */}
+      {onTogglePin && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onTogglePin(app.id);
+          }}
+          className={`absolute top-4 right-4 p-1.5 rounded-full transition-all focus:outline-none ${isPinned
+            ? 'text-ocean-500 hover:text-ocean-600 bg-ocean-50 dark:bg-ocean-500/20 opacity-100'
+            : 'text-ink-400 hover:text-ink-600 dark:hover:text-ink-200 opacity-0 group-hover:opacity-100'
+            }`}
+          aria-label={isPinned ? 'Unpin app' : 'Pin app'}
+          title={isPinned ? 'Unpin' : 'Pin to top'}
+        >
+          <Star
+            size={18}
+            className={`transition-all ${isPinned ? 'fill-current scale-110' : 'scale-100'}`}
+          />
+        </button>
+      )}
+
+      <div className="h-16 w-16 md:h-20 md:w-20 rounded-2xl bg-white/5 flex items-center justify-center transition-transform group-hover:scale-110 mt-2">
         {safeIcon && !iconError ? (
           <img
             src={safeIcon}

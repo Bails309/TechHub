@@ -28,6 +28,7 @@ model User {
   roles         UserRole[]
   appOrder      UserAppOrder?
   appAccesses   UserAppAccess[]
+  favoriteApps  UserFavoriteApp[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -62,6 +63,7 @@ model AppLink {
   role        Role?       @relation(fields: [roleId], references: [id])
   roleId      String?
   userAccesses UserAppAccess[]
+  favoritedBy UserFavoriteApp[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
@@ -69,6 +71,15 @@ model AppLink {
 }
 
 model UserAppAccess {
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  app    AppLink @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId  String
+
+  @@id([userId, appId])
+}
+
+model UserFavoriteApp {
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String
   app    AppLink @relation(fields: [appId], references: [id], onDelete: Cascade)
