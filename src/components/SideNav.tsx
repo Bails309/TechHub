@@ -42,10 +42,10 @@ export default function SideNav({ logo, logoLight, logoDark }: { logo?: string; 
 
             {/* Side Navigation Rail */}
             <aside
-                className={`fixed inset-y-0 left-0 z-40 w-64 lg:w-64 glass flex flex-col justify-between transition-transform duration-300 ease-in-out border-r border-ink-200/50 dark:border-white/5 
+                className={`fixed top-0 left-0 z-40 w-64 lg:w-64 glass flex flex-col justify-between transition-transform duration-300 ease-in-out border-r border-ink-200/50 dark:border-white/5 h-screen max-h-screen supports-[height:100dvh]:h-[100dvh] supports-[max-height:100dvh]:max-h-[100dvh]
         ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
             >
-                <div className="flex flex-col flex-1 py-8 px-4 overflow-y-auto">
+                <div className="flex flex-col flex-1 py-8 px-4 overflow-y-auto min-h-0">
                     {/* Logo Section */}
                     <Link
                         href="/"
