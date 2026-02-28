@@ -1,6 +1,7 @@
 import { getSystemHealth } from '@/lib/health';
 import { Database, Zap, HardDrive, Server, Clock, Cpu, Activity, FileCode } from 'lucide-react';
 import AutoRefresh from './AutoRefresh';
+import ClientDate from '../../../components/ClientDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -210,7 +211,7 @@ export default async function AdminHealthPage() {
             </div>
 
             <div className="flex justify-end pt-4">
-                <p className="text-[10px] opacity-40 italic">Last Checked: {new Date(health.timestamp).toLocaleString()}</p>
+                <p className="text-[10px] opacity-40 italic">Last Checked: <ClientDate date={health.timestamp} /></p>
             </div>
         </div>
     );

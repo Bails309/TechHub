@@ -1,6 +1,7 @@
 import { prisma } from '../../../lib/prisma';
 import { KeyRound, Shield, Settings } from 'lucide-react';
 import AuditDetails from './AuditDetails';
+import ClientDate from '../../../components/ClientDate';
 
 function CategoryIcon({ category }: { category: string }) {
     if (category === 'auth') return <KeyRound size={16} className="text-ocean-400 shrink-0" />;
@@ -141,7 +142,7 @@ export default async function AuditList({ where, skip, take, page, categoryFilte
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center justify-between gap-4">
                                         <p className="font-semibold text-ink-100">{audit.action}</p>
-                                        <span className="text-xs text-ink-400 whitespace-nowrap">{audit.createdAt.toLocaleString()}</span>
+                                        <span className="text-xs text-ink-400 whitespace-nowrap"><ClientDate date={audit.createdAt.toISOString()} /></span>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-300 mt-1.5">
                                         <span className="flex items-center gap-1.5">

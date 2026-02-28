@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { AppWindow, Users, KeyRound, Settings, LayoutGrid } from 'lucide-react';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { getAppLaunchStats, getUserActivityStats } from './actions';
+import ClientDate from '../../components/ClientDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -138,7 +139,7 @@ export default async function AdminDashboard() {
                         {audit.provider && <><span className="text-ink-600 mx-2">•</span><span className="text-ink-500">Provider:</span> {audit.provider}</>}
                       </p>
                     </div>
-                    <span className="text-xs text-ink-500 whitespace-nowrap">{audit.createdAt.toLocaleString()}</span>
+                    <span className="text-xs text-ink-500 whitespace-nowrap"><ClientDate date={audit.createdAt.toISOString()} /></span>
                   </div>
                 );
               })
