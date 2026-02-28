@@ -1,6 +1,6 @@
 import { prisma } from '../../../lib/prisma';
 import { randomUUID } from 'crypto';
-import { decryptSecret, hasSecretKey } from '../../../lib/crypto';
+import { decryptSecret, getSecretKeyState, hasSecretKey } from '../../../lib/crypto';
 import SsoConfigForm from '../../../components/SsoConfigForm';
 import LinkSsoAccountForm from '../../../components/LinkSsoAccountForm';
 import { linkSsoAccount } from '../actions';
@@ -17,7 +17,8 @@ export default async function SsoPage() {
     const credentialsConfig = ssoMap.get('credentials');
     const defaultClientId = randomUUID();
 
-    const canValidateSecrets = hasSecretKey();
+    const keyState = getSecretKeyState();
+    const canValidateSecrets = keyState === 'valid';
     const azureSecretValid =
         azureConfig?.clientSecretEnc && canValidateSecrets
             ? (() => {
@@ -115,7 +116,7 @@ export default async function SsoPage() {
                     azure={azureConfigPayload}
                     keycloak={keycloakConfigPayload}
                     credentials={credentialsConfigPayload}
-                    hasMasterKey={canValidateSecrets}
+                    hasMasterKey={keyState}
                     defaultClientId={defaultClientId}
                 />
             </section>

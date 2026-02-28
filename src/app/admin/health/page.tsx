@@ -1,5 +1,5 @@
 import { getSystemHealth } from '@/lib/health';
-import { Database, Zap, HardDrive, Server, Clock, Cpu, Activity } from 'lucide-react';
+import { Database, Zap, HardDrive, Server, Clock, Cpu, Activity, FileCode } from 'lucide-react';
 import AutoRefresh from './AutoRefresh';
 
 export const dynamic = 'force-dynamic';
@@ -35,7 +35,7 @@ export default async function AdminHealthPage() {
                 <AutoRefresh intervalMs={60000} />
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
                 {/* Database Card */}
                 <div className="glass rounded-3xl p-6 flex flex-col gap-4 border-white/5 shadow-xl relative overflow-hidden group">
                     <div className="flex items-center justify-between">
@@ -92,8 +92,8 @@ export default async function AdminHealthPage() {
                                             <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/5">
                                                 <div
                                                     className={`h-full transition-all duration-500 rounded-full ${d.percentage > 90 ? 'bg-rose-500' :
-                                                            d.percentage > 75 ? 'bg-amber-500' :
-                                                                'bg-amber-500/50'
+                                                        d.percentage > 75 ? 'bg-amber-500' :
+                                                            'bg-amber-500/50'
                                                         }`}
                                                     style={{ width: `${Math.min(100, d.percentage)}%` }}
                                                 />
@@ -144,6 +144,36 @@ export default async function AdminHealthPage() {
                                 <span>{health.storage.details.bucket}</span>
                             </div>
                         )}
+                    </div>
+                </div>
+
+                {/* Schema Card */}
+                <div className="glass rounded-3xl p-6 flex flex-col gap-4 border-white/5 shadow-xl relative overflow-hidden group">
+                    <div className="flex items-center justify-between">
+                        <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-500">
+                            <FileCode size={24} />
+                        </div>
+                        <div className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(health.schema.status)}`}>
+                            {getStatusLabel(health.schema.status)}
+                        </div>
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold">Schema</h3>
+                        <p className="text-sm text-muted-foreground">Database Configuration</p>
+                    </div>
+                    <div className="mt-auto pt-4 border-t border-white/5 flex flex-col gap-2">
+                        <div className="flex items-center justify-between text-xs">
+                            <span className="opacity-60">Status</span>
+                            <span className="truncate max-w-[120px]" title={health.schema.message}>{health.schema.message}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] opacity-60">
+                            <span>Code Hash</span>
+                            <span className="font-mono">{health.schema.details?.currentHash}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] opacity-60">
+                            <span>DB Hash</span>
+                            <span className="font-mono">{health.schema.details?.databaseHash}</span>
+                        </div>
                     </div>
                 </div>
             </div>

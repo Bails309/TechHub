@@ -104,9 +104,40 @@ TechHub includes native security headers via `next.config.mjs`. When deployed be
 
 ---
 
+## 🔐 Security & Secret Management
+
+TechHub uses envelope encryption to protect sensitive configuration (SSO secrets, Storage keys) in the database.
+
+### 1. SSO Master Key (`SSO_MASTER_KEY`)
+This key is **mandatory** and must be a 32-byte base64 string. It is used as the root key for all database-side encryption.
+
+> [!CAUTION]
+> **Loss of this key means all encrypted secrets in your database (e.g., Azure Client Secrets) will be unrecoverable.** You would need to re-enter them in the Admin UI after restoring/rotating the key.
+
+#### Generation
+Generate a secure key using Node.js:
+
+**Local/Docker Compose:**
+```bash
+docker-compose exec app node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+**Manual/Production:**
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+### 2. NextAuth Secret (`NEXTAUTH_SECRET`)
+Used for signing session cookies. Generate a random 32-character string (plain text or base64).
+
+---
+
 ## 🛠️ Post-Deployment Checklist
 
-- [ ] **Prisma Migration**: Run `npx prisma migrate deploy` against your production database.
+- [x] **Database Schema Sync**:
+  TechHub is configured to automatically synchronize its database schema on startup to ensure it matches the running code version. 
+  - On **first boot** or **after an update**, the container will run `prisma db push` before starting the web server.
+  - You can verify the synchronization status and current schema hash anytime via the **Admin > Health** Dashboard.
 - [ ] **Storage Setup**: Configure Azure Blob Storage via the **Admin > Settings** UI (or via env vars).
 - [ ] **SSO Configuration**: Connect your Azure AD (Entra ID) client via the **Admin > SSO** UI.
 - [ ] **Admin Account**: Verify the initial seed admin can log in and change their password.
@@ -121,9 +152,11 @@ When preparing to update an existing deployment (e.g., adding favicons or new me
 ### 1. Cloud Update (Azure Container Apps)
 1. **Push Image**: Build and push your new Docker image to your registry (e.g., ACR).
 2. **Update Deployment**: Update the Container App to use the new image.
-3. **Run Synchronization**: Execute a one-time **Azure Container Job** with the following command to apply schema changes. 
-   - **Recommended**: `npx prisma@5.18.0 db push --skip-generate` (Prevents errors in production-pruned containers).
-   - **Arguments**: `prisma@5.18.0`, `db`, `push`, `--skip-generate`
+3. **Automatic Synchronization**: Azure will restart your container with the new image. During startup, the `scripts/auto-migrate.js` script will automatically execute `prisma db push` to apply any necessary schema changes.
+4. **Verification**: Once the portal loads, navigate to **Admin > Health** to confirm the Schema card reports "Synchronized".
+
+   > [!TIP]
+   > **Restart Recommended**: While the application is hardened to survive missing database columns, we **strongly recommend** restarting your main Container App after the synchronization job completes. This ensures that the long-running Node.js process clears any internal Prisma client state or schema metadata cached in memory, preventing potential login or data-fetching blockers.
 
 ### 2. Local Update (Docker Compose)
 If you are developing or running locally with Docker Compose:
@@ -139,18 +172,18 @@ If you are developing or running locally with Docker Compose:
 
 In production, database changes and initial setup should be handled explicitly to ensure the web application starts reliably.
 
-### 1. Schema Synchronization
-When deployment includes database changes, you must synchronize the schema.
-- **Option A (Migrations)**: Use `npx prisma@5.18.0 migrate deploy`.
-- **Option B (Direct Push)**: Use `npx prisma@5.18.0 db push --skip-generate`. This is faster for environments where migrations are not explicitly tracked. The `--skip-generate` flag is required when running inside the production container to prevent issues with pruned `node_modules`.
+### 1. Schema Synchronization Reference
 
-### 2. First-Time Setup & Seeding
-If you are deploying to a brand new database, you must initialize it with the required seed data (e.g., initial admin account, default settings).
-- **Recommended**: Run as a one-time **Azure Container Job**.
-- **ACA Job Configuration**:
-  - **Command override**: `npm`
-  - **Arguments override**: `run`, `prisma:seed`
-- **Behavior**: The seeding script is designed to be idempotent; it will only create the initial admin and required records if they do not already exist.
+TechHub abstracts the database schema lifecycle using an automated startup script (`scripts/auto-migrate.js`). However, if you need to run these commands manually or via external CI/CD jobs, use these exact settings:
+
+| Scenario | Tool/Command | Azure ACA Job Arguments |
+| :--- | :--- | :--- |
+| **Apply Schema Changes** | `npx prisma db push --accept-data-loss` | `bash scripts/sync-db.sh` (Recommended due to Azure CLI space parsing bugs) |
+| **First-time Seed** | `npm run prisma:seed` | `node prisma/seed.js` |
+
+### 2. Behavior
+- **Automatic Push**: Default behavior on container startup. Applies changes non-destructively where possible, but accepts data loss if required by the new schema.
+- **Seeding**: Idempotent; only creates the initial admin and required configuration records if they do not exist.
 
 ### 3. Automation Strategy (ACA)
 For a fully automated CI/CD pipeline, consider:

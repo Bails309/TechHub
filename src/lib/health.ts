@@ -1,6 +1,9 @@
 import { prisma } from './prisma';
 import { getSharedRedisClient } from './redis';
 import { getStorageConfigMap } from './storageConfig';
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
 
 export interface HealthStatus {
     status: 'ok' | 'error' | 'warning';
@@ -127,17 +130,55 @@ export async function checkStorageHealth(): Promise<HealthStatus> {
     }
 }
 
+export async function checkSchemaHealth(): Promise<HealthStatus> {
+    const start = Date.now();
+    try {
+        const schemaState = await prisma.systemState.findUnique({
+            where: { id: 'SCHEMA_HASH' }
+        });
+
+        const schemaPath = path.join(process.cwd(), 'prisma', 'schema.prisma');
+        let currentHash = 'unknown';
+        if (fs.existsSync(schemaPath)) {
+            const schemaContent = fs.readFileSync(schemaPath, 'utf8');
+            const normalizedContent = schemaContent.replace(/\r\n/g, '\n');
+            currentHash = crypto.createHash('sha256').update(normalizedContent).digest('hex');
+        }
+
+        const dbHash = schemaState?.value;
+        const isMatch = currentHash === dbHash;
+
+        return {
+            status: isMatch ? 'ok' : 'warning',
+            latency: Date.now() - start,
+            message: isMatch ? 'Schema is in sync' : (dbHash ? 'Schema out of sync' : 'Never synchronized'),
+            details: {
+                currentHash: currentHash.substring(0, 8),
+                databaseHash: dbHash ? dbHash.substring(0, 8) : 'None',
+                lastSync: schemaState?.updatedAt || 'Unknown'
+            }
+        };
+    } catch (e) {
+        return {
+            status: 'error',
+            message: e instanceof Error ? e.message : String(e)
+        };
+    }
+}
+
 export async function getSystemHealth() {
-    const [db, redis, storage] = await Promise.all([
+    const [db, redis, storage, schema] = await Promise.all([
         checkDatabaseHealth(),
         checkRedisHealth(),
-        checkStorageHealth()
+        checkStorageHealth(),
+        checkSchemaHealth()
     ]);
 
     return {
         db,
         redis,
         storage,
+        schema,
         timestamp: new Date().toISOString(),
         server: {
             uptime: Math.floor(process.uptime()),

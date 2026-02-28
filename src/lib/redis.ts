@@ -17,7 +17,8 @@ export async function getSharedRedisClient(): Promise<IORedis | null> {
 
     const url = process.env.REDIS_URL ?? '';
     if (!url && process.env.NODE_ENV === 'production') {
-        throw new Error('REDIS_URL must be set when using Redis in production');
+        console.warn('[REDIS] REDIS_URL is not set. Resuming with direct database queries only.');
+        return null;
     }
 
     sharedRedisPromise = (async () => {
@@ -49,7 +50,7 @@ export async function getSharedRedisClient(): Promise<IORedis | null> {
             } catch { /* ignore */ }
             sharedRedisClient = null;
             if (process.env.NODE_ENV === 'production') {
-                throw new Error('Failed to connect to Redis: ' + (e instanceof Error ? e.message : String(e)));
+                console.error('[REDIS] Resuming without Redis (fallback to DB) due to connection failure');
             }
             return null;
         } finally {

@@ -198,3 +198,10 @@ model SiteConfig {
   faviconUrl String?
   updatedAt  DateTime @updatedAt
 }
+
+// Used to track application state like the current database schema hash
+model SystemState {
+  id        String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

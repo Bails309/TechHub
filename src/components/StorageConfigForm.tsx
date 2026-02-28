@@ -74,7 +74,7 @@ export default function StorageConfigForm({
   local: StorageFormConfig | null;
   s3: StorageFormConfig | null;
   azure: StorageFormConfig | null;
-  hasMasterKey: boolean;
+  hasMasterKey: import('@/lib/crypto').KeyState;
 }) {
   const [selectedProvider, setSelectedProvider] = useState(activeProvider);
   const [localState, localAction] = useFormState(updateStorageConfig, initialState);
@@ -95,7 +95,7 @@ export default function StorageConfigForm({
     clearSecret: false
   }));
 
-  
+
 
   const [azureForm, setAzureForm] = useState(() => ({
     enabled: azure?.enabled ?? false,
@@ -131,7 +131,7 @@ export default function StorageConfigForm({
     });
   }, [s3?.enabled, s3?.bucket, s3?.region, s3?.accessKeyId, s3?.forcePathStyle, selectedProvider]);
 
-  
+
 
   useEffect(() => {
     setAzureForm({
@@ -146,7 +146,7 @@ export default function StorageConfigForm({
     });
   }, [azure?.enabled, azure?.container, azure?.authMode, azure?.account]);
 
-  
+
 
   return (
     <div className="space-y-6">
@@ -183,12 +183,15 @@ export default function StorageConfigForm({
           Pick a provider, update its settings, then save to apply. The selected provider will be enabled and others disabled.
         </p>
       </div>
-      {!hasMasterKey ? (
+      {hasMasterKey !== 'valid' ? (
         <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
-          <p className="font-semibold">SSO master key required</p>
+          <p className="font-semibold">
+            {hasMasterKey === 'invalid' ? 'Invalid SSO master key' : 'SSO master key required'}
+          </p>
           <p className="mt-1 text-xs text-amber-600 dark:text-amber-100">
-            Set <span className="font-mono bg-amber-500/10 px-1 rounded dark:text-amber-50">SSO_MASTER_KEY</span> in your environment to
-            save encrypted storage secrets.
+            {hasMasterKey === 'invalid'
+              ? 'The SSO_MASTER_KEY in your environment is not a valid 32-byte base64 string.'
+              : 'Set SSO_MASTER_KEY in your environment to save encrypted storage secrets.'}
           </p>
         </div>
       ) : null}
@@ -234,7 +237,7 @@ export default function StorageConfigForm({
           description="Use AWS S3 or an S3-compatible storage provider for uploads."
           source={s3?.source}
         >
-          {hasMasterKey && s3?.hasSecret && s3?.secretValid === false ? (
+          {hasMasterKey === 'valid' && s3?.hasSecret && s3?.secretValid === false ? (
             <p className="text-xs text-rose-300">
               Stored S3 secret could not be decrypted. Re-save it to restore storage access.
             </p>
@@ -337,7 +340,7 @@ export default function StorageConfigForm({
           description="Manage Azure Blob credentials and container settings."
           source={azure?.source}
         >
-          {hasMasterKey && azure?.hasSecret && azure?.secretValid === false ? (
+          {hasMasterKey === 'valid' && azure?.hasSecret && azure?.secretValid === false ? (
             <p className="text-xs text-rose-300">
               Stored Azure secret could not be decrypted. Re-save it to restore storage access.
             </p>

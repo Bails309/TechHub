@@ -10,7 +10,10 @@ import SessionGuard from '../components/SessionGuard';
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
-    const siteConfig = await prisma.siteConfig.findFirst();
+    let siteConfig = null;
+    if (process.env.npm_lifecycle_event !== 'build') {
+      siteConfig = await prisma.siteConfig.findFirst();
+    }
     return {
       title: 'TechHub',
       description: 'Your modern gateway to every app your team depends on.',
@@ -41,9 +44,13 @@ export default async function RootLayout({
 
   let siteConfig = null;
   try {
-    siteConfig = await prisma.siteConfig.findFirst();
+    // During docker build, the DB might be unreachable.
+    // Skip fetching config if we know we are building and just want default layout
+    if (process.env.npm_lifecycle_event !== 'build') {
+      siteConfig = await prisma.siteConfig.findFirst();
+    }
   } catch (err) {
-    console.error('[Layout] Failed to fetch site config, falling back to defaults:', err);
+    console.warn('[Layout] Failed to fetch site config, falling back to defaults. This is expected during build.');
   }
 
   return (

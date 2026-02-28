@@ -41,7 +41,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Prisma schema and the COMPILED seed script
+# Prisma schema, the COMPILED seed script, and the auto-migrate script
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/scripts ./scripts
@@ -50,6 +50,5 @@ RUN mkdir -p /app/uploads
 
 EXPOSE 3000
 
-# Use node直接启动 instead of npm start to avoid shell overhead and 
-# to ensure signals (SIGTERM) are handled correctly.
-CMD ["node", "server.js"]
+# Run database synchronization before starting the application
+CMD ["node", "-e", "require('./scripts/auto-migrate.js'); require('./server.js');"]

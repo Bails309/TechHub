@@ -75,7 +75,11 @@ cp .env.example .env
 # 2. Spin up the infrastructure
 docker-compose up -d --build
 
-# 3. Access your initial admin credentials
+# 3. Generate mandatory SSO_MASTER_KEY
+# This key is required to encrypt secrets. Update your .env with the output.
+docker-compose exec app node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+
+# 4. Access your initial admin credentials
 docker-compose logs app | grep "SEED"
 ```
 

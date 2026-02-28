@@ -508,7 +508,7 @@ export async function updateSiteLogos(formData: FormData) {
   const removeFavicon = formData.get('removeFavicon') === 'on' || formData.get('removeFavicon') === '1';
 
   // Fetch existing singleton
-  const existing = await prisma.siteConfig.findFirst();
+  const existing = await prisma.siteConfig.findFirst().catch(() => null);
   let newLogoLight = existing?.logoLight ?? existing?.logo ?? null;
   let newLogoDark = existing?.logoDark ?? existing?.logo ?? null;
   let newFavicon = existing?.faviconUrl ?? null;

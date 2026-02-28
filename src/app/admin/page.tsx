@@ -17,17 +17,17 @@ export default async function AdminDashboard() {
     launchStats,
     activityStats
   ] = await Promise.all([
-    prisma.appLink.count(),
-    prisma.user.count(),
-    prisma.ssoConfig.findMany({ where: { enabled: true } }),
-    prisma.storageConfig.findMany({ where: { enabled: true } }),
-    prisma.role.count(),
+    prisma.appLink.count().catch(() => 0),
+    prisma.user.count().catch(() => 0),
+    prisma.ssoConfig.findMany({ where: { enabled: true } }).catch(() => []),
+    prisma.storageConfig.findMany({ where: { enabled: true } }).catch(() => []),
+    prisma.role.count().catch(() => 0),
     prisma.auditLog.findMany({
       orderBy: { createdAt: 'desc' },
       take: 5,
-    }),
-    getAppLaunchStats(),
-    getUserActivityStats(),
+    }).catch(() => []),
+    getAppLaunchStats().catch(() => []),
+    getUserActivityStats().catch(() => []),
   ]);
 
   const activeSsoCount = ssoConfigs.length;

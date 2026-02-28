@@ -1,5 +1,5 @@
 import { prisma } from '../../../lib/prisma';
-import { decryptSecret, hasSecretKey } from '../../../lib/crypto';
+import { decryptSecret, getSecretKeyState, hasSecretKey } from '../../../lib/crypto';
 import StorageConfigForm from '../../../components/StorageConfigForm';
 import AdminActionForm from '../../../components/AdminActionForm';
 import LogoUpload from '../../../components/LogoUpload';
@@ -15,14 +15,15 @@ export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
     const [rolesList, passwordPolicy, storageConfigs, siteConfig] = await Promise.all([
-        prisma.role.findMany({ orderBy: { name: 'asc' } }),
-        prisma.passwordPolicy.findFirst(),
-        prisma.storageConfig.findMany(),
-        prisma.siteConfig.findFirst(),
+        prisma.role.findMany({ orderBy: { name: 'asc' } }).catch(() => []),
+        prisma.passwordPolicy.findFirst().catch(() => null),
+        prisma.storageConfig.findMany().catch(() => []),
+        prisma.siteConfig.findFirst().catch(() => null),
     ]);
 
     const storageMap = new Map(storageConfigs.map((item) => [item.provider, item]));
-    const canValidateSecrets = hasSecretKey();
+    const keyState = getSecretKeyState();
+    const canValidateSecrets = keyState === 'valid';
 
     const azureStorageConfig = storageMap.get('azure');
     const s3StorageConfig = storageMap.get('s3');
@@ -270,7 +271,7 @@ export default async function SettingsPage() {
                     local={localStorageConfigPayload}
                     s3={s3StorageConfigPayload}
                     azure={azureStorageConfigPayload}
-                    hasMasterKey={canValidateSecrets}
+                    hasMasterKey={keyState}
                 />
             </section>
 
