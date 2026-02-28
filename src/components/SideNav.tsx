@@ -25,7 +25,7 @@ export default function SideNav({ logo, logoLight, logoDark }: { logo?: string; 
         <>
             {/* Mobile Hamburger Toggle */}
             <button
-                className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-ink-900/80 backdrop-blur-md border border-ink-800 text-ink-5 : 0 shadow-lg"
+                className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white/80 dark:bg-ink-900/80 backdrop-blur-md border border-ink-200 dark:border-ink-800 text-ink-900 dark:text-ink-50 shadow-lg transition-colors"
                 onClick={() => setIsMobileOpen(!isMobileOpen)}
                 aria-label="Toggle menu"
             >

@@ -64,7 +64,14 @@ export async function getUserMeta(userId: string): Promise<UserMeta | null> {
 export async function invalidateUserMeta(userId: string) {
   const client = await getSharedRedisClient();
   if (!client) return;
-  await client.del(`user:meta:${userId}`);
+  try {
+    await Promise.race([
+      client.del(`user:meta:${userId}`),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Redis del timeout')), 1000))
+    ]);
+  } catch (err) {
+    console.warn(`[REDIS] Failed to invalidate cache for user ${userId}`, err);
+  }
 }
 
 // Testing helpers
