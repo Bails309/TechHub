@@ -8,10 +8,28 @@ import PageHeader from '../components/PageHeader';
 import Providers from '../components/Providers';
 import SessionGuard from '../components/SessionGuard';
 
-export const metadata: Metadata = {
-  title: 'TechHub',
-  description: 'Your modern gateway to every app your team depends on.'
-};
+export async function generateMetadata(): Promise<Metadata> {
+  try {
+    const siteConfig = await prisma.siteConfig.findFirst();
+    return {
+      title: 'TechHub',
+      description: 'Your modern gateway to every app your team depends on.',
+      icons: {
+        icon: siteConfig?.faviconUrl || '/favicon.ico',
+      }
+    };
+  } catch (err) {
+    // If the database is missing columns (e.g. during a migration), fall back to defaults
+    // rather than crashing the entire application load.
+    return {
+      title: 'TechHub',
+      description: 'Your modern gateway to every app your team depends on.',
+      icons: {
+        icon: '/favicon.ico',
+      }
+    };
+  }
+}
 
 export default async function RootLayout({
   children
@@ -21,7 +39,12 @@ export default async function RootLayout({
   const headerList = await headers();
   const nonce = headerList.get('x-nonce') ?? undefined;
 
-  const siteConfig = await prisma.siteConfig.findFirst();
+  let siteConfig = null;
+  try {
+    siteConfig = await prisma.siteConfig.findFirst();
+  } catch (err) {
+    console.error('[Layout] Failed to fetch site config, falling back to defaults:', err);
+  }
 
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>

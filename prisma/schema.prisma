@@ -195,5 +195,6 @@ model SiteConfig {
   logo       String?  // legacy single logo (fallback)
   logoLight  String?
   logoDark   String?
+  faviconUrl String?
   updatedAt  DateTime @updatedAt
 }

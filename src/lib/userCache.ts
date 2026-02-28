@@ -36,7 +36,10 @@ export async function getUserMeta(userId: string): Promise<UserMeta | null> {
   }
 
   const client = await getSharedRedisClient();
-  if (!client) return null;
+  if (!client) {
+    console.warn('[REDIS] Client unavailable - falling back to direct database read for user metadata');
+    return await fetchFromDb(userId);
+  }
 
   try {
     const raw = await client.get(`user:meta:${userId}`);

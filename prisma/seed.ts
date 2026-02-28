@@ -41,6 +41,9 @@ async function main() {
           : existingAdmin.passwordHash,
         mustChangePassword: true
       }
+    }).then(user => {
+      console.log(`SEED: Successfully updated admin password for ${adminEmail}`);
+      return user;
     })
     : await prisma.user.create({
       data: {
@@ -49,6 +52,9 @@ async function main() {
         passwordHash: await bcrypt.hash(adminPassword, SALT_ROUNDS),
         mustChangePassword: true
       }
+    }).then(user => {
+      console.log(`SEED: Created new admin user: ${adminEmail}`);
+      return user;
     });
 
   await prisma.userRole.upsert({

@@ -15,12 +15,16 @@ export default function ChangePasswordPage() {
   const successRedirected = useRef(false);
   const router = useRouter();
 
-  // Redirect if they land here but don't need to change password
+  // Log session state for debugging
   useEffect(() => {
-    if (session?.user && !session.user.mustChangePassword) {
-      router.replace('/');
+    if (session) {
+      console.log('[DEBUG] ChangePasswordPage: session state', {
+        authenticated: true,
+        mustChangePassword: session.user.mustChangePassword,
+        email: session.user.email
+      });
     }
-  }, [session, router]);
+  }, [session]);
 
   useEffect(() => {
     if (state.status === 'success' && !successRedirected.current) {

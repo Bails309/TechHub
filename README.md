@@ -62,8 +62,10 @@ TechHub is designed as a **Standalone Container** architecture. It is fully self
 ## 🚀 Quick Start
 
 ### 1. Requirements
-- **Node.js 20+**
-- **Docker & Docker Compose**
+- **Node.js**: 20.x (LTS) or later
+- **PostgreSQL**: 13+ or later
+- **Redis**: 6.2+ or later
+- **Docker**: Desktop 4.x+ or Compose v2+
 
 ### 2. Initial Setup
 ```bash

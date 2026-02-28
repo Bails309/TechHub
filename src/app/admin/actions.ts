@@ -502,13 +502,16 @@ export async function updateSiteLogos(formData: FormData) {
 
   const logoLightFile = formData.get('logoLight');
   const logoDarkFile = formData.get('logoDark');
+  const faviconFile = formData.get('favicon');
   const removeLight = formData.get('removeLogoLight') === 'on' || formData.get('removeLogoLight') === '1';
   const removeDark = formData.get('removeLogoDark') === 'on' || formData.get('removeLogoDark') === '1';
+  const removeFavicon = formData.get('removeFavicon') === 'on' || formData.get('removeFavicon') === '1';
 
   // Fetch existing singleton
   const existing = await prisma.siteConfig.findFirst();
   let newLogoLight = existing?.logoLight ?? existing?.logo ?? null;
   let newLogoDark = existing?.logoDark ?? existing?.logo ?? null;
+  let newFavicon = existing?.faviconUrl ?? null;
 
   const toDelete: string[] = [];
 
@@ -530,6 +533,15 @@ export async function updateSiteLogos(formData: FormData) {
     }
   }
 
+  if (faviconFile && typeof (faviconFile as any).size === 'number' && (faviconFile as any).size > 0) {
+    // @ts-ignore
+    const saved = await saveIcon(faviconFile as File);
+    if (saved) {
+      if (newFavicon) toDelete.push(newFavicon);
+      newFavicon = saved;
+    }
+  }
+
   // Handle explicit removals
   if (removeLight) {
     if (newLogoLight) {
@@ -542,6 +554,12 @@ export async function updateSiteLogos(formData: FormData) {
       toDelete.push(newLogoDark);
     }
     newLogoDark = null;
+  }
+  if (removeFavicon) {
+    if (newFavicon) {
+      toDelete.push(newFavicon);
+    }
+    newFavicon = null;
   }
 
   // Optionally copy a single uploaded logo to both themes when requested
@@ -583,9 +601,24 @@ export async function updateSiteLogos(formData: FormData) {
   // Persist changes: create or update singleton
   try {
     if (existing) {
-      await prisma.siteConfig.update({ where: { id: existing.id }, data: { logoLight: newLogoLight, logoDark: newLogoDark, logo: newLegacyLogo } });
+      await prisma.siteConfig.update({
+        where: { id: existing.id },
+        data: {
+          logoLight: newLogoLight,
+          logoDark: newLogoDark,
+          faviconUrl: newFavicon,
+          logo: newLegacyLogo
+        }
+      });
     } else {
-      await prisma.siteConfig.create({ data: { logoLight: newLogoLight, logoDark: newLogoDark, logo: newLegacyLogo } });
+      await prisma.siteConfig.create({
+        data: {
+          logoLight: newLogoLight,
+          logoDark: newLogoDark,
+          faviconUrl: newFavicon,
+          logo: newLegacyLogo
+        }
+      });
     }
   } catch (err) {
     // cleanup uploaded files on failure
@@ -604,7 +637,7 @@ export async function updateSiteLogos(formData: FormData) {
   await safeRevalidatePath('/');
   // Signal the client it should perform a full reload to ensure layout-level server components update.
   // Returning an extra `reload` flag is safe; client checks for it and reloads.
-  return { status: 'success', message: 'Site logos updated', reload: true } as const;
+  return { status: 'success', message: 'Site branding updated', reload: true } as const;
 }
 
 export async function updateStorageConfig(

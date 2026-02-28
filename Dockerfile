@@ -17,7 +17,12 @@ COPY . .
 RUN npm run prisma:generate
 # Increase Node heap for builds to avoid worker crashes (SIGBUS/OOM)
 ENV NODE_OPTIONS=--max-old-space-size=4096
-RUN npm run build
+# Next.js 15 static generation requires a DATABASE_URL even during build time for metadata generation
+RUN DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" npm run build
+
+# Compile the seed script to JS so we don't need ts-node/devDependencies in production
+# We bundle bcryptjs because it's a small JS-only library, but keep @prisma/client external
+RUN npx esbuild prisma/seed.ts --bundle --platform=node --outfile=prisma/seed.js --external:@prisma/client
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
@@ -36,10 +41,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Prisma client and scripts are needed for runtime/management
+# Prisma schema and the COMPILED seed script
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/scripts ./scripts
 
 RUN mkdir -p /app/uploads

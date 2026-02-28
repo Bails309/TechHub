@@ -52,13 +52,13 @@ export default function SideNav({ logo, logoLight, logoDark }: { logo?: string; 
                         onClick={() => setIsMobileOpen(false)}
                         className={`flex items-center gap-3 mb-12 mx-auto lg:mx-0 ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
                     >
-                            <div className="h-12 w-auto shrink-0">
-                                <img
-                                    src={chooseLogo(theme, { logo, logoLight, logoDark })}
-                                    alt="TechHub logo"
-                                    className="h-full w-full object-contain"
-                                />
-                            </div>
+                        <div className="h-12 w-auto shrink-0">
+                            <img
+                                src={chooseLogo(theme, { logo, logoLight, logoDark })}
+                                alt="TechHub logo"
+                                className="h-full w-full object-contain"
+                            />
+                        </div>
                     </Link>
 
                     {/* Navigation Links */}
@@ -120,10 +120,16 @@ export default function SideNav({ logo, logoLight, logoDark }: { logo?: string; 
                     ) : (
                         <Link
                             href="/auth/signin"
-                            className="flex items-center gap-3 p-3 rounded-xl bg-ocean-600 text-white hover:bg-ocean-700 transition-colors justify-center lg:justify-start mx-auto lg:mx-0 w-full"
+                            className="flex items-center gap-3 p-3 rounded-xl bg-ink-900 dark:bg-white/5 border border-transparent dark:border-white/10 text-white dark:text-ink-300 hover:bg-ink-800 dark:hover:bg-white/10 dark:hover:text-white transition-all justify-center lg:justify-start mx-auto lg:mx-0 w-full"
+                            onClick={() => setIsMobileOpen(false)}
                         >
                             <LogIn size={18} />
-                            <span className="md:hidden lg:inline font-medium">Sign in</span>
+                            <div className="flex flex-col items-start md:hidden lg:flex overflow-hidden">
+                                <span className="text-sm font-medium">Sign in</span>
+                                <span className="text-[10px] opacity-70 truncate w-full max-w-[150px]">
+                                    Access your apps
+                                </span>
+                            </div>
                         </Link>
                     )}
                 </div>

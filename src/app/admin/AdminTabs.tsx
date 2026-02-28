@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, AppWindow, LayoutGrid, Users, KeyRound, ScrollText, Settings } from 'lucide-react';
+import { LayoutDashboard, AppWindow, LayoutGrid, Users, KeyRound, ScrollText, Settings, Activity } from 'lucide-react';
 
 const tabs = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -11,6 +11,7 @@ const tabs = [
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/sso', label: 'SSO', icon: KeyRound },
   { href: '/admin/audit', label: 'Audit', icon: ScrollText },
+  { href: '/admin/health', label: 'Health', icon: Activity },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 

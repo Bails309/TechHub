@@ -3,6 +3,7 @@ import { decryptSecret, hasSecretKey } from '../../../lib/crypto';
 import StorageConfigForm from '../../../components/StorageConfigForm';
 import AdminActionForm from '../../../components/AdminActionForm';
 import LogoUpload from '../../../components/LogoUpload';
+import FaviconUpload from '../../../components/FaviconUpload';
 import {
     createRole,
     deleteRole,
@@ -273,28 +274,25 @@ export default async function SettingsPage() {
                 />
             </section>
 
-            <section className="card-panel md:p-8">
-                <h2 className="font-serif text-2xl mb-6">Site logos</h2>
-                <p className="text-ink-200 mb-4">Upload optional light and dark theme logos. Leave empty to keep existing.</p>
-                <p className="text-xs text-ink-400 mb-4">Max file size: 2 MB. Accepted formats: PNG, JPEG. Recommended: small, optimized images (e.g. 120×32 px). Display max height: 48px (h-12). Suggested max width: 240px. For Retina displays consider uploading a 2× image (e.g. 240×64 px).</p>
-                <AdminActionForm action={updateSiteLogos} successMessage="Logos updated" className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4 items-center">
-                        <div>
-                            <LogoUpload name="logoLight" label="Light theme logo" current={siteConfig?.logoLight ?? siteConfig?.logo ?? null} recommendedSize="120×32 px" />
-                        </div>
-                        <div>
-                            <LogoUpload name="logoDark" label="Dark theme logo" current={siteConfig?.logoDark ?? siteConfig?.logo ?? null} recommendedSize="120×32 px" />
-                        </div>
+            <AdminActionForm action={updateSiteLogos} successMessage="Branding updated" className="space-y-6">
+                <div className="grid grid-cols-2 gap-8 items-start">
+                    <div className="space-y-6">
+                        <LogoUpload name="logoLight" label="Light theme logo" current={siteConfig?.logoLight ?? siteConfig?.logo ?? null} recommendedSize="120×32 px" />
+                        <LogoUpload name="logoDark" label="Dark theme logo" current={siteConfig?.logoDark ?? siteConfig?.logo ?? null} recommendedSize="120×32 px" />
                     </div>
-                    <div className="mt-2">
-                        <label className="flex items-center gap-2 text-sm text-ink-400">
-                            <input type="checkbox" name="useSameLogo" className="h-4 w-4" />
-                            Use same logo for both themes
-                        </label>
+                    <div className="space-y-6">
+                        <FaviconUpload name="favicon" label="Site Favicon" current={siteConfig?.faviconUrl ?? null} recommendedSize="32×32 or 48×48 px" />
+                        <p className="text-[10px] text-ink-400 leading-relaxed max-w-xs">The favicon is the small icon displayed in the browser tab. For best results, use a square image (PNG or ICO).</p>
                     </div>
-                    <button type="submit" className="btn-primary btn-small">Save logos</button>
-                </AdminActionForm>
-            </section>
+                </div>
+                <div className="pt-2 border-t border-white/5">
+                    <label className="flex items-center gap-2 text-sm text-ink-400 cursor-pointer hover:text-ink-200 transition-colors">
+                        <input type="checkbox" name="useSameLogo" className="h-4 w-4 rounded border-white/10 bg-white/5" />
+                        Use same logo for both themes
+                    </label>
+                </div>
+                <button type="submit" className="btn-primary btn-small">Save site branding</button>
+            </AdminActionForm>
         </div>
     );
 }

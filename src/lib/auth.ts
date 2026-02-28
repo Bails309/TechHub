@@ -214,13 +214,21 @@ function buildCredentialsProvider() {
       const clientIp = getClientIp(req?.headers, remoteAddr);
       const emailKey = parsed.data.email.toLowerCase();
 
+      // Diagnostic: Log login attempt start and headers
+      console.log('auth: authorize start email=%s clientIp=%s remoteAddr=%s', emailKey, clientIp ?? 'undefined', remoteAddr ?? 'undefined');
+      console.log('auth: diag headers host=%s x-forwarded-host=%s x-forwarded-proto=%s',
+        readHeader(req?.headers, 'host') ?? 'none',
+        readHeader(req?.headers, 'x-forwarded-host') ?? 'none',
+        readHeader(req?.headers, 'x-forwarded-proto') ?? 'none'
+      );
+
       // Enforce IP-based rate limit first (prevents password spraying from one IP)
       // If we cannot determine the client IP, log diagnostic details and
       // reject the attempt rather than falling back to a shared 'unknown'
       // bucket which would enable easy DoS/password-spray amplification.
       if (!clientIp) {
-        console.warn(
-          'auth: missing client IP for credentials login; remoteAddr=%s trustProxy=%s trustedProxies=%s',
+        console.error(
+          'auth: login rejected - missing client IP; remoteAddr=%s trustProxy=%s trustedProxies=%s',
           remoteAddr ?? 'undefined',
           trustProxy,
           trustedProxiesEnv
@@ -239,6 +247,7 @@ function buildCredentialsProvider() {
         // If IP rate limit passed, enforce per-user rate limit
         await assertRateLimit(`user:${emailKey}`);
       } catch {
+        console.warn('auth: login rejected - rate limited email=%s ip=%s', emailKey, clientIp);
         writeAuditLog({
           category: 'auth',
           action: 'login_failure',
@@ -255,6 +264,7 @@ function buildCredentialsProvider() {
       });
 
       if (!user?.passwordHash) {
+        console.warn('auth: login rejected - user not found or no password hash email=%s', emailKey);
         writeAuditLog({
           category: 'auth',
           action: 'login_failure',
@@ -267,6 +277,7 @@ function buildCredentialsProvider() {
 
       const valid = await verifyPassword(parsed.data.password, user.passwordHash);
       if (!valid) {
+        console.warn('auth: login rejected - invalid password email=%s', emailKey);
         writeAuditLog({
           category: 'auth',
           action: 'login_failure',
@@ -277,6 +288,7 @@ function buildCredentialsProvider() {
         return null;
       }
 
+      console.log('auth: login successful email=%s', emailKey);
       return {
         id: user.id,
         name: user.name ?? undefined,
@@ -291,19 +303,19 @@ function buildCredentialsProvider() {
 }
 
 export async function getAuthOptions(): Promise<NextAuthOptions> {
-    const ssoConfigs = await getSsoConfigMap();
-    const providers = [] as NextAuthOptions['providers'];
-    const baseAdapter = BASE_PRISMA_ADAPTER ?? (BASE_PRISMA_ADAPTER = PrismaAdapter(prisma));
-    const adapter: Adapter = {
-      ...baseAdapter,
-      async linkAccount(account: AdapterAccount) {
-        const raw = account as Record<string, unknown>;
-        const rest = Object.fromEntries(
-          Object.entries(raw).filter(([key]) => key !== 'not-before-policy')
-        );
-        return baseAdapter.linkAccount?.(rest as AdapterAccount);
-      }
-    };
+  const ssoConfigs = await getSsoConfigMap();
+  const providers = [] as NextAuthOptions['providers'];
+  const baseAdapter = BASE_PRISMA_ADAPTER ?? (BASE_PRISMA_ADAPTER = PrismaAdapter(prisma));
+  const adapter: Adapter = {
+    ...baseAdapter,
+    async linkAccount(account: AdapterAccount) {
+      const raw = account as Record<string, unknown>;
+      const rest = Object.fromEntries(
+        Object.entries(raw).filter(([key]) => key !== 'not-before-policy')
+      );
+      return baseAdapter.linkAccount?.(rest as AdapterAccount);
+    }
+  };
 
   const azureConfig = ssoConfigs.get('azure-ad');
   if (azureConfig) {
@@ -433,9 +445,16 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         return true;
       },
       async jwt({ token, user, account, trigger, session }: { token: JWT; user?: User; account?: Account | null; trigger?: string; session?: Session | null }) {
-        if (process.env.NODE_ENV === 'test' || process.env.DEBUG_AUTH === 'true') {
+        // Diagnostic: Always log token start in this phase
+        console.log('auth: jwt callback start sub=%s user_present=%s', token?.sub ?? 'none', !!user);
+
+        if (!process.env.NEXTAUTH_SECRET) {
+          console.error('auth: CRITICAL - NEXTAUTH_SECRET is not set in environment!');
+        }
+
+        if (process.env.NODE_ENV === 'test' || process.env.DEBUG_AUTH === 'true' || true) { // Force on for now
           // eslint-disable-next-line no-console
-          console.error('[AUTH-DEBUG] jwt callback start token=%o user=%o', token, user);
+          console.log('[AUTH-DEBUG] jwt callback start token=%o user=%o', token, user);
         }
         if (trigger === 'update') {
           const updatedMustChange = session?.user?.mustChangePassword;
@@ -511,29 +530,15 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
               : await getUserMeta(String(token.sub));
             if (!meta) {
               // Fallback: attempt a direct DB read when cache had no entry.
-              // This keeps tests that mock Prisma working while production
-              // will prefer the cache path.
               try {
                 let userRecord;
                 if ((process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') && typeof prisma?.user?.findUnique === 'function') {
-                  // Debug: log right before invoking the DB read so we can
-                  // diagnose where hangs occur in test environments.
-                  if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
-                    // eslint-disable-next-line no-console
-                    console.error('[AUTH-DEBUG] invoking prisma.user.findUnique for sub=%s', String(token.sub));
-                  }
-                  // In tests we guard against hung/misconfigured DB calls by racing
-                  // the call with a short timeout so the jwt callback returns.
                   const p = prisma.user.findUnique({
                     where: { id: String(token.sub) },
                     select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
                   });
                   const race = await Promise.race([p, new Promise((res) => setTimeout(() => res('__DB_TIMEOUT__'), 2000))]);
                   if (race === '__DB_TIMEOUT__') {
-                    if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
-                      // eslint-disable-next-line no-console
-                      console.error('[AUTH-DEBUG] prisma.findUnique timed out for sub=%s', String(token.sub));
-                    }
                     throw new Error('prisma_timeout');
                   }
                   userRecord = race;
@@ -543,7 +548,9 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                     select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
                   });
                 }
+
                 if (!userRecord) {
+                  console.warn('[AUTH] Revoking session for sub=%s. Reason: user_not_found', String(token.sub));
                   token.revoked = true;
                   writeAuditLog({
                     category: 'auth',
@@ -552,13 +559,9 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                     details: { reason: 'user_deleted' },
                   });
                 } else {
-                  if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
-                    // eslint-disable-next-line no-console
-                    console.error('[AUTH-DEBUG] userRecord for %s = %o', String(token.sub), userRecord);
-                    // eslint-disable-next-line no-console
-                    console.error('[AUTH-DEBUG] mapped roles = %o', (userRecord as any).roles?.map((r: any) => r.role.name));
-                    // eslint-disable-next-line no-console
-                    console.error('[AUTH-DEBUG] token prior roles = %o', token.roles);
+                  if (token.userUpdatedAt && new Date((userRecord as any).updatedAt).getTime() > token.userUpdatedAt) {
+                    console.warn('[AUTH] Revoking session for sub=%s. Reason: user_updated (Security: password/profile changed elsewhere)', String(token.sub));
+                    token.revoked = true;
                   }
                   token.roles = (userRecord as any).roles?.map((r: any) => r.role.name) ?? [];
                   if (typeof (userRecord as any).mustChangePassword === 'boolean') token.mustChangePassword = (userRecord as any).mustChangePassword;
@@ -575,7 +578,6 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
               token.lastCheckedAt = now;
             }
           } catch {
-            // If cache/DB read fails, at minimum schedule the next check.
             token.lastCheckedAt = now;
           }
         }
@@ -600,11 +602,13 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
         if (isAbsoluteTimeout || isIdleTimeout) {
           token.revoked = true;
+          const reason = isAbsoluteTimeout ? 'absolute_timeout' : 'idle_timeout';
+          console.warn('[AUTH] Revoking session for sub=%s. Reason: %s', String(token.sub), reason);
           await writeAuditLog({
             category: 'auth',
             action: 'session_terminated',
             targetId: String(token.sub),
-            details: { reason: isAbsoluteTimeout ? 'absolute_timeout' : 'idle_timeout' },
+            details: { reason },
           });
           return token;
         }
@@ -616,6 +620,8 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           token.lastActivity = now;
         }
 
+        // Diagnostic: Log completion
+        console.log('auth: jwt callback finished sub=%s', token?.sub ?? 'none');
         return token;
       },
       async session({ session, token }: { session: Session; token: JWT }) {
@@ -664,6 +670,8 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           session.revoked = true;
         }
 
+        // Diagnostic: Log completion
+        console.log('auth: session callback finished sub=%s', token?.sub ?? 'none');
         return session;
       }
     },

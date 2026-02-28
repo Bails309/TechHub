@@ -4,6 +4,17 @@ TechHub is designed to run as a **Standalone Container**. This guide details how
 
 ---
 
+## 📋 Software Requirements
+
+Before deploying TechHub, ensure your target environment meets these minimum specifications:
+
+- **Compute**: Node.js **20.x (LTS)** or higher.
+- **Database**: PostgreSQL **13**, **14**, **15**, or **16+**.
+- **Caching**: Redis **6.2** or higher (Redis 7.x recommended for Azure Managed Redis).
+- **Runtime**: Docker Engine **24.x** or higher (if using containerized deployment).
+
+---
+
 ## 🏛️ Architecture Overview
 
 In a production environment, TechHub leverages managed cloud services for reliability:
@@ -26,10 +37,15 @@ Only these variables are strictly required to get the portal running securely in
 | Variable | Requirement | Description |
 | :--- | :--- | :--- |
 | `DATABASE_URL` | **Required** | `postgresql://user:pass@host:5432/db?sslmode=require` |
-| `REDIS_URL` | **Required** | `rediss://:pass@host:6380` (use `rediss` for TLS) |
+| `REDIS_URL` | **Required** | Connection string. See [Redis Configuration](#redis-configuration) below. |
+| `REDIS_PASSWORD` | **Required** | The Primary Access Key for your Redis instance. |
+| `REDIS_TLS` | **Required** | Set to `true` for all Azure Redis services. |
+| `RATE_LIMIT_STORE`| **Required** | Set to `redis` in production to ensure centralized protection. |
 | `NEXTAUTH_SECRET` | **Required** | A random 32-character string for session signing. |
 | `NEXTAUTH_URL` | **Required** | Your public domain (e.g., `https://portal.company.com`). |
+| `AUTH_TRUST_HOST` | **Required** | Set to `true` when using custom domains/CNAMEs in Azure. |
 | `SSO_MASTER_KEY` | **Required** | Used to encrypt storage/SSO secrets in your database. |
+| `TRUST_PROXY` | **Required** | Set to `true` behind Azure's Ingress/Load Balancer. |
 | `NODE_ENV` | **Required** | Set to `production`. |
 
 ### 2. Standalone Configuration
@@ -38,9 +54,31 @@ Only these variables are strictly required to get the portal running securely in
 - **Transport**: Auto (supports HTTP/1.1 and HTTP/2).
 - **TLS**: Managed by Azure. Reference your certificate from **Azure Key Vault** or use **Managed Certificates**.
 
-### 3. Service Optimizations
-- **Redis Tier**: Standard C1 or higher (Basic does not support TLS).
-- **Eviction Policy**: Set Redis to `allkeys-lru`.
+### 3. Service Tier & Sizing Requirements
+- **Azure Cache for Redis**: **Standard C1 (1GB)** or higher is recommended. While the application's memory footprint is low (~128MB-256MB per 1k concurrent users), the **Standard** tier is required for **TLS support** (mandatory for TechHub) and a production SLA. Avoid the "Basic" tier.
+- **Azure Managed Redis**: All tiers supported. Balanced B1 (6GB) is a powerful modern alternative.
+- **Eviction Policy**: Set Redis to `allkeys-lru`. This ensures that if the cache fills up, the oldest sessions are removed first rather than crashing the app.
+
+---
+
+## 🗄️ Redis Configuration
+
+TechHub supports two types of Azure Redis services. The configuration depends on which one you choose.
+
+### Option A: Azure Managed Redis (Recommended)
+This is the modern, high-performance option.
+- **Port**: 10000 (TLS)
+- **URL Format**: `rediss://<name>.uksouth.redis.azure.net:10000`
+- **Networking**: Ensure **Public network access** is enabled (or use VNET integration) and add a firewall rule to allow your ACA Outbound IPs.
+
+### Option B: Azure Cache for Redis (Legacy/Standard)
+This is the original Azure Redis offering (retiring in 2028).
+- **Port**: 6380 (TLS)
+- **URL Format**: `rediss://<name>.redis.cache.windows.net:6380`
+- **Networking**: Standard public access or Private Endpoints.
+
+> [!IMPORTANT]
+> Always use the `rediss://` prefix (double 's') and set `REDIS_TLS=true` to ensure encrypted communication.
 
 ---
 
@@ -72,6 +110,28 @@ TechHub includes native security headers via `next.config.mjs`. When deployed be
 - [ ] **Storage Setup**: Configure Azure Blob Storage via the **Admin > Settings** UI (or via env vars).
 - [ ] **SSO Configuration**: Connect your Azure AD (Entra ID) client via the **Admin > SSO** UI.
 - [ ] **Admin Account**: Verify the initial seed admin can log in and change their password.
+- [ ] **Voluntary Password Change**: Admins and local users can update their passwords at any time via the "Change Password" button in the sidebar.
+
+---
+
+## � Updating a Live Instance
+
+When preparing to update an existing deployment (e.g., adding favicons or new metadata fields), follow this sequence:
+
+### 1. Cloud Update (Azure Container Apps)
+1. **Push Image**: Build and push your new Docker image to your registry (e.g., ACR).
+2. **Update Deployment**: Update the Container App to use the new image.
+3. **Run Synchronization**: Execute a one-time **Azure Container Job** with the following command to apply schema changes. 
+   - **Recommended**: `npx prisma@5.18.0 db push --skip-generate` (Prevents errors in production-pruned containers).
+   - **Arguments**: `prisma@5.18.0`, `db`, `push`, `--skip-generate`
+
+### 2. Local Update (Docker Compose)
+If you are developing or running locally with Docker Compose:
+1. **Rebuild**: `docker-compose up --build -d`
+2. **Apply Update**: Run the synchronization command from your host machine against the running container:
+   ```bash
+   docker-compose exec app npx prisma@5.18.0 db push --skip-generate
+   ```
 
 ---
 
@@ -79,10 +139,10 @@ TechHub includes native security headers via `next.config.mjs`. When deployed be
 
 In production, database changes and initial setup should be handled explicitly to ensure the web application starts reliably.
 
-### 1. Schema Updates (Migrations)
-When deployment includes database changes, run the Prisma migration deploy command.
-- **Recommended**: Run as an **Azure Container Job** using the same image.
-- **Command**: `npx prisma migrate deploy`
+### 1. Schema Synchronization
+When deployment includes database changes, you must synchronize the schema.
+- **Option A (Migrations)**: Use `npx prisma@5.18.0 migrate deploy`.
+- **Option B (Direct Push)**: Use `npx prisma@5.18.0 db push --skip-generate`. This is faster for environments where migrations are not explicitly tracked. The `--skip-generate` flag is required when running inside the production container to prevent issues with pruned `node_modules`.
 
 ### 2. First-Time Setup & Seeding
 If you are deploying to a brand new database, you must initialize it with the required seed data (e.g., initial admin account, default settings).
@@ -126,8 +186,17 @@ One common source of confusion when moving from local development to Azure Conta
 
 If the initial generated administrator password is lost or rotate and reset is required:
 
-1. **Set Environment Variable**: Configure the `ADMIN_PASSWORD` variable in your Azure Container Job or App with a new strong password.
+1. **Set Environment Variables**: In your Azure Container Job, you **must** configure the following (Jobs do not share environment variables with the main App):
+   - `ADMIN_PASSWORD`: Your new strong password.
+   - `DATABASE_URL`: Your database connection string.
+   - `SSO_MASTER_KEY`: Your master encryption key.
 2. **Execute Seeding**: Run the database seeding command via an **Azure Container Job**.
-   - **Command override**: `npm`
-   - **Arguments override**: `run prisma:seed`
-3. **Verification**: The script will update the existing administrator's password and reset their `mustChangePassword` flag to `true`, forcing a change upon next login.
+   - **Command override**: `node`
+   - **Arguments override**: `prisma/seed.js`
+3. **Verification**:
+   - In the Azure Portal, go to your **Container App Job**.
+   - Select **Execution history**.
+   - Check the status of the latest run (should be **Succeeded**).
+   - Click on the execution to view **Logs**. Look for the message:
+     `SEED: Successfully updated admin password for admin@techhub.local`
+   - The script will also reset their `mustChangePassword` flag to `true`, forcing a change upon next login.
