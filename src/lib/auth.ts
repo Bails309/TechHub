@@ -13,6 +13,7 @@ import { getServerSession } from 'next-auth';
 import { getUserMeta } from './userCache';
 import { getSsoConfigMap } from './sso';
 import { writeAuditLog } from './audit';
+import { getSharedRedisClient } from './redis';
 import ipaddr from 'ipaddr.js';
 
 const credentialsSchema = z.object({
@@ -80,6 +81,42 @@ function isFromTrustedProxy(remoteIp: string | undefined) {
   }
 }
 const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
+
+// In-memory fallback for termination log deduplication when Redis is unavailable.
+// Entries are short-lived to prevent memory leaks while still covering the
+// small window where concurrent requests might all detect a timeout.
+const terminationLogCache = new Set<string>();
+
+/**
+ * Ensures a session termination event is only logged once per session version.
+ */
+async function logSessionTerminationOnce(userId: string, reason: string, issuedAt: number) {
+  const key = `audit:termination:${userId}:${reason}:${issuedAt}`;
+
+  const client = await getSharedRedisClient();
+  if (client) {
+    try {
+      // Use Redis SET NX to ensure only the first request wins the log entry.
+      // 60 second expiry is enough to cover any concurrent request window.
+      const result = await client.set(key, '1', 'EX', 60, 'NX');
+      if (result !== 'OK') return;
+    } catch (err) {
+      console.warn('[AUTH] Redis termination dedupe failed, falling back to memory', err);
+    }
+  }
+
+  // Fallback to in-memory Set if Redis is missing or failed
+  if (terminationLogCache.has(key)) return;
+  terminationLogCache.add(key);
+  setTimeout(() => terminationLogCache.delete(key), 60000);
+
+  await writeAuditLog({
+    category: 'auth',
+    action: 'session_terminated',
+    targetId: userId,
+    details: { reason },
+  });
+}
 
 // Lazily cache the base PrismaAdapter instance. We create it on first use
 // so test-time mocks of `@next-auth/prisma-adapter` take effect when
@@ -607,12 +644,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           token.revoked = true;
           const reason = isAbsoluteTimeout ? 'absolute_timeout' : 'idle_timeout';
           console.warn('[AUTH] Revoking session for sub=%s. Reason: %s', String(token.sub), reason);
-          await writeAuditLog({
-            category: 'auth',
-            action: 'session_terminated',
-            targetId: String(token.sub),
-            details: { reason },
-          });
+          await logSessionTerminationOnce(String(token.sub), reason, issuedAt);
           return token;
         }
 

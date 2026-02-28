@@ -31,7 +31,7 @@ export default function AdminTabs() {
               key={tab.href}
               href={tab.href}
               className={`
-              flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition
+              flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition
               ${isActive ? 'tab-active' : 'tab-inactive'}
             `}
             >

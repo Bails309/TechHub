@@ -66,9 +66,9 @@ export default function SideNav({ logo, logoLight, logoDark }: { logo?: string; 
                         <Link
                             href="/"
                             onClick={() => setIsMobileOpen(false)}
-                            className={`flex items-center gap-4 px-4 pl-3 py-3 rounded-xl transition-all group ${!isAdminPanel ? 'bg-ocean-50 dark:bg-ocean-500/10 text-ocean-600 dark:text-ocean-400 font-medium' : 'text-ink-400 hover:text-ink-900 dark:hover:text-ink-100 hover:bg-ink-50 dark:hover:bg-ink-800/50'} ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
+                            className={`flex items-center gap-4 px-4 pl-3 py-3 rounded-xl transition-all group ${!isAdminPanel ? 'bg-ocean-100 dark:bg-ocean-500/10 text-ocean-900 dark:text-white font-semibold' : 'text-ink-500 dark:text-ink-300 hover:text-ink-900 dark:hover:text-white hover:bg-ink-50 dark:hover:bg-ink-800/50 font-semibold'} ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
                         >
-                            <LayoutDashboard size={20} className={!isAdminPanel ? 'text-ocean-500' : 'text-ink-400 group-hover:text-ink-600 dark:group-hover:text-ink-300'} />
+                            <LayoutDashboard size={20} className={!isAdminPanel ? 'text-ocean-600 dark:text-ocean-400' : 'text-ink-400 dark:text-ink-400 group-hover:text-ink-600 dark:group-hover:text-white'} />
                             <span className="lg:inline whitespace-nowrap">Dashboard</span>
                         </Link>
 
@@ -76,9 +76,9 @@ export default function SideNav({ logo, logoLight, logoDark }: { logo?: string; 
                             <Link
                                 href="/admin"
                                 onClick={() => setIsMobileOpen(false)}
-                                className={`flex items-center gap-4 px-4 pl-3 py-3 rounded-xl transition-all group ${isAdminPanel ? 'bg-ocean-50 dark:bg-ocean-500/10 text-ocean-600 dark:text-ocean-400 font-medium' : 'text-ink-400 hover:text-ink-900 dark:hover:text-ink-100 hover:bg-ink-50 dark:hover:bg-ink-800/50'} ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
+                                className={`flex items-center gap-4 px-4 pl-3 py-3 rounded-xl transition-all group ${isAdminPanel ? 'bg-ocean-100 dark:bg-ocean-500/10 text-ocean-900 dark:text-white font-semibold' : 'text-ink-500 dark:text-ink-300 hover:text-ink-900 dark:hover:text-white hover:bg-ink-50 dark:hover:bg-ink-800/50 font-semibold'} ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
                             >
-                                <Settings size={20} className={isAdminPanel ? 'text-ocean-500' : 'text-ink-400 group-hover:text-ink-600 dark:group-hover:text-ink-300'} />
+                                <Settings size={20} className={isAdminPanel ? 'text-ocean-600 dark:text-ocean-400' : 'text-ink-400 dark:text-ink-400 group-hover:text-ink-600 dark:group-hover:text-white'} />
                                 <span className="lg:inline whitespace-nowrap">Administration</span>
                             </Link>
                         )}

@@ -61,6 +61,19 @@ export default function EditAppForm({
   return (
     <form
       action={(formData) => {
+        let hasLargeFile = false;
+        for (const [, value] of formData.entries()) {
+          if (typeof window !== 'undefined' && value instanceof File && value.size > 2 * 1024 * 1024) {
+            hasLargeFile = true;
+            break;
+          }
+        }
+        if (hasLargeFile) {
+          setStatusMessage('File too large (maximum 2MB)');
+          setStatusTone('error');
+          return;
+        }
+
         formData.set('csrfToken', getCsrfTokenFromCookie());
         setStatusMessage(null);
         setStatusTone(null);
