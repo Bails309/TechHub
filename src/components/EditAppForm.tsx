@@ -6,6 +6,7 @@ import SelectField, { SelectOption } from './SelectField';
 import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
 import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 import UserAutocomplete, { UserOption } from './UserAutocomplete';
+import RoleMultiSelect from './RoleMultiSelect';
 
 interface EditAppFormProps {
   app: {
@@ -14,7 +15,7 @@ interface EditAppFormProps {
     url: string;
     description: string | null;
     audience: 'PUBLIC' | 'AUTHENTICATED' | 'ROLE' | 'USER';
-    roleId: string | null;
+    roles: { id: string }[];
     categoryId: string | null;
     icon?: string | null;
   };
@@ -61,6 +62,19 @@ export default function EditAppForm({
   return (
     <form
       action={(formData) => {
+        let hasLargeFile = false;
+        for (const [, value] of formData.entries()) {
+          if (typeof window !== 'undefined' && value instanceof File && value.size > 2 * 1024 * 1024) {
+            hasLargeFile = true;
+            break;
+          }
+        }
+        if (hasLargeFile) {
+          setStatusMessage('File too large (maximum 2MB)');
+          setStatusTone('error');
+          return;
+        }
+
         formData.set('csrfToken', getCsrfTokenFromCookie());
         setStatusMessage(null);
         setStatusTone(null);
@@ -116,7 +130,9 @@ export default function EditAppForm({
         defaultValue={app.audience}
         onChange={handleAudienceChange}
       />
-      <SelectField name="roleId" options={roleOptions} defaultValue={app.roleId ?? ''} />
+      {audience === 'ROLE' ? (
+        <RoleMultiSelect options={roleOptions} initialSelected={app.roles?.map((r: any) => r.id) || []} />
+      ) : null}
       {audience === 'USER' ? (
         <UserAutocomplete initialSelectedUsers={initialUsers} />
       ) : null}

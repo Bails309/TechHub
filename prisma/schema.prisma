@@ -72,14 +72,12 @@ model AppLink {
   categoryRef Category?   @relation(fields: [categoryId], references: [id])
   description String?
   audience    AppAudience @default(AUTHENTICATED)
-  role        Role?       @relation(fields: [roleId], references: [id])
-  roleId      String?
+  roles       Role[]
   userAccesses UserAppAccess[]
   favoritedBy UserFavoriteApp[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  @@index([roleId])
   @@index([categoryId])
 }
 
@@ -195,5 +193,13 @@ model SiteConfig {
   logo       String?  // legacy single logo (fallback)
   logoLight  String?
   logoDark   String?
+  faviconUrl String?
   updatedAt  DateTime @updatedAt
+}
+
+// Used to track application state like the current database schema hash
+model SystemState {
+  id        String   @id
+  value     String
+  updatedAt DateTime @updatedAt
 }

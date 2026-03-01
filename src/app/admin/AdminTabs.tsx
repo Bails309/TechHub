@@ -2,15 +2,17 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, AppWindow, LayoutGrid, Users, KeyRound, ScrollText, Settings } from 'lucide-react';
+import { LayoutDashboard, AppWindow, LayoutGrid, Users, ShieldCheck, KeyRound, ScrollText, Settings, Activity } from 'lucide-react';
 
 const tabs = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/admin/apps', label: 'Apps', icon: AppWindow },
   { href: '/admin/category-mgmt', label: 'Categories', icon: LayoutGrid },
   { href: '/admin/users', label: 'Users', icon: Users },
+  { href: '/admin/users/access', label: 'Access', icon: ShieldCheck },
   { href: '/admin/sso', label: 'SSO', icon: KeyRound },
   { href: '/admin/audit', label: 'Audit', icon: ScrollText },
+  { href: '/admin/health', label: 'Health', icon: Activity },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -30,7 +32,7 @@ export default function AdminTabs() {
               key={tab.href}
               href={tab.href}
               className={`
-              flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition
+              flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition
               ${isActive ? 'tab-active' : 'tab-inactive'}
             `}
             >

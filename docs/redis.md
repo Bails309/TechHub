@@ -26,12 +26,18 @@ REDIS_URL=redis://:password@redis.example.com:6379
 
 ### Failure Behavior
 
-The application treats Redis as the authoritative store for user metadata and (when `RATE_LIMIT_STORE=redis`) for rate limiting. There is no silent in-memory fallback. If `RATE_LIMIT_STORE=redis` and Redis cannot be reached, the application will fail fast. This prevents TOCTOU/inconsistency issues and enforces production parity.
+The application is designed to be **Resilient to Redis Outages**. While Redis is the preferred store for user metadata and rate limiting, the application now includes several stability features:
+
+1. **Connection Timeout**: Every Redis connection attempt has a strict **2-second timeout**. This prevents the application from hanging indefinitely if your firewall or network setup is incorrect.
+2. **Circuit Breaker**: If Redis becomes unreachable (connection refused or timeout), the application triggers a **5-minute circuit breaker**. During this time, it stops attempting to connect to Redis to prevent log flooding and resource exhaustion.
+3.  **Database Fallback**: For **User Metadata** (roles, password status), the application will automatically fall back to direct database reads if Redis is unavailable. This ensures the dashboard remains accessible even during a cache outage.
+4. **Rate Limiting Protection**: If `RATE_LIMIT_STORE=redis` is set and Redis is down, the system will allow traffic through (fail-open) to maintain availability, but it will log a warning.
 
 **Operational guidance:**
 
-- For production, provide a highly available Redis (clustered or managed service) and point `REDIS_URL` at it. Configure `REDIS_PASSWORD`/`REDIS_TLS` as needed.
-- If you must run without Redis in development, set `RATE_LIMIT_STORE=memory` locally, but do not use this in any multi-host environment.
+- For production, provide a highly available Redis (clustered or managed service) and point `REDIS_URL` at it.
+- Monitor logs for the `[REDIS]` prefix to identify connection issues or circuit breaker activations.
+- If you see `[REDIS] Circuit breaker ACTIVE`, verify your network rules and connection string.
 
 ### Security and Operations
 

@@ -190,37 +190,43 @@ export async function middleware(request: NextRequest) {
   const isAllowed = isExactAllowed || isApiAllowed;
   const finalAllowed = isAllowed || isLaunchConfirm;
 
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+
+  // 1. Handle Revocation (Security Kill-switch)
+  if (token?.revoked) {
+    console.warn('middleware: revoking access for sub=%s (token revoked)', token.sub);
+    const signInUrl = request.nextUrl.clone();
+    signInUrl.pathname = '/auth/signin';
+    return NextResponse.redirect(signInUrl);
+  }
+
+  // 2. Force Password Change (except on the change-password page itself and auth APIs)
+  if (token?.mustChangePassword &&
+    token?.authProvider === 'credentials' &&
+    pathname !== '/auth/change-password' &&
+    !isApiAllowed) {
+    console.log('middleware: enforcing change-password redirect for sub=%s from path=%s', token.sub, pathname);
+
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'must_change_password' }, { status: 403 });
+    }
+
+    const url = request.nextUrl.clone();
+    url.pathname = '/auth/change-password';
+    return NextResponse.redirect(url);
+  }
+
+  // 3. Authorization Check for Protected Routes
   if (!finalAllowed) {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-
-    // If the token was marked revoked by the periodic JWT check, force
-    // the user to sign in again.
-    // If there is no token (user unauthenticated), redirect to sign-in.
     if (!token) {
+      console.log('middleware: no token found for protected path %s, redirecting to sign-in', pathname);
       const signInUrl = request.nextUrl.clone();
       signInUrl.pathname = '/auth/signin';
       return NextResponse.redirect(signInUrl);
-    }
-    if (token?.revoked) {
-      const signInUrl = request.nextUrl.clone();
-      signInUrl.pathname = '/auth/signin';
-      return NextResponse.redirect(signInUrl);
-    }
-
-    if (token?.mustChangePassword && token?.authProvider === 'credentials') {
-      const url = request.nextUrl.clone();
-      // If this is an API request, return a JSON 403 so callers (fetch/Postman)
-      // receive a machine-readable error. For browser HTML requests, redirect
-      // to the change-password page as before.
-      if (request.nextUrl.pathname.startsWith('/api/')) {
-        return NextResponse.json({ error: 'must_change_password' }, { status: 403 });
-      }
-
-      url.pathname = '/auth/change-password';
-      return NextResponse.redirect(url);
     }
   }
 
+  console.log('middleware: allowing request to %s', pathname);
   return response;
 }
 

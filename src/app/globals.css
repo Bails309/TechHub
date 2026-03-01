@@ -69,11 +69,11 @@
 
   /* Admin Tabs */
   .tab-active {
-    @apply bg-ocean-500/20 text-ocean-300 border border-ocean-500/40;
+    @apply bg-ocean-500/20 text-white dark:text-white border border-ocean-500/40 font-semibold shadow-sm;
   }
 
   .tab-inactive {
-    @apply text-ink-300 hover:text-ink-100 hover:bg-white/5 border border-transparent;
+    @apply text-ink-300 dark:text-ink-200 hover:text-ink-900 dark:hover:text-white hover:bg-white/5 border border-transparent font-semibold;
   }
 
   /* Utilities */
@@ -366,9 +366,10 @@ html[data-theme='light'] .input-field {
 }
 
 html[data-theme='light'] .tab-active {
-  background-color: rgba(16, 214, 166, 0.15);
-  color: #0b2f25;
-  border-color: rgba(16, 214, 166, 0.4);
+  background-color: rgba(59, 130, 246, 0.25);
+  color: #1e3a8a;
+  /* ocean-900 */
+  border-color: rgba(59, 130, 246, 0.45);
 }
 
 /* --- Light Theme Button Refinements --- */
@@ -401,10 +402,12 @@ html[data-theme='light'] .btn-danger:hover {
 }
 
 html[data-theme='light'] .tab-inactive {
-  color: var(--text-light);
+  color: #4b5563;
+  /* gray-600 */
 }
 
 html[data-theme='light'] .tab-inactive:hover {
-  color: var(--text-dark);
-  background-color: rgba(0, 0, 0, 0.05);
+  color: #111827;
+  /* gray-900 */
+  background-color: rgba(0, 0, 0, 0.04);
 }

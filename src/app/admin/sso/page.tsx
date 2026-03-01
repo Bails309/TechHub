@@ -1,6 +1,6 @@
 import { prisma } from '../../../lib/prisma';
 import { randomUUID } from 'crypto';
-import { decryptSecret, hasSecretKey } from '../../../lib/crypto';
+import { decryptSecret, getSecretKeyState, hasSecretKey } from '../../../lib/crypto';
 import SsoConfigForm from '../../../components/SsoConfigForm';
 import LinkSsoAccountForm from '../../../components/LinkSsoAccountForm';
 import { linkSsoAccount } from '../actions';
@@ -17,7 +17,8 @@ export default async function SsoPage() {
     const credentialsConfig = ssoMap.get('credentials');
     const defaultClientId = randomUUID();
 
-    const canValidateSecrets = hasSecretKey();
+    const keyState = getSecretKeyState();
+    const canValidateSecrets = keyState === 'valid';
     const azureSecretValid =
         azureConfig?.clientSecretEnc && canValidateSecrets
             ? (() => {
@@ -98,7 +99,10 @@ export default async function SsoPage() {
         }
         : null;
 
-
+    const users = await prisma.user.findMany({ select: { email: true, name: true }, orderBy: { email: 'asc' } });
+    const userOptions = users
+        .filter(u => !!u.email)
+        .map(u => ({ value: u.email!, label: `${u.email} (${u.name ?? 'No name'})` }));
 
     return (
         <div className="px-6 md:px-12 py-12 space-y-8">
@@ -115,14 +119,14 @@ export default async function SsoPage() {
                     azure={azureConfigPayload}
                     keycloak={keycloakConfigPayload}
                     credentials={credentialsConfigPayload}
-                    hasMasterKey={canValidateSecrets}
+                    hasMasterKey={keyState}
                     defaultClientId={defaultClientId}
                 />
             </section>
 
             <section className="card-panel">
                 <h2 className="font-serif text-2xl mb-6">Link SSO account</h2>
-                <LinkSsoAccountForm linkSsoAccount={linkSsoAccount} />
+                <LinkSsoAccountForm linkSsoAccount={linkSsoAccount} userOptions={userOptions} />
                 <p className="text-xs text-ink-300 mt-3">
                     Linking removes local passwords and converts the user to SSO-only.
                 </p>

@@ -217,11 +217,19 @@ export function decryptSecret(payload: string) {
   throw new Error('Unable to decrypt secret');
 }
 
-export function hasSecretKey() {
+export type KeyState = 'valid' | 'missing' | 'invalid';
+
+export function getSecretKeyState(): KeyState {
+  const raw = process.env[KEY_ENV];
+  if (!raw) return 'missing';
   try {
-    loadKeyRing();
-    return true;
+    const key = Buffer.from(raw, 'base64');
+    return key.length === 32 ? 'valid' : 'invalid';
   } catch {
-    return false;
+    return 'invalid';
   }
+}
+
+export function hasSecretKey() {
+  return getSecretKeyState() === 'valid';
 }

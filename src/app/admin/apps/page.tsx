@@ -1,4 +1,6 @@
 import { prisma } from '../../../lib/prisma';
+import Link from 'next/link';
+import AppSearch from '../../../components/AppSearch';
 import { randomUUID } from 'crypto';
 import DeleteAppForm from '../../../components/DeleteAppForm';
 import EditAppForm from '../../../components/EditAppForm';
@@ -16,17 +18,28 @@ export const dynamic = 'force-dynamic';
 export default async function AppsPage({
     searchParams,
 }: {
-    searchParams?: Promise<{ appPage?: string }>;
+    searchParams?: Promise<{ appPage?: string; q?: string }>;
 }) {
     const resolvedParams = await searchParams;
-    const pageSize = 50;
+    const pageSize = 10;
     const requestedAppPage = Number(resolvedParams?.appPage ?? '1');
+    const q = resolvedParams?.q ?? '';
     const appPage =
         Number.isFinite(requestedAppPage) && requestedAppPage > 0 ? requestedAppPage : 1;
     const appsSkip = (appPage - 1) * pageSize;
 
+    const where: any = q
+        ? {
+            OR: [
+                { name: { contains: q, mode: 'insensitive' } },
+                { url: { contains: q, mode: 'insensitive' } },
+            ],
+        }
+        : {};
+
     const [apps, rolesList, categoryRecords, totalApps] = await Promise.all([
         prisma.appLink.findMany({
+            where,
             orderBy: { createdAt: 'desc' },
             include: {
                 userAccesses: {
@@ -34,19 +47,20 @@ export default async function AppsPage({
                         user: { select: { id: true, name: true, email: true } }
                     }
                 },
-                categoryRef: true
+                categoryRef: true,
+                roles: true
             },
             skip: appsSkip,
             take: pageSize,
         }),
         prisma.role.findMany({ orderBy: { name: 'asc' } }),
         prisma.category.findMany({ orderBy: { order: 'asc' } }),
-        prisma.appLink.count(),
+        prisma.appLink.count({ where }),
     ]);
 
     const categorySelectOptions = [
         { value: '', label: 'No category' },
-        ...categoryRecords.map((cat) => ({ value: cat.id, label: cat.name })),
+        ...categoryRecords.map((cat: { id: string; name: string }) => ({ value: cat.id, label: cat.name })),
     ];
 
     const audienceOptions = [
@@ -56,10 +70,7 @@ export default async function AppsPage({
         { value: 'USER', label: 'Specific users' },
     ];
 
-    const roleOptions = [
-        { value: '', label: 'No role required (public/authenticated)' },
-        ...rolesList.map((role) => ({ value: role.id, label: role.name })),
-    ];
+    const roleOptions = rolesList.map((role: { id: string; name: string }) => ({ value: role.id, label: role.name }));
 
     const appTotalPages = Math.max(1, Math.ceil(totalApps / pageSize));
     const prevAppPage = appPage > 1 ? appPage - 1 : null;
@@ -89,20 +100,24 @@ export default async function AppsPage({
                 />
             </section>
 
-            <section className="card-panel">
+            <section id="catalogue" className="card-panel">
                 <h2 className="font-serif text-2xl mb-6">Current catalogue</h2>
+
+                <AppSearch initialQuery={q} />
+
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-xs text-ink-300">
                     <span>
                         Showing {apps.length} of {totalApps} apps
                     </span>
                     <div className="flex items-center gap-2">
                         {prevAppPage ? (
-                            <a
-                                href={`/admin/apps?appPage=${prevAppPage}`}
+                            <Link
+                                href={`/admin/apps?appPage=${prevAppPage}${q ? `&q=${encodeURIComponent(q)}` : ''}#catalogue`}
                                 className="btn-secondary btn-small"
+                                scroll={false}
                             >
                                 Previous
-                            </a>
+                            </Link>
                         ) : (
                             <span className="btn-secondary btn-small opacity-50 cursor-not-allowed">
                                 Previous
@@ -112,12 +127,13 @@ export default async function AppsPage({
                             Page {appPage} of {appTotalPages}
                         </span>
                         {nextAppPage ? (
-                            <a
-                                href={`/admin/apps?appPage=${nextAppPage}`}
+                            <Link
+                                href={`/admin/apps?appPage=${nextAppPage}${q ? `&q=${encodeURIComponent(q)}` : ''}#catalogue`}
                                 className="btn-secondary btn-small"
+                                scroll={false}
                             >
                                 Next
-                            </a>
+                            </Link>
                         ) : (
                             <span className="btn-secondary btn-small opacity-50 cursor-not-allowed">
                                 Next
@@ -126,7 +142,7 @@ export default async function AppsPage({
                     </div>
                 </div>
                 <div className="space-y-4">
-                    {apps.map((app) => (
+                    {apps.map((app: any) => (
                         <div key={app.id} className="card-panel !p-0 overflow-hidden">
                             <details className="group">
                                 <summary className="list-none cursor-pointer p-5 block w-full hover:bg-white/5 transition">
@@ -155,7 +171,7 @@ export default async function AppsPage({
                                         categoryOptions={categorySelectOptions}
                                         audienceOptions={audienceOptions}
                                         roleOptions={roleOptions}
-                                        initialUsers={app.userAccesses.map((item) => item.user)}
+                                        initialUsers={app.userAccesses.map((item: any) => item.user)}
                                         action={updateApp}
                                     />
                                 </div>

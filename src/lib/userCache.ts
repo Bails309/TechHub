@@ -36,7 +36,10 @@ export async function getUserMeta(userId: string): Promise<UserMeta | null> {
   }
 
   const client = await getSharedRedisClient();
-  if (!client) return null;
+  if (!client) {
+    console.warn('[REDIS] Client unavailable - falling back to direct database read for user metadata');
+    return await fetchFromDb(userId);
+  }
 
   try {
     const raw = await client.get(`user:meta:${userId}`);
@@ -61,7 +64,14 @@ export async function getUserMeta(userId: string): Promise<UserMeta | null> {
 export async function invalidateUserMeta(userId: string) {
   const client = await getSharedRedisClient();
   if (!client) return;
-  await client.del(`user:meta:${userId}`);
+  try {
+    await Promise.race([
+      client.del(`user:meta:${userId}`),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Redis del timeout')), 1000))
+    ]);
+  } catch (err) {
+    console.warn(`[REDIS] Failed to invalidate cache for user ${userId}`, err);
+  }
 }
 
 // Testing helpers

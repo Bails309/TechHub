@@ -28,6 +28,19 @@ export default function AdminActionForm({
   return (
     <form
       action={(formData) => {
+        let hasLargeFile = false;
+        for (const [, value] of formData.entries()) {
+          if (typeof window !== 'undefined' && value instanceof File && value.size > 2 * 1024 * 1024) {
+            hasLargeFile = true;
+            break;
+          }
+        }
+        if (hasLargeFile) {
+          setMessage('File too large (maximum 2MB)');
+          setTone('error');
+          return;
+        }
+
         formData.set('csrfToken', getCsrfTokenFromCookie());
         setMessage(null);
         setTone(null);
@@ -57,11 +70,11 @@ export default function AdminActionForm({
                     // ignore in environments where router may not be available
                   }
                 }
-                } else {
-                  setMessage(successMessage);
-                  setTone('success');
-                  try { router.refresh(); } catch {}
-                }
+              } else {
+                setMessage(successMessage);
+                setTone('success');
+                try { router.refresh(); } catch { }
+              }
             } catch (err: unknown) {
               function isNextRedirectLike(error: unknown) {
                 if (typeof error !== 'object' || error === null) return false;

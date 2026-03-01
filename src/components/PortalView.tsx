@@ -273,9 +273,9 @@ export default function PortalView({ apps, isAuthenticated, initialOrder, pinned
         <div className="flex flex-wrap items-center gap-2 mb-8 animate-in fade-in slide-in-from-top-4">
           <button
             onClick={() => setSelectedCategory('All')}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedCategory === 'All'
-              ? 'bg-ink-800 text-ocean-400 dark:bg-ocean-500/10 dark:text-ocean-300 border border-ink-300 dark:border-ocean-500/20 shadow-sm'
-              : 'bg-transparent text-ink-400 hover:text-ink-100 dark:hover:bg-white/5 border border-transparent'
+            className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${selectedCategory === 'All'
+              ? 'bg-ocean-600 !text-white dark:bg-ocean-500/20 border border-transparent dark:border-ocean-500/40 shadow-sm'
+              : 'bg-transparent text-ink-600 dark:text-ink-300 hover:text-ink-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 border border-transparent'
               }`}
           >
             All Apps
@@ -284,9 +284,9 @@ export default function PortalView({ apps, isAuthenticated, initialOrder, pinned
             <button
               key={category}
               onClick={() => setSelectedCategory(category)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedCategory === category
-                ? 'bg-ink-800 text-ocean-400 dark:bg-ocean-500/10 dark:text-ocean-300 border border-ink-300 dark:border-ocean-500/20 shadow-sm'
-                : 'bg-transparent text-ink-400 hover:text-ink-100 dark:hover:bg-white/5 border border-transparent'
+              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${selectedCategory === category
+                ? 'bg-ocean-600 !text-white dark:bg-ocean-500/20 border border-transparent dark:border-ocean-500/40 shadow-sm'
+                : 'bg-transparent text-ink-600 dark:text-ink-300 hover:text-ink-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 border border-transparent'
                 }`}
             >
               {category}

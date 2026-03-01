@@ -6,6 +6,7 @@ import SelectField, { SelectOption } from './SelectField';
 import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
 import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 import UserAutocomplete from './UserAutocomplete';
+import RoleMultiSelect from './RoleMultiSelect';
 
 interface NewAppFormProps {
   categoryOptions: SelectOption[];
@@ -45,6 +46,19 @@ export default function NewAppForm({
   return (
     <form
       action={(formData) => {
+        let hasLargeFile = false;
+        for (const [, value] of formData.entries()) {
+          if (typeof window !== 'undefined' && value instanceof File && value.size > 2 * 1024 * 1024) {
+            hasLargeFile = true;
+            break;
+          }
+        }
+        if (hasLargeFile) {
+          setStatusMessage('File too large (maximum 2MB)');
+          setStatusTone('error');
+          return;
+        }
+
         formData.set('csrfToken', getCsrfTokenFromCookie());
         setStatusMessage(null);
         setStatusTone(null);
@@ -99,12 +113,9 @@ export default function NewAppForm({
         defaultValue="AUTHENTICATED"
         onChange={handleAudienceChange}
       />
-      <SelectField
-        name="roleId"
-        options={roleOptions}
-        defaultValue=""
-        className="md:col-span-2"
-      />
+      {audience === 'ROLE' ? (
+        <RoleMultiSelect options={roleOptions} />
+      ) : null}
       {audience === 'USER' ? (
         <UserAutocomplete />
       ) : null}

@@ -27,8 +27,10 @@ async function ensureLimiter() {
     if (store === 'redis') {
       const client = await getSharedRedisClient();
       if (!client) {
+        console.error('[REDIS] CRITICAL: Redis is mandatory for rate limiting in production but is currently UNAVAILABLE.');
         throw new Error('Redis is required for RATE_LIMIT_STORE=redis but could not be initialized');
       }
+      console.log('[REDIS] Rate limiting initialized successfully using Redis store.');
       if (!redisLimiter) redisLimiter = new RateLimiterRedis({ storeClient: client, points: POINTS, duration: DURATION });
       return;
     }
@@ -43,16 +45,18 @@ async function ensureLimiter() {
   }
 }
 
-export async function assertRateLimit(ip: string) {
+export async function assertRateLimit(key: string) {
   await ensureLimiter();
   const store = (process.env.RATE_LIMIT_STORE || 'memory') as 'memory' | 'redis';
   if (store === 'redis' && redisLimiter) {
-    await redisLimiter.consume(ip);
+    console.log('[REDIS] Using Redis for rate limiting: key=%s', key);
+    await redisLimiter.consume(key);
     return;
   }
 
   if (memoryLimiter) {
-    await memoryLimiter.consume(ip);
+    console.log('[INFO] Using Memory for rate limiting: key=%s', key);
+    await memoryLimiter.consume(key);
     return;
   }
 

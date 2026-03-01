@@ -59,6 +59,8 @@ function StatusBadge({ state }: { state: ActionState }) {
   return <p className={`text-xs font-medium ${tone}`}>{state.message}</p>;
 }
 
+import { type KeyState } from '@/lib/crypto';
+
 export default function SsoConfigForm({
   azure,
   keycloak,
@@ -69,7 +71,7 @@ export default function SsoConfigForm({
   azure: SsoFormConfig | null;
   keycloak: SsoFormConfig | null;
   credentials: SsoFormConfig | null;
-  hasMasterKey: boolean;
+  hasMasterKey: KeyState;
   defaultClientId: string;
 }) {
   const [azureState, azureAction] = useFormState(updateSsoConfig, initialState);
@@ -120,18 +122,22 @@ export default function SsoConfigForm({
       <div className="rounded-2xl border border-ink-800/60 bg-ink-900/30 px-4 py-3 text-xs text-ink-300">
         SSO accounts must be explicitly linked to local users by an admin via the Link SSO Account form. Linked accounts will have local passwords cleared on link/first SSO login.
       </div>
-      {!hasMasterKey ? (
+      {hasMasterKey !== 'valid' ? (
         <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
-          <p className="font-semibold">SSO master key required</p>
+          <p className="font-semibold">
+            {hasMasterKey === 'invalid' ? 'Invalid SSO master key' : 'SSO master key required'}
+          </p>
           <p className="mt-1 text-xs text-amber-600 dark:text-amber-100">
-            Set <span className="font-mono bg-amber-500/10 px-1 rounded dark:text-amber-50">SSO_MASTER_KEY</span> in your environment to
-            save SSO secrets. Generate one with:
+            {hasMasterKey === 'invalid'
+              ? 'The SSO_MASTER_KEY in your environment is not a valid 32-byte base64 string.'
+              : 'Set SSO_MASTER_KEY in your environment to save SSO secrets.'}
+            {' '}Generate a new one with:
           </p>
           <pre className="mt-2 rounded-xl bg-black/30 px-3 py-2 text-xs text-amber-600 dark:text-amber-50">
             node -e &quot;console.log(require(&apos;crypto&apos;).randomBytes(32).toString(&apos;base64&apos;))&quot;
           </pre>
           <p className="mt-2 text-xs text-amber-600 dark:text-amber-100">
-            Then restart the app after updating <span className="font-mono bg-amber-500/10 px-1 rounded dark:text-amber-50">.env</span>.
+            Then restart the app after updating your environment variables.
           </p>
         </div>
       ) : null}
@@ -140,7 +146,7 @@ export default function SsoConfigForm({
         description="Configure Azure AD / Entra ID OpenID Connect settings."
         source={azure?.source}
       >
-        {hasMasterKey && azure?.hasSecret && azure?.secretValid === false ? (
+        {hasMasterKey === 'valid' && azure?.hasSecret && azure?.secretValid === false ? (
           <p className="text-xs text-rose-300">
             Stored client secret could not be decrypted. Re-save it to restore SSO.
           </p>
@@ -237,7 +243,7 @@ export default function SsoConfigForm({
         description="Configure Keycloak OpenID Connect settings."
         source={keycloak?.source}
       >
-        {hasMasterKey && keycloak?.hasSecret && keycloak?.secretValid === false ? (
+        {hasMasterKey === 'valid' && keycloak?.hasSecret && keycloak?.secretValid === false ? (
           <p className="text-xs text-rose-300">
             Stored client secret could not be decrypted. Re-save it to restore SSO.
           </p>

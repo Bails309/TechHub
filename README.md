@@ -44,7 +44,7 @@
   - **Hardened Auth**: Robust password policies and session protection.
   - **Audit Logging**: Comprehensive trails for every administrative action.
 - **☁️ Flexible Storage**: Support for Local, AWS S3, and Azure Blob storage.
-- **🛠️ Admin Empowerment**: Easily manage apps, categories, users, and global site configurations (including custom logos).
+- **🛠️ Admin Empowerment**: Easily manage apps, categories, users, and global site configurations (including custom logos). See the [Admin Guide](docs/admin_guide.md) for detailed configuration options.
 
 ---
 
@@ -62,8 +62,10 @@ TechHub is designed as a **Standalone Container** architecture. It is fully self
 ## 🚀 Quick Start
 
 ### 1. Requirements
-- **Node.js 20+**
-- **Docker & Docker Compose**
+- **Node.js**: 20.x (LTS) or later
+- **PostgreSQL**: 13+ or later
+- **Redis**: 6.2+ or later
+- **Docker**: Desktop 4.x+ or Compose v2+
 
 ### 2. Initial Setup
 ```bash
@@ -73,7 +75,11 @@ cp .env.example .env
 # 2. Spin up the infrastructure
 docker-compose up -d --build
 
-# 3. Access your initial admin credentials
+# 3. Generate mandatory SSO_MASTER_KEY
+# This key is required to encrypt secrets. Update your .env with the output.
+docker-compose exec app node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+
+# 4. Access your initial admin credentials
 docker-compose logs app | grep "SEED"
 ```
 
