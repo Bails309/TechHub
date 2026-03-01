@@ -154,14 +154,11 @@ describe('createApp orphaned icon cleanup', () => {
       getAll: (_k: string) => []
     } as unknown as FormData;
 
-    try {
-      await createApp(form);
-      throw new Error('createApp did not throw');
-    } catch (err) {
-      // Print full stack for debugging where the headers() call originates
-      // eslint-disable-next-line no-console
-      console.error('createApp threw:', err && (err as Error).stack ? (err as Error).stack : err);
-      expect(String(err)).toContain('simulated-db-failure');
+    const result = await createApp(form);
+    if (result && result.status === 'error') {
+      expect(result.message).toContain('simulated-db-failure');
+    } else {
+      throw new Error('createApp did not return error status');
     }
 
     // Ensure upload was attempted and the uploaded icon was removed on failure
