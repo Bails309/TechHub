@@ -1010,10 +1010,9 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
   }
 
   const userId = String(formData.get('userId') ?? '').trim();
-  const roleIds = formData
-    .getAll('roles')
-    .map((value) => String(value))
-    .filter(Boolean);
+  const roleIdsFromRoles = formData.getAll('roles').map((value) => String(value));
+  const roleIdsFromRoleIds = formData.getAll('roleIds').map((value) => String(value));
+  const roleIds = Array.from(new Set([...roleIdsFromRoles, ...roleIdsFromRoleIds])).filter(Boolean);
   const confirmAdminGrant = formData.get('confirmAdminGrant') === 'on';
 
   const parsed = userRoleSchema.safeParse({ userId, roleIds });
@@ -1348,7 +1347,10 @@ export async function createLocalUser(
   const rawName = String(formData.get('name') ?? '').trim();
   const rawEmail = String(formData.get('email') ?? '').trim().toLowerCase();
   const rawPassword = String(formData.get('password') ?? '');
-  const rawRoles = formData.getAll('roles').map((value) => String(value)).filter(Boolean);
+
+  const roleIdsFromRoles = formData.getAll('roles').map((value) => String(value));
+  const roleIdsFromRoleIds = formData.getAll('roleIds').map((value) => String(value));
+  const rawRoles = Array.from(new Set([...roleIdsFromRoles, ...roleIdsFromRoleIds])).filter(Boolean);
 
   const payload = localUserSchema.safeParse({
     name: rawName,

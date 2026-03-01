@@ -14,6 +14,7 @@ interface SelectFieldProps {
   defaultValue?: string;
   className?: string;
   onChange?: (value: string) => void;
+  required?: boolean;
 }
 
 export default function SelectField({
@@ -21,7 +22,8 @@ export default function SelectField({
   options,
   defaultValue,
   className,
-  onChange
+  onChange,
+  required
 }: SelectFieldProps) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(defaultValue ?? options[0]?.value ?? '');
@@ -48,7 +50,7 @@ export default function SelectField({
 
   return (
     <div ref={containerRef} className={`relative ${className ?? ''}`.trim()}>
-      <input type="hidden" name={name} value={value} />
+      <input type="hidden" name={name} value={value} required={required} />
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -69,9 +71,8 @@ export default function SelectField({
                     onChange?.(option.value);
                     setOpen(false);
                   }}
-                  className={`select-option flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition ${
-                    option.value === value ? 'is-selected' : ''
-                  }`}
+                  className={`select-option flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition ${option.value === value ? 'is-selected' : ''
+                    }`}
                 >
                   {option.label}
                 </button>

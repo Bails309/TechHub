@@ -2,7 +2,8 @@
 
 import { useFormState } from 'react-dom';
 import { useState } from 'react';
-import SelectField from './SelectField';
+import SelectField, { SelectOption } from './SelectField';
+import SSOUserAutocomplete from './SSOUserAutocomplete';
 import type { LinkSsoAccountState } from '@/app/admin/actions';
 import HiddenCsrfInput from './HiddenCsrfInput';
 
@@ -13,9 +14,10 @@ type LinkSsoAccountFormProps = {
     prevState: LinkSsoAccountState,
     formData: FormData
   ) => Promise<LinkSsoAccountState>;
+  userOptions: SelectOption[];
 };
 
-export default function LinkSsoAccountForm({ linkSsoAccount }: LinkSsoAccountFormProps) {
+export default function LinkSsoAccountForm({ linkSsoAccount, userOptions }: LinkSsoAccountFormProps) {
   const [state, formAction] = useFormState(linkSsoAccount, initialState);
   const [tokenValue, setTokenValue] = useState('');
   const [tokenMessage, setTokenMessage] = useState('');
@@ -66,13 +68,12 @@ export default function LinkSsoAccountForm({ linkSsoAccount }: LinkSsoAccountFor
   return (
     <form action={formAction} className="grid gap-3 md:grid-cols-2">
       <HiddenCsrfInput />
-      <input
-        name="email"
-        placeholder="User email"
-        type="email"
-        required
-        className="input-surface rounded-full px-4 py-2 text-sm text-ink-100"
-      />
+      <div className="md:col-span-2">
+        <SSOUserAutocomplete
+          options={userOptions}
+          name="email"
+        />
+      </div>
       <div>
         <SelectField
           name="provider"

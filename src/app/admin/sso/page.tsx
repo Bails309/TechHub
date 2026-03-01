@@ -99,7 +99,10 @@ export default async function SsoPage() {
         }
         : null;
 
-
+    const users = await prisma.user.findMany({ select: { email: true, name: true }, orderBy: { email: 'asc' } });
+    const userOptions = users
+        .filter(u => !!u.email)
+        .map(u => ({ value: u.email!, label: `${u.email} (${u.name ?? 'No name'})` }));
 
     return (
         <div className="px-6 md:px-12 py-12 space-y-8">
@@ -123,7 +126,7 @@ export default async function SsoPage() {
 
             <section className="card-panel">
                 <h2 className="font-serif text-2xl mb-6">Link SSO account</h2>
-                <LinkSsoAccountForm linkSsoAccount={linkSsoAccount} />
+                <LinkSsoAccountForm linkSsoAccount={linkSsoAccount} userOptions={userOptions} />
                 <p className="text-xs text-ink-300 mt-3">
                     Linking removes local passwords and converts the user to SSO-only.
                 </p>
