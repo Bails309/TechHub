@@ -65,7 +65,8 @@ describe('JWT coherence (periodic DB validation)', () => {
 
     const token = { sub: 'u-error' } as any;
     const out = await jwtCb({ token });
-    expect(typeof out.lastCheckedAt).toBe('number');
+    // Should NOT update lastCheckedAt on error so it retries immediately.
+    expect(out.lastCheckedAt).toBeUndefined();
   });
 
   it('skips DB lookup when lastCheckedAt is fresh', async () => {

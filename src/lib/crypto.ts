@@ -31,8 +31,68 @@ function loadKeyRing(): KeyRing {
   if (!raw) {
     throw new Error(`${KEY_ENV} is not set`);
   }
-  const key = parseKey(raw, KEY_ENV);
-  cachedKeyRing = { currentId: LEGACY_KEY_ID, keys: new Map([[LEGACY_KEY_ID, key]]), orderedIds: [LEGACY_KEY_ID] };
+
+  // Try parsing as JSON first (object or array)
+  try {
+    if (raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        // Simple list of keys
+        const keys = new Map<string, Buffer>();
+        const orderedIds: string[] = [];
+        parsed.forEach((k, i) => {
+          const id = `k${i}`;
+          keys.set(id, parseKey(String(k), `${KEY_ENV}[${i}]`));
+          orderedIds.push(id);
+        });
+        cachedKeyRing = { currentId: 'k0', keys, orderedIds };
+        return cachedKeyRing;
+      } else if (parsed && typeof parsed === 'object' && parsed.keys) {
+        // Detailed key map
+        const keys = new Map<string, Buffer>();
+        const orderedIds: string[] = [];
+        for (const [id, val] of Object.entries(parsed.keys)) {
+          keys.set(id, parseKey(String(val), `${KEY_ENV}.keys.${id}`));
+          orderedIds.push(id);
+        }
+        const currentId = parsed.current || orderedIds[0];
+        if (!keys.has(currentId)) {
+          throw new Error(`Current key ID "${currentId}" not found in keys list`);
+        }
+        cachedKeyRing = { currentId, keys, orderedIds };
+        return cachedKeyRing;
+      }
+    }
+  } catch (err) {
+    // If it looked like JSON but failed to parse, we should probably throw
+    // but here we fall back to comma-separated to be safe for legacy reasons
+    // unless it's clearly a JSON error.
+    if (err instanceof SyntaxError && (raw.trim().startsWith('{') || raw.trim().startsWith('['))) {
+      throw err;
+    }
+  }
+
+  // Fallback: Comma-separated or single key
+  const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length > 1) {
+    const keys = new Map<string, Buffer>();
+    const orderedIds: string[] = [];
+    parts.forEach((k, i) => {
+      const id = `k${i}`;
+      keys.set(id, parseKey(k, `${KEY_ENV}[${i}]`));
+      orderedIds.push(id);
+    });
+    cachedKeyRing = { currentId: 'k0', keys, orderedIds };
+  } else {
+    // Legacy single key
+    const key = parseKey(raw, KEY_ENV);
+    cachedKeyRing = {
+      currentId: LEGACY_KEY_ID,
+      keys: new Map([[LEGACY_KEY_ID, key]]),
+      orderedIds: [LEGACY_KEY_ID]
+    };
+  }
+
   return cachedKeyRing;
 }
 
@@ -223,8 +283,10 @@ export function getSecretKeyState(): KeyState {
   const raw = process.env[KEY_ENV];
   if (!raw) return 'missing';
   try {
-    const key = Buffer.from(raw, 'base64');
-    return key.length === 32 ? 'valid' : 'invalid';
+    // Clearing the cache for this check ensures we're validating the CURRENT env
+    cachedKeyRing = null;
+    loadKeyRing();
+    return 'valid';
   } catch {
     return 'invalid';
   }
