@@ -1078,10 +1078,11 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
             SELECT id FROM "Role" WHERE id = ${adminRoleCheck.id} FOR UPDATE
           `;
         } else {
-          // SQLite does not support FOR UPDATE - perform a plain select to
-          // keep behavior compatible for local/test SQLite databases.
+          // SQLite does not support FOR UPDATE. Force an exclusive write lock
+          // on the row by issuing a no-op UPDATE; this serializes concurrent
+          // transactions and prevents the last-admin race condition.
           await tx.$queryRaw`
-            SELECT id FROM "Role" WHERE id = ${adminRoleCheck.id}
+            UPDATE "Role" SET id = id WHERE id = ${adminRoleCheck.id}
           `;
         }
 
@@ -1202,8 +1203,9 @@ export async function deleteUser(formData: FormData): Promise<AdminActionState> 
             SELECT id FROM "Role" WHERE id = ${adminRole.id} FOR UPDATE
           `;
         } else {
+          // Force a write-lock in SQLite to serialize concurrent admin checks.
           await tx.$queryRaw`
-            SELECT id FROM "Role" WHERE id = ${adminRole.id}
+            UPDATE "Role" SET id = id WHERE id = ${adminRole.id}
           `;
         }
 
