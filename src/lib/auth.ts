@@ -614,8 +614,13 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                   token.userUpdatedAt = (userRecord as any).updatedAt ? new Date((userRecord as any).updatedAt).getTime() : undefined;
                   token.lastCheckedAt = now;
                 }
-              } catch {
-                token.lastCheckedAt = now;
+              } catch (err) {
+                if (err instanceof Error && err.message === 'prisma_timeout') {
+                  console.error('[AUTH] Database timeout during consistency check for sub=%s', String(token.sub));
+                } else {
+                  console.error('[AUTH] Error during DB consistency check fallback for sub=%s:', String(token.sub), err);
+                }
+                // Do NOT update lastCheckedAt on failure so we retry immediately on the next request.
               }
             } else {
               token.roles = meta.roles;
@@ -623,8 +628,9 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
               if (typeof meta.updatedAt === 'number') token.userUpdatedAt = meta.updatedAt;
               token.lastCheckedAt = now;
             }
-          } catch {
-            token.lastCheckedAt = now;
+          } catch (err) {
+            // Do NOT update lastCheckedAt on failure.
+            console.error('[AUTH] Error during consistency check for sub=%s:', String(token.sub), err);
           }
         }
 
