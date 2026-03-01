@@ -34,7 +34,8 @@ export default async function AppsPage({
                         user: { select: { id: true, name: true, email: true } }
                     }
                 },
-                categoryRef: true
+                categoryRef: true,
+                roles: true
             },
             skip: appsSkip,
             take: pageSize,
@@ -56,10 +57,7 @@ export default async function AppsPage({
         { value: 'USER', label: 'Specific users' },
     ];
 
-    const roleOptions = [
-        { value: '', label: 'No role required (public/authenticated)' },
-        ...rolesList.map((role) => ({ value: role.id, label: role.name })),
-    ];
+    const roleOptions = rolesList.map((role) => ({ value: role.id, label: role.name }));
 
     const appTotalPages = Math.max(1, Math.ceil(totalApps / pageSize));
     const prevAppPage = appPage > 1 ? appPage - 1 : null;

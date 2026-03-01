@@ -44,7 +44,7 @@
   - **Hardened Auth**: Robust password policies and session protection.
   - **Audit Logging**: Comprehensive trails for every administrative action.
 - **☁️ Flexible Storage**: Support for Local, AWS S3, and Azure Blob storage.
-- **🛠️ Admin Empowerment**: Easily manage apps, categories, users, and global site configurations (including custom logos).
+- **🛠️ Admin Empowerment**: Easily manage apps, categories, users, and global site configurations (including custom logos). See the [Admin Guide](docs/admin_guide.md) for detailed configuration options.
 
 ---
 

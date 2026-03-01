@@ -62,14 +62,14 @@ const appSchemaBase = z.object({
   categoryId: z.string().optional(),
   description: z.string().optional(),
   audience: z.enum(['PUBLIC', 'AUTHENTICATED', 'ROLE', 'USER']),
-  roleId: z.string().optional(),
+  roleIds: z.array(z.string()).optional(),
   userIds: z.array(z.string()).optional()
 });
 
 const appSchema = appSchemaBase
-  .refine((data) => (data.audience === 'ROLE' ? Boolean(data.roleId) : true), {
-    message: 'Role is required for role-based apps',
-    path: ['roleId']
+  .refine((data) => (data.audience === 'ROLE' ? Boolean(data.roleIds?.length) : true), {
+    message: 'At least one role is required for role-based apps',
+    path: ['roleIds']
   })
   .refine((data) => (data.audience === 'USER' ? Boolean(data.userIds?.length) : true), {
     message: 'At least one user is required for user-specific apps',
@@ -80,9 +80,9 @@ const updateSchema = appSchemaBase
   .extend({
     id: z.string().min(1)
   })
-  .refine((data) => (data.audience === 'ROLE' ? Boolean(data.roleId) : true), {
-    message: 'Role is required for role-based apps',
-    path: ['roleId']
+  .refine((data) => (data.audience === 'ROLE' ? Boolean(data.roleIds?.length) : true), {
+    message: 'At least one role is required for role-based apps',
+    path: ['roleIds']
   })
   .refine((data) => (data.audience === 'USER' ? Boolean(data.userIds?.length) : true), {
     message: 'At least one user is required for user-specific apps',
@@ -382,7 +382,7 @@ export async function createApp(formData: FormData) {
       categoryId: formData.get('categoryId') || undefined,
       description: formData.get('description') || undefined,
       audience: formData.get('audience'),
-      roleId: formData.get('roleId') || undefined,
+      roleIds: formData.getAll('roleIds').map((value) => String(value)),
       userIds: formData.getAll('userIds').map((value) => String(value))
     });
 
@@ -411,12 +411,12 @@ export async function createApp(formData: FormData) {
           data: {
             name: parsed.data.name,
             url: parsed.data.url,
-            categoryId: parsed.data.categoryId || null,
             description: parsed.data.description,
             audience: parsed.data.audience,
-            roleId: parsed.data.audience === 'ROLE' ? parsed.data.roleId : null,
+            categoryRef: parsed.data.categoryId ? { connect: { id: parsed.data.categoryId } } : undefined,
+            roles: parsed.data.audience === 'ROLE' && parsed.data.roleIds?.length ? { connect: parsed.data.roleIds.map(id => ({ id })) } : undefined,
             icon: iconPath
-          } as Prisma.AppLinkUncheckedCreateInput
+          }
         });
 
         if (parsed.data.audience === 'USER' && parsed.data.userIds?.length) {
@@ -860,7 +860,7 @@ export async function updateApp(formData: FormData) {
       categoryId: formData.get('categoryId') || undefined,
       description: formData.get('description') || undefined,
       audience: formData.get('audience'),
-      roleId: formData.get('roleId') || undefined,
+      roleIds: formData.getAll('roleIds').map((value) => String(value)),
       userIds: formData.getAll('userIds').map((value) => String(value))
     });
 
@@ -893,13 +893,13 @@ export async function updateApp(formData: FormData) {
           data: {
             name: parsed.data.name,
             url: parsed.data.url,
-            categoryId: parsed.data.categoryId || null,
+            categoryRef: parsed.data.categoryId ? { connect: { id: parsed.data.categoryId } } : { disconnect: true },
             description: parsed.data.description,
             audience: parsed.data.audience,
-            roleId: parsed.data.audience === 'ROLE' ? parsed.data.roleId : null,
+            roles: parsed.data.audience === 'ROLE' && parsed.data.roleIds?.length ? { set: parsed.data.roleIds.map(id => ({ id })) } : { set: [] },
             ...(iconRemove ? { icon: null } : {}),
             ...(iconPath ? { icon: iconPath } : {})
-          } as Prisma.AppLinkUncheckedUpdateInput
+          }
         });
 
         await tx.userAppAccess.deleteMany({ where: { appId: parsed.data.id } });
@@ -1290,7 +1290,7 @@ export async function deleteRole(formData: FormData): Promise<AdminActionState> 
 
   const [userRoleCount, appRoleCount] = await Promise.all([
     prisma.userRole.count({ where: { roleId } }),
-    prisma.appLink.count({ where: { roleId } })
+    prisma.appLink.count({ where: { roles: { some: { id: roleId } } } })
   ]);
 
   if (userRoleCount > 0 || appRoleCount > 0) {

@@ -88,6 +88,9 @@ export default async function UsersPage({
                                     className="rounded-2xl border border-ink-800 px-5 py-4 space-y-4"
                                 >
                                     <input type="hidden" name="userId" value={user.id} />
+                                    {user.roles.map((ur) => (
+                                        <input key={ur.roleId} type="hidden" name="previousRoles" value={ur.roleId} />
+                                    ))}
                                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                         <div>
                                             <p className="font-semibold">{user.name ?? user.email ?? 'Unnamed user'}</p>

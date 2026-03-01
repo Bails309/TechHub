@@ -29,7 +29,7 @@ export default async function Home() {
       });
     }
     if (roleIds.length) {
-      audienceFilters.push({ audience: 'ROLE', roleId: { in: roleIds } });
+      audienceFilters.push({ audience: 'ROLE', roles: { some: { id: { in: roleIds } } } });
     }
 
     // Wrap storage config in its own try-catch to avoid fatal SSO_MASTER_KEY errors

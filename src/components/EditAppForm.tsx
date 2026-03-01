@@ -6,6 +6,7 @@ import SelectField, { SelectOption } from './SelectField';
 import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
 import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 import UserAutocomplete, { UserOption } from './UserAutocomplete';
+import RoleMultiSelect from './RoleMultiSelect';
 
 interface EditAppFormProps {
   app: {
@@ -14,7 +15,7 @@ interface EditAppFormProps {
     url: string;
     description: string | null;
     audience: 'PUBLIC' | 'AUTHENTICATED' | 'ROLE' | 'USER';
-    roleId: string | null;
+    roles: { id: string }[];
     categoryId: string | null;
     icon?: string | null;
   };
@@ -129,7 +130,9 @@ export default function EditAppForm({
         defaultValue={app.audience}
         onChange={handleAudienceChange}
       />
-      <SelectField name="roleId" options={roleOptions} defaultValue={app.roleId ?? ''} />
+      {audience === 'ROLE' ? (
+        <RoleMultiSelect options={roleOptions} initialSelected={app.roles?.map((r: any) => r.id) || []} />
+      ) : null}
       {audience === 'USER' ? (
         <UserAutocomplete initialSelectedUsers={initialUsers} />
       ) : null}

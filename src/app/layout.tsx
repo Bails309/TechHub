@@ -7,6 +7,7 @@ import SideNav from '../components/SideNav';
 import PageHeader from '../components/PageHeader';
 import Providers from '../components/Providers';
 import SessionGuard from '../components/SessionGuard';
+import ScrollToTop from '../components/ScrollToTop';
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
@@ -60,6 +61,7 @@ export default async function RootLayout({
       </head>
       <body>
         <Providers>
+          <ScrollToTop />
           <div className="flex min-h-screen">
             <SideNav
               logo={siteConfig?.logo ?? undefined}

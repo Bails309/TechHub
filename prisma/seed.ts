@@ -75,7 +75,7 @@ async function main() {
       category: 'Admin',
       description: 'Manage users, licenses, and policies',
       audience: 'ROLE' as const,
-      roleId: adminRole.id
+      roles: [adminRole.id]
     },
     {
       name: 'GitHub Enterprise',
@@ -104,7 +104,7 @@ async function main() {
       category: 'Support',
       description: 'Tickets and incident response',
       audience: 'ROLE' as const,
-      roleId: staffRole.id
+      roles: [staffRole.id]
     }
   ];
 
@@ -126,11 +126,16 @@ async function main() {
       continue;
     }
 
-    const { category, ...rest } = app as any;
+    const { category, roles, ...rest } = app as any;
     const data: any = { ...rest };
     if (category) {
       const categoryId = categoryMap.get(category);
       if (categoryId) data.categoryId = categoryId;
+    }
+    if (roles && roles.length > 0) {
+      data.roles = {
+        connect: roles.map((id: string) => ({ id }))
+      };
     }
 
     await prisma.appLink.create({ data });

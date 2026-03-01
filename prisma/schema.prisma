@@ -72,14 +72,12 @@ model AppLink {
   categoryRef Category?   @relation(fields: [categoryId], references: [id])
   description String?
   audience    AppAudience @default(AUTHENTICATED)
-  role        Role?       @relation(fields: [roleId], references: [id])
-  roleId      String?
+  roles       Role[]
   userAccesses UserAppAccess[]
   favoritedBy UserFavoriteApp[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  @@index([roleId])
   @@index([categoryId])
 }
 
