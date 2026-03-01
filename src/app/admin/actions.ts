@@ -120,6 +120,15 @@ const uploadSchema = z.any()
     return true;
   }, { message: 'Invalid file type' });
 
+// Also validate extension explicitly to avoid relying solely on the spoofable MIME type.
+// Use `path.extname` to derive the extension from the uploaded filename.
+uploadSchema.refine((file) => {
+  const name = (file as any)?.name;
+  if (typeof name !== 'string') return false;
+  const ext = path.extname(name).toLowerCase();
+  return ALLOWED_ICON_EXTENSIONS.has(ext);
+}, { message: 'Invalid file extension' });
+
 function isNonEmptyFile(f: unknown): f is File {
   // In browser environments File is available; in some test/node runtimes
   // it is not. Prefer `instanceof File` when available, otherwise fall
@@ -945,11 +954,9 @@ export async function updateApp(formData: FormData) {
     // non-critical: the DB update already committed and should be treated as
     // successful even if cleanup steps fail. Catch and log any errors so a
     // cleanup failure doesn't surface as a save failure to the UI.
-    try {
+      try {
       if (existingApp?.icon) {
-        if (iconRemove) {
-          await safeDeleteIcon(existingApp.icon);
-        } else if (iconPath && existingApp.icon !== iconPath) {
+        if (iconRemove || (iconPath && existingApp.icon !== iconPath)) {
           await safeDeleteIcon(existingApp.icon);
         }
       }
@@ -1069,10 +1076,11 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
             SELECT id FROM "Role" WHERE id = ${adminRoleCheck.id} FOR UPDATE
           `;
         } else {
-          // SQLite does not support FOR UPDATE - perform a plain select to
-          // keep behavior compatible for local/test SQLite databases.
+          // SQLite does not support FOR UPDATE. Force an exclusive write lock
+          // on the row by issuing a no-op UPDATE; this serializes concurrent
+          // transactions and prevents the last-admin race condition.
           await tx.$queryRaw`
-            SELECT id FROM "Role" WHERE id = ${adminRoleCheck.id}
+            UPDATE "Role" SET id = id WHERE id = ${adminRoleCheck.id}
           `;
         }
 
@@ -1193,8 +1201,9 @@ export async function deleteUser(formData: FormData): Promise<AdminActionState> 
             SELECT id FROM "Role" WHERE id = ${adminRole.id} FOR UPDATE
           `;
         } else {
+          // Force a write-lock in SQLite to serialize concurrent admin checks.
           await tx.$queryRaw`
-            SELECT id FROM "Role" WHERE id = ${adminRole.id}
+            UPDATE "Role" SET id = id WHERE id = ${adminRole.id}
           `;
         }
 

@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
+import type { NextRequest } from 'next/server';
 
 // ---------------------------------------------------------------------------
 // HMAC-signed CSRF tokens (Signed Double-Submit Cookie pattern)
@@ -119,4 +120,40 @@ export async function validateCsrf(formData: FormData): Promise<boolean> {
   if (!sessionId) return false;
 
   return validateCsrfToken(token, sessionId);
+}
+
+/**
+ * Validate CSRF for standard API requests. Reads the `x-xsrf-token` header
+ * and compares it to the `XSRF-TOKEN` cookie and the session-bound HMAC.
+ */
+export async function validateApiCsrf(request: NextRequest): Promise<boolean> {
+  try {
+    const token = String(request.headers.get('x-xsrf-token') ?? '');
+    if (!token) return false;
+
+    const cookieVal = request.cookies.get('XSRF-TOKEN')?.value ?? null;
+    if (!cookieVal || cookieVal !== token) return false;
+
+    // Extract session id (JWT sub) using next-auth's getToken helper against
+    // the incoming request cookies so the token can be HMAC-verified.
+    const { getToken } = await import('next-auth/jwt');
+    const cookieHeader = request.headers.get('cookie') ?? '';
+    const req = {
+      headers: { cookie: cookieHeader },
+      cookies: Object.fromEntries(
+        cookieHeader.split(';').filter(Boolean).map((c) => {
+          const [k, ...v] = c.trim().split('=');
+          return [k, v.join('=')];
+        })
+      ),
+    } as any;
+
+    const tokenObj = await getToken({ req, secret: getSecret() });
+    const sessionId = tokenObj?.sub ?? '';
+    if (!sessionId) return false;
+
+    return validateCsrfToken(token, sessionId);
+  } catch {
+    return false;
+  }
 }

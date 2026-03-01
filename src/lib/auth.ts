@@ -44,9 +44,9 @@ function getSessionMaxAgeSeconds(): number {
 
 function getSessionIdleTimeoutMs(): number {
   // Prefer server-side explicit `SESSION_IDLE_TIMEOUT_MS` for runtime
-  // configuration. `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MS` is a client-side
-  // build-time variable and should not override server runtime tests.
-  return Number(process.env.SESSION_IDLE_TIMEOUT_MS ?? process.env.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MS ?? 1200000);
+  // configuration. Do NOT fall back to the public build-time variable
+  // `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MS` to avoid client/server desync.
+  return Number(process.env.SESSION_IDLE_TIMEOUT_MS ?? 1200000);
 }
 
 // Parse TRUSTED_PROXIES into CIDR tuples using ipaddr.js
@@ -104,9 +104,17 @@ if (!trustProxy && !trustedProxiesEnv && process.env.NODE_ENV === 'production') 
 const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
 
 // In-memory fallback for termination log deduplication when Redis is unavailable.
-// Entries are short-lived to prevent memory leaks while still covering the
-// small window where concurrent requests might all detect a timeout.
-const terminationLogCache = new Set<string>();
+// Use a Map storing expiry timestamps and a single periodic cleanup interval
+// to avoid scheduling many individual timers which can flood the event loop.
+const terminationLogCache = new Map<string, number>();
+
+// Periodically purge expired entries (unref so it doesn't keep the process alive)
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, expiry] of terminationLogCache.entries()) {
+    if (now > expiry) terminationLogCache.delete(k);
+  }
+}, 60_000).unref();
 
 /**
  * Ensures a session termination event is only logged once per session version.
@@ -126,10 +134,10 @@ async function logSessionTerminationOnce(userId: string, reason: string, issuedA
     }
   }
 
-  // Fallback to in-memory Set if Redis is missing or failed
+  // Fallback to in-memory Map if Redis is missing or failed. Store an expiry
+  // timestamp and let the periodic cleanup remove it later.
   if (terminationLogCache.has(key)) return;
-  terminationLogCache.add(key);
-  setTimeout(() => terminationLogCache.delete(key), 60000);
+  terminationLogCache.set(key, Date.now() + 60_000);
 
   await writeAuditLog({
     category: 'auth',
