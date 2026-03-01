@@ -28,6 +28,19 @@ export default function RoleMultiSelect({ options, initialSelected = [] }: RoleM
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    useEffect(() => {
+        const form = wrapperRef.current?.closest('form');
+        if (!form) return;
+
+        const handleReset = () => {
+            setSelectedRoleIds(initialSelected);
+            setIsOpen(false);
+        };
+
+        form.addEventListener('reset', handleReset);
+        return () => form.removeEventListener('reset', handleReset);
+    }, [initialSelected]);
+
     const toggleRole = (roleId: string) => {
         setSelectedRoleIds((prev) =>
             prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId]

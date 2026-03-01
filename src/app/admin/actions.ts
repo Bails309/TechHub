@@ -1317,7 +1317,7 @@ export async function deleteRole(formData: FormData): Promise<AdminActionState> 
 const localUserSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  password: z.string().min(1),
+  password: z.string().min(8),
   roleIds: z.array(z.string().min(1)).optional()
 });
 

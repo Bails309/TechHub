@@ -1,7 +1,7 @@
 'use client';
 
 import { useFormState } from 'react-dom';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Copy, RefreshCw } from 'lucide-react';
 import type { Role } from '@prisma/client';
 import type { CreateLocalUserState } from '@/app/admin/actions';
@@ -24,6 +24,14 @@ export default function CreateLocalUserForm({ createLocalUser, roles, passwordPo
   const [state, formAction] = useFormState(createLocalUser, initialState);
   const [password, setPassword] = useState('');
   const [copied, setCopied] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (state.status === 'success') {
+      setPassword('');
+      formRef.current?.reset();
+    }
+  }, [state.status]);
 
   const generatePassword = () => {
     const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -35,16 +43,19 @@ export default function CreateLocalUserForm({ createLocalUser, roles, passwordPo
     let attempts = 0;
     let newPass = '';
 
-    // Safety break at 100 attempts, though usually takes 1 or 2
     while (attempts < 100) {
       newPass = '';
       const length = Math.max(passwordPolicy.minLength, 16);
 
+      const randomValues = new Uint32Array(length);
+      window.crypto.getRandomValues(randomValues);
+
       for (let i = 0; i < length; i++) {
-        newPass += all.charAt(Math.floor(Math.random() * all.length));
+        newPass += all.charAt(randomValues[i] % all.length);
       }
 
-      if (!validatePasswordComplexity(newPass, passwordPolicy)) {
+      const error = validatePasswordComplexity(newPass, passwordPolicy);
+      if (!error) {
         break;
       }
       attempts++;
@@ -62,7 +73,7 @@ export default function CreateLocalUserForm({ createLocalUser, roles, passwordPo
   };
 
   return (
-    <form action={formAction} className="grid gap-4 md:grid-cols-2">
+    <form ref={formRef} action={formAction} className="grid gap-4 md:grid-cols-2">
       <HiddenCsrfInput />
       <input
         name="name"

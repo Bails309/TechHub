@@ -18,7 +18,7 @@ import ipaddr from 'ipaddr.js';
 
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8)
+  password: z.string().min(1)
 });
 
 const azureConfiguredEnv =
@@ -299,7 +299,7 @@ function buildCredentialsProvider() {
       }
 
       const user = await prisma.user.findUnique({
-        where: { email: parsed.data.email },
+        where: { email: emailKey },
         include: { roles: { include: { role: true } } }
       });
 
