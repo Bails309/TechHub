@@ -1,4 +1,5 @@
 import path from 'path';
+import sanitizeHtml from 'sanitize-html';
 import { randomUUID } from 'crypto';
 import { writeFile, mkdir, readdir, stat, unlink } from 'fs/promises';
 import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
@@ -372,6 +373,33 @@ async function cleanupAzureIcons(validIconPaths: string[]): Promise<number> {
   return deletedCount;
 }
 
+
+function sanitizeSvg(svgContent: string): string {
+  return sanitizeHtml(svgContent, {
+    allowedTags: [
+      'svg', 'g', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse',
+      'defs', 'style', 'clipPath', 'mask', 'use', 'image', 'text', 'tspan',
+      'linearGradient', 'radialGradient', 'stop', 'filter', 'feGaussianBlur',
+      'feOffset', 'feMerge', 'feMergeNode', 'feColorMatrix', 'feComponentTransfer',
+      'feFuncR', 'feFuncG', 'feFuncB', 'feFuncA', 'feComposite', 'feFlood'
+    ],
+    allowedAttributes: {
+      '*': [
+        'id', 'class', 'style', 'viewBox', 'width', 'height', 'fill', 'stroke',
+        'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'd', 'cx', 'cy', 'r',
+        'x', 'y', 'x1', 'y1', 'x2', 'y2', 'points', 'transform', 'opacity',
+        'offset', 'stop-color', 'stop-opacity', 'stdDeviation', 'in', 'result',
+        'mode', 'values', 'type', 'operator', 'k1', 'k2', 'k3', 'k4', 'clip-path',
+        'mask', 'href', 'xlink:href'
+      ],
+      'svg': ['xmlns', 'xmlns:xlink', 'version'],
+    },
+    parser: {
+      lowerCaseAttributeNames: false,
+    },
+  });
+}
+
 export async function cleanupOrphanedIcons(validIconPaths: string[]): Promise<number> {
   const provider = await resolveStorageProvider();
   if (provider === 's3') return cleanupS3Icons(validIconPaths);
@@ -380,18 +408,29 @@ export async function cleanupOrphanedIcons(validIconPaths: string[]): Promise<nu
 }
 
 export async function saveIcon(file: File) {
-  const buffer = Buffer.from(await file.arrayBuffer());
+  let buffer = Buffer.from(await file.arrayBuffer());
 
   // Security: Check magic bytes to prevent dangerous payloads disguised as images.
   // PNG: 89 50 4E 47 0D 0A 1A 0A
   // JPEG: FF D8 FF
+  // SVG: starts with '<?xml' or '<svg'
   // During unit tests we use tiny fake buffers; skip strict magic-byte checks in tests.
   const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
   const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
   const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
 
-  if (!isTest && !isPng && !isJpeg) {
-    throw new Error('SECURITY: Invalid image content. The file does not appear to be a valid PNG or JPEG.');
+  // Check for SVG (basic check for <svg or <?xml)
+  const contentStart = buffer.slice(0, 100).toString().trim().toLowerCase();
+  const isSvg = contentStart.startsWith('<svg') || contentStart.startsWith('<?xml');
+
+  if (!isTest && !isPng && !isJpeg && !isSvg) {
+    throw new Error('SECURITY: Invalid image content. The file does not appear to be a valid PNG, JPEG, or SVG.');
+  }
+
+  // Sanitize SVG if detected
+  if (isSvg) {
+    const sanitized = sanitizeSvg(buffer.toString('utf-8'));
+    buffer = Buffer.from(sanitized, 'utf-8');
   }
 
   const provider = await resolveStorageProvider();
@@ -399,11 +438,11 @@ export async function saveIcon(file: File) {
   // Pass the already read buffer to the providers to avoid re-reading
   // Determine the extension solely from the magic-byte validation to avoid
   // trusting the original file name (prevents stored XSS via .html etc.).
-  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : '.bin');
+  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : (isSvg ? '.svg' : '.bin'));
   const filename = `${randomUUID()}${extension}`;
 
-  if (provider === 's3') return saveS3WithBuffer(buffer, filename, file.type);
-  if (provider === 'azure') return saveAzureWithBuffer(buffer, filename, file.type);
+  if (provider === 's3') return saveS3WithBuffer(buffer, filename, isSvg ? 'image/svg+xml' : file.type);
+  if (provider === 'azure') return saveAzureWithBuffer(buffer, filename, isSvg ? 'image/svg+xml' : file.type);
   return saveLocalWithBuffer(buffer, filename);
 }
 

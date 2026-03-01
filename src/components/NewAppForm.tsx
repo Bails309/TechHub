@@ -132,7 +132,7 @@ export default function NewAppForm({
             type="file"
             name="icon"
             id="icon-upload-new"
-            accept="image/png,image/jpeg"
+            accept="image/png,image/jpeg,image/svg+xml"
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (!file) {
@@ -158,7 +158,7 @@ export default function NewAppForm({
                 {fileName ? fileName : 'Click to upload icon'}
               </p>
               <p className="file-upload-description">
-                PNG or JPEG (max 2MB)
+                PNG, JPEG or SVG (max 2MB)
               </p>
             </div>
             {fileName && (

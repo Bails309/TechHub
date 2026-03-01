@@ -149,7 +149,7 @@ export default function EditAppForm({
             type="file"
             name="icon"
             id={`icon-upload-${app.id}`}
-            accept="image/png,image/jpeg"
+            accept="image/png,image/jpeg,image/svg+xml"
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (!file) {
@@ -175,7 +175,7 @@ export default function EditAppForm({
                 {fileName ? fileName : 'Click to change icon'}
               </p>
               <p className="file-upload-description">
-                PNG or JPEG (max 2MB)
+                PNG, JPEG or SVG (max 2MB)
               </p>
             </div>
             {fileName && (

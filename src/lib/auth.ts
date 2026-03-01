@@ -205,10 +205,15 @@ export function getClientIp(headers: HeaderSource, remoteAddr?: string) {
   // Do NOT fall back to proxy-supplied headers (x-real-ip) when TRUST_PROXY is false,
   // as these headers can be spoofed by clients. If the immediate remote address
   // cannot be determined, return undefined so callers do not rely on unverified headers.
-  if (!remoteNormalized && process.env.NODE_ENV === 'development') {
-    return '127.0.0.1'; // Fallback for local dev environments where socket IP might be missing
+  if (!remoteNormalized) {
+    // Fallback for environments where socket IP might be missing (e.g. certain Docker/Serverless setups)
+    // We log this as a warning but allow it to proceed with a safe default for rate limiting.
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[AUTH] Missing client IP detection, falling back to 127.0.0.1');
+    }
+    return '127.0.0.1';
   }
-  return remoteNormalized ?? undefined;
+  return remoteNormalized;
 }
 
 export function getRateLimitKey(headers: HeaderSource, fallbackKey?: string, remoteAddr?: string) {

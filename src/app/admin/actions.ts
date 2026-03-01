@@ -93,11 +93,13 @@ const MAX_ICON_BYTES = 2 * 1024 * 1024;
 const ALLOWED_ICON_EXTENSIONS = new Set([
   '.png',
   '.jpg',
-  '.jpeg'
+  '.jpeg',
+  '.svg'
 ]);
 const ALLOWED_ICON_MIME_TYPES = new Set([
   'image/png',
-  'image/jpeg'
+  'image/jpeg',
+  'image/svg+xml'
 ]);
 
 const uploadSchema = z.any()
