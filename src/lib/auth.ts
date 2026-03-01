@@ -35,6 +35,7 @@ const credentialsEnabledEnv = process.env.ENABLE_CREDENTIALS !== 'false';
 const allowEmailLinking = false;
 const trustProxy = process.env.TRUST_PROXY === 'true';
 const trustedProxiesEnv = String(process.env.TRUSTED_PROXIES ?? '').trim();
+const rateLimitFallbackAllowProxy = process.env.RATE_LIMIT_FALLBACK_ALLOW_PROXY === 'true';
 
 // Session lifetime (OWASP baseline: 8-hour absolute, 20-minute idle)
 function getSessionMaxAgeSeconds(): number {
@@ -79,6 +80,26 @@ function isFromTrustedProxy(remoteIp: string | undefined) {
   } catch {
     return false;
   }
+}
+function isPrivateOrLocal(remoteIp: string | undefined) {
+  if (!remoteIp) return false;
+  try {
+    const addr = ipaddr.parse(remoteIp);
+    const range = addr.range();
+    // treat private, loopback, linkLocal, and uniqueLocal as internal/proxy
+    return range === 'private' || range === 'loopback' || range === 'linkLocal' || range === 'uniqueLocal';
+  } catch {
+    return false;
+  }
+}
+
+// Startup-time warning for common misconfiguration: if TRUST_PROXY is false
+// but deployers have not configured `TRUSTED_PROXIES`, we warn in production
+// to avoid silent IP-spoofing behind a reverse proxy which can enable mass
+// rate-limit DoS when IP-based limits are used.
+if (!trustProxy && !trustedProxiesEnv && process.env.NODE_ENV === 'production') {
+  console.warn('[AUTH] Warning: TRUST_PROXY is not enabled and TRUSTED_PROXIES is unset.');
+  console.warn('[AUTH] If this app runs behind a reverse proxy (ALB, Nginx, etc.) set TRUST_PROXY=true and TRUSTED_PROXIES to the proxy CIDR(s).');
 }
 const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
 
@@ -273,27 +294,40 @@ function buildCredentialsProvider() {
       // reject the attempt rather than falling back to a shared 'unknown'
       // bucket which would enable easy DoS/password-spray amplification.
       if (!clientIp) {
-        console.error(
-          'auth: login rejected - missing client IP; remoteAddr=%s trustProxy=%s trustedProxies=%s',
-          remoteAddr ?? 'undefined',
-          trustProxy,
-          trustedProxiesEnv
-        );
-        writeAuditLog({
-          category: 'auth',
-          action: 'login_failure',
-          provider: 'credentials',
-          details: { reason: 'missing_client_ip' },
-        });
-        return null;
+        // If the immediate remote address looks like a private/local IP and
+        // the operator has explicitly enabled the fallback, allow continuing
+        // with email-only rate limiting. Otherwise reject to avoid proxy IP
+        // mass-rate-limit amplification.
+        if (isPrivateOrLocal(remoteAddr) && rateLimitFallbackAllowProxy) {
+          console.warn('auth: detected private remoteAddr %s while TRUST_PROXY=false; falling back to email-only rate limiting due to RATE_LIMIT_FALLBACK_ALLOW_PROXY=true', remoteAddr);
+        } else {
+          console.error(
+            'auth: login rejected - missing client IP; remoteAddr=%s trustProxy=%s trustedProxies=%s',
+            remoteAddr ?? 'undefined',
+            trustProxy,
+            trustedProxiesEnv
+          );
+          writeAuditLog({
+            category: 'auth',
+            action: 'login_failure',
+            provider: 'credentials',
+            details: { reason: 'missing_client_ip' },
+          });
+          return null;
+        }
       }
 
       try {
-        await assertRateLimit(`ip:${clientIp}`);
-        // If IP rate limit passed, enforce per-user rate limit
+        if (clientIp) {
+          await assertRateLimit(`ip:${clientIp}`);
+        } else {
+          // clientIp missing but fallback allowed — skip IP-based limit
+          console.debug('auth: skipping IP rate limit, using email-only fallback');
+        }
+        // If IP rate limit passed (or was skipped), enforce per-user rate limit
         await assertRateLimit(`user:${emailKey}`);
       } catch {
-        console.warn('auth: login rejected - rate limited email=%s ip=%s', emailKey, clientIp);
+        console.warn('auth: login rejected - rate limited email=%s ip=%s', emailKey, clientIp ?? 'none');
         writeAuditLog({
           category: 'auth',
           action: 'login_failure',

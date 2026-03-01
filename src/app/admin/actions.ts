@@ -43,6 +43,11 @@ import { lookup } from 'dns/promises';
 import https from 'https';
 import http from 'http';
 import ipaddr from 'ipaddr.js';
+// Detect SQLite by inspecting DATABASE_URL so we avoid DB-specific SQL like FOR UPDATE
+const isSqlite = (() => {
+  const url = String(process.env.DATABASE_URL ?? '').toLowerCase();
+  return url.startsWith('file:') || url.includes('sqlite');
+})();
 import { assertUrlNotPrivate, isPublicIp } from '../../lib/ssrf';
 import { getStorageConfigMapWithDeps, StorageProviderId } from '@/lib/storageConfig';
 import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
@@ -114,6 +119,16 @@ const uploadSchema = z.any()
     }
     return true;
   }, { message: 'Invalid file type' });
+
+function isNonEmptyFile(f: unknown): f is File {
+  // In browser environments File is available; in some test/node runtimes
+  // it is not. Prefer `instanceof File` when available, otherwise fall
+  // back to a structural check to preserve existing test behavior.
+  if (typeof File !== 'undefined') {
+    return f instanceof File && (f as File).size > 0;
+  }
+  return Boolean(f && typeof (f as any).size === 'number' && (f as any).size > 0);
+}
 
 const storageProviderSchema = z.enum(['local', 's3', 'azure']);
 const storageIntentSchema = z.enum(['save', 'test']);
@@ -401,10 +416,10 @@ export async function createApp(formData: FormData) {
     // Be defensive: some browsers/clients may include an empty file field
     // (size === 0). Skip attempting to save when the file is empty to avoid
     // the "Empty file" validation error.
-    if (iconFile && typeof (iconFile as any).size === 'number' && (iconFile as any).size > 0) {
+    if (isNonEmptyFile(iconFile)) {
       // validate & save (the local `saveIcon` helper performs validation)
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
+      // @ts-ignore - narrowing above isn't always recognized in some TS targets
       iconPath = await saveIcon(iconFile as File);
     }
     try {
@@ -523,8 +538,8 @@ export async function updateSiteLogos(formData: FormData) {
 
     const toDelete: string[] = [];
 
-    if (logoLightFile && typeof (logoLightFile as any).size === 'number' && (logoLightFile as any).size > 0) {
-      // @ts-ignore - FormData File type
+    if (isNonEmptyFile(logoLightFile)) {
+      // @ts-ignore - narrowing above isn't always recognized in some TS targets
       const saved = await saveIcon(logoLightFile as File);
       if (saved) {
         if (newLogoLight) toDelete.push(newLogoLight);
@@ -532,8 +547,8 @@ export async function updateSiteLogos(formData: FormData) {
       }
     }
 
-    if (logoDarkFile && typeof (logoDarkFile as any).size === 'number' && (logoDarkFile as any).size > 0) {
-      // @ts-ignore
+    if (isNonEmptyFile(logoDarkFile)) {
+      // @ts-ignore - narrowing above isn't always recognized in some TS targets
       const saved = await saveIcon(logoDarkFile as File);
       if (saved) {
         if (newLogoDark) toDelete.push(newLogoDark);
@@ -541,8 +556,8 @@ export async function updateSiteLogos(formData: FormData) {
       }
     }
 
-    if (faviconFile && typeof (faviconFile as any).size === 'number' && (faviconFile as any).size > 0) {
-      // @ts-ignore
+    if (isNonEmptyFile(faviconFile)) {
+      // @ts-ignore - narrowing above isn't always recognized in some TS targets
       const saved = await saveIcon(faviconFile as File);
       if (saved) {
         if (newFavicon) toDelete.push(newFavicon);
@@ -882,9 +897,9 @@ export async function updateApp(formData: FormData) {
     // Be defensive: skip saving if the file is empty (size === 0) to avoid
     // the "Empty file" validation error when the client submits an empty
     // file field (typical when only the remove checkbox is used).
-    if (iconFile && typeof (iconFile as any).size === 'number' && (iconFile as any).size > 0) {
+    if (isNonEmptyFile(iconFile)) {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
+      // @ts-ignore - narrowing above isn't always recognized in some TS targets
       iconPath = await saveIcon(iconFile as File);
     }
 
@@ -1049,9 +1064,17 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
     try {
       await prisma.$transaction(async (tx) => {
         // Lock the admin role row so concurrent updates serialize here.
-        await tx.$queryRaw`
-          SELECT id FROM "Role" WHERE id = ${adminRoleCheck.id} FOR UPDATE
-        `;
+        if (!isSqlite) {
+          await tx.$queryRaw`
+            SELECT id FROM "Role" WHERE id = ${adminRoleCheck.id} FOR UPDATE
+          `;
+        } else {
+          // SQLite does not support FOR UPDATE - perform a plain select to
+          // keep behavior compatible for local/test SQLite databases.
+          await tx.$queryRaw`
+            SELECT id FROM "Role" WHERE id = ${adminRoleCheck.id}
+          `;
+        }
 
         // If we're removing the admin role from this user, ensure we won't drop to zero admins.
         const targetIsAdmin = await tx.userRole.findFirst({ where: { userId: parsed.data.userId, roleId: adminRoleCheck.id } });
@@ -1068,6 +1091,10 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
             skipDuplicates: true
           });
         }
+        // Bump the parent user's updatedAt so session revocation logic
+        // (which compares token.userUpdatedAt to user.updatedAt) triggers
+        // immediately rather than waiting for cache expiry.
+        await tx.user.update({ where: { id: parsed.data.userId }, data: { updatedAt: new Date() } });
       });
     } catch (err) {
       if ((err as Error).message === 'last-admin') {
@@ -1077,13 +1104,18 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
     }
   } else {
     // No admin role exists at all, just perform the replace.
-    await prisma.$transaction([
-      prisma.userRole.deleteMany({ where: { userId: parsed.data.userId } }),
-      prisma.userRole.createMany({
-        data: nextRoles.map((roleId) => ({ userId: parsed.data.userId, roleId })),
-        skipDuplicates: true
-      })
-    ]);
+    await prisma.$transaction(async (tx) => {
+      await tx.userRole.deleteMany({ where: { userId: parsed.data.userId } });
+      if (nextRoles.length) {
+        await tx.userRole.createMany({
+          data: nextRoles.map((roleId) => ({ userId: parsed.data.userId, roleId })),
+          skipDuplicates: true
+        });
+      }
+
+      // Bump parent user's updatedAt to trigger session revocation coherence.
+      await tx.user.update({ where: { id: parsed.data.userId }, data: { updatedAt: new Date() } });
+    });
   }
 
   // Invalidate cached user meta so session cache reflects new roles.
@@ -1156,9 +1188,15 @@ export async function deleteUser(formData: FormData): Promise<AdminActionState> 
   if (adminRole) {
     try {
       await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`
-          SELECT id FROM "Role" WHERE id = ${adminRole.id} FOR UPDATE
-        `;
+        if (!isSqlite) {
+          await tx.$queryRaw`
+            SELECT id FROM "Role" WHERE id = ${adminRole.id} FOR UPDATE
+          `;
+        } else {
+          await tx.$queryRaw`
+            SELECT id FROM "Role" WHERE id = ${adminRole.id}
+          `;
+        }
 
         const adminCount = await tx.userRole.count({ where: { roleId: adminRole.id } });
         const targetIsAdmin = await tx.userRole.findFirst({ where: { userId, roleId: adminRole.id } });
@@ -1368,8 +1406,8 @@ export async function createLocalUser(
       return { status: 'error', message: 'Full name is required' };
     }
     // Zod will validate email format; surface a clear message if email is invalid
-    const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail);
-    if (!emailValid) {
+    const emailError = payload.error?.errors?.find((e) => Array.isArray(e.path) && e.path[0] === 'email');
+    if (emailError) {
       return { status: 'error', message: 'A valid email address is required' };
     }
     if (!rawPassword) {
