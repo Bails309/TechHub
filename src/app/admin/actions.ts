@@ -954,11 +954,9 @@ export async function updateApp(formData: FormData) {
     // non-critical: the DB update already committed and should be treated as
     // successful even if cleanup steps fail. Catch and log any errors so a
     // cleanup failure doesn't surface as a save failure to the UI.
-    try {
+      try {
       if (existingApp?.icon) {
-        if (iconRemove) {
-          await safeDeleteIcon(existingApp.icon);
-        } else if (iconPath && existingApp.icon !== iconPath) {
+        if (iconRemove || (iconPath && existingApp.icon !== iconPath)) {
           await safeDeleteIcon(existingApp.icon);
         }
       }
