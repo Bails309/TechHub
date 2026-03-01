@@ -120,6 +120,15 @@ const uploadSchema = z.any()
     return true;
   }, { message: 'Invalid file type' });
 
+// Also validate extension explicitly to avoid relying solely on the spoofable MIME type.
+// Use `path.extname` to derive the extension from the uploaded filename.
+uploadSchema.refine((file) => {
+  const name = (file as any)?.name;
+  if (typeof name !== 'string') return false;
+  const ext = path.extname(name).toLowerCase();
+  return ALLOWED_ICON_EXTENSIONS.has(ext);
+}, { message: 'Invalid file extension' });
+
 function isNonEmptyFile(f: unknown): f is File {
   // In browser environments File is available; in some test/node runtimes
   // it is not. Prefer `instanceof File` when available, otherwise fall
