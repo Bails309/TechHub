@@ -108,77 +108,15 @@ export default async function UsersPage({
                 </p>
             </section>
 
-            {showAccessPaneInline ? (
-                <section id="user-access" className="card-panel md:p-8">
-                    <h2 className="font-serif text-2xl mb-6">User access</h2>
-                    <p className="text-sm text-ink-200 mb-6">
-                        Signed-in users see public + authenticated apps. Assign roles below to unlock
-                        role-based apps and admin access.
-                    </p>
-                    <div className="space-y-4">
-                        {usersForAccess.map((user) => {
-                            const currentRoles = new Set(user.roles.map((item) => item.roleId));
-                            return (
-                                <div key={user.id} className="space-y-3">
-                                    <AdminActionForm
-                                        action={updateUserRoles}
-                                        successMessage="Roles saved."
-                                        className="rounded-2xl border border-ink-800 px-5 py-4 space-y-4"
-                                    >
-                                        <input type="hidden" name="userId" value={user.id} />
-                                        {user.roles.map((ur) => (
-                                            <input key={ur.roleId} type="hidden" name="previousRoles" value={ur.roleId} />
-                                        ))}
-                                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                                            <div>
-                                                <p className="font-semibold">{user.name ?? user.email ?? 'Unnamed user'}</p>
-                                                <p className="text-xs text-ink-400">{user.email ?? 'No email'}</p>
-                                                <p className="text-xs text-ink-300">
-                                                    Current roles: {user.roles.length ? user.roles.map((item) => item.role.name).join(', ') : 'None'}
-                                                </p>
-                                            </div>
-                                            <button
-                                                type="submit"
-                                                className="btn-primary btn-small"
-                                            >
-                                                Save roles
-                                            </button>
-                                        </div>
-                                        <div className="grid gap-3">
-                                            <RoleMultiSelect
-                                                options={rolesList.map(r => ({ value: r.id, label: r.name }))}
-                                                initialSelected={Array.from(currentRoles)}
-                                            />
-                                        </div>
-                                        <label className="flex items-center gap-2 text-xs text-ink-300">
-                                            <input type="checkbox" name="confirmAdminGrant" className="h-4 w-4" />
-                                            Confirm granting admin role (required when adding admin)
-                                        </label>
-                                    </AdminActionForm>
-
-                                    {user.passwordHash && (
-                                        <ForcePasswordResetForm userId={user.id} />
-                                    )}
-
-                                    <div className="flex justify-end">
-                                        <DeleteUserForm action={deleteUser} userId={user.id} userEmail={user.email} />
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </section>
-            ) : (
-                <section id="user-access" className="card-panel md:p-8">
-                    <h2 className="font-serif text-2xl">User access</h2>
-                    <p className="text-ink-200 mt-2 mb-6">
-                        Manage detailed role assignments and permissions for your {totalUsers} users.
-                    </p>
-                    <Link href="/admin/users/access#detailed-access" className="btn-primary inline-block">
-                        Manage all permissions
-                    </Link>
-                </section>
-            )}
+            <section id="user-access" className="card-panel md:p-8">
+                <h2 className="font-serif text-2xl">User access</h2>
+                <p className="text-ink-200 mt-2 mb-6">
+                    Manage detailed role assignments and permissions for your {totalUsers} users.
+                </p>
+                <Link href="/admin/users/access#detailed-access" className="btn-primary inline-block">
+                    Manage all permissions
+                </Link>
+            </section>
 
             <section id="users-list" className="card-panel md:p-8">
                 <h2 className="font-serif text-2xl mb-6">Users</h2>
