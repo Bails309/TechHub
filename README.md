@@ -12,21 +12,13 @@
 
 ## ✨ Visual Showcase
 
-````carousel
 ![Modern Dark Dashboard](docs/images/dashboard_dark.png)
-<!-- slide -->
 ![Sleek Light Dashboard](docs/images/dashboard_light.png)
-<!-- slide -->
 ![Admin Analytics Dashboard](docs/images/admin_analytics.png)
-<!-- slide -->
 ![Command Palette (Ctrl+K)](docs/images/command_palette.png)
-<!-- slide -->
 ![Pinned Apps & Personalization](docs/images/pinned_apps.png)
-<!-- slide -->
 ![Modern Side Navigation](docs/images/sidebar.png)
-<!-- slide -->
 ![Refined Admin Controls](docs/images/admin_nav.png)
-````
 
 ---
 
@@ -44,7 +36,7 @@
   - **Hardened Auth**: Robust password policies and session protection.
   - **Audit Logging**: Comprehensive trails for every administrative action.
 - **☁️ Flexible Storage**: Support for Local, AWS S3, and Azure Blob storage.
-- **🛠️ Admin Empowerment**: Easily manage apps, categories, users, and global site configurations (including custom logos). See the [Admin Guide](docs/admin_guide.md) for detailed configuration options.
+- **🛠️ Admin Empowerment**: Easily manage apps, categories, users, and global site configurations (including custom logos). See the [Admin Guide](docs/ADMIN_GUIDE.md) for detailed configuration options.
 
 ---
 
@@ -54,10 +46,10 @@
 
 For in-depth technical guides, security reviews, and operational procedures, refer to the following documentation:
 
-- **[Architecture & Design [docs/ARCHITECTURE.md]](docs/ARCHITECTURE.md)**: Deep dive into the system design, data lifecycle, and standalone container architecture.
-- **[Security & Hardening [docs/SECURITY.md]](docs/SECURITY.md)**: Comprehensive guide on CSRF/SSRF prevention, nonce-based CSP, and session security.
-- **[Azure Deployment (ACA) [docs/DEPLOYMENT_AZURE.md]](docs/DEPLOYMENT_AZURE.md)**: Step-by-step instructions for deploying to Azure Container Apps behind a cloud ingress.
-- **[Administrative Operations [docs/ADMIN_OPS.md]](docs/ADMIN_OPS.md)**: Manual for user management, password recovery, and system troubleshooting.
+- **[Architecture & Design](docs/ARCHITECTURE.md)**: Deep dive into the system design, data lifecycle, and standalone container architecture.
+- **[Security & Hardening](docs/SECURITY.md)**: Comprehensive guide on CSRF/SSRF prevention, nonce-based CSP, and session security.
+- **[Azure Deployment (ACA)](docs/DEPLOYMENT_AZURE.md)**: Step-by-step instructions for deploying to Azure Container Apps behind a cloud ingress.
+- **[Administrative Operations](docs/ADMIN_OPS.md)**: Manual for user management, password recovery, and system troubleshooting.
 
 ---
 
