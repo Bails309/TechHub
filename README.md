@@ -14,11 +14,7 @@
 
 ![Modern Dark Dashboard](docs/images/dashboard_dark.png)
 ![Sleek Light Dashboard](docs/images/dashboard_light.png)
-![Admin Analytics Dashboard](docs/images/admin_analytics.png)
 ![Command Palette (Ctrl+K)](docs/images/command_palette.png)
-![Pinned Apps & Personalization](docs/images/pinned_apps.png)
-![Modern Side Navigation](docs/images/sidebar.png)
-![Refined Admin Controls](docs/images/admin_nav.png)
 
 ---
 
