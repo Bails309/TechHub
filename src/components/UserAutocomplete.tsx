@@ -33,6 +33,12 @@ export default function UserAutocomplete({ initialSelectedUsers = [] }: UserAuto
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Sync state if props change (e.g. after a server action revalidates)
+    const initialSelectedKey = JSON.stringify(initialSelectedUsers);
+    useEffect(() => {
+        setSelectedUsers(initialSelectedUsers);
+    }, [initialSelectedKey]);
+
     // Perform search
     useEffect(() => {
         if (!query.trim()) {
