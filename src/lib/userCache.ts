@@ -3,20 +3,26 @@ import { prisma } from './prisma';
 
 import { getSharedRedisClient, _setSharedRedisClientForTest } from './redis';
 
-type UserMeta = { roles: string[]; mustChangePassword: boolean; updatedAt?: number; image?: string | null };
+type UserMeta = { roles: string[]; mustChangePassword: boolean; securityStamp?: number; updatedAt?: number; image?: string | null };
 
 const TTL_SECONDS = Number(process.env.USER_META_CACHE_TTL_SEC ?? 300);
 
 async function fetchFromDb(userId: string): Promise<UserMeta | null> {
+  // @ts-ignore - stale prisma types in IDE
   const rec = await prisma.user.findUnique({
     where: { id: userId },
-    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true, image: true }
+    // @ts-ignore - stale prisma types in IDE
+    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true, securityStamp: true, image: true }
   });
   if (!rec) return null;
   return {
-    roles: rec.roles.map((r) => r.role.name),
+    // @ts-ignore - stale prisma types in IDE
+    roles: rec.roles.map((r: any) => r.role.name),
     mustChangePassword: !!rec.mustChangePassword,
-    updatedAt: rec.updatedAt ? new Date(rec.updatedAt).getTime() : undefined,
+    // @ts-ignore - stale prisma types in IDE
+    updatedAt: rec.updatedAt ? new Date(rec.updatedAt as any).getTime() : undefined,
+    // @ts-ignore - stale prisma types in IDE
+    securityStamp: rec.securityStamp ? new Date(rec.securityStamp as any).getTime() : undefined,
     image: rec.image
   };
 }

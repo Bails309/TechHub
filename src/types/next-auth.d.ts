@@ -13,7 +13,18 @@ declare module 'next-auth' {
       roles: string[];
       authProvider?: string;
       mustChangePassword?: boolean;
-    } & DefaultSession['user'];
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+    };
+  }
+
+  interface User {
+    id: string;
+    roles?: string[];
+    mustChangePassword?: boolean;
+    authProvider?: string;
+    securityStamp?: Date;
   }
 }
 
@@ -27,36 +38,6 @@ declare module 'next-auth/jwt' {
     revoked?: boolean;
     lastActivity?: number;
     lastCheckedAt?: number;
-    userUpdatedAt?: number;
-  }
-}
-import 'next-auth';
-
-declare module 'next-auth' {
-  interface Session {
-    user: {
-      id: string;
-      roles: string[];
-      mustChangePassword?: boolean;
-      authProvider?: string;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
-    };
-  }
-
-  interface User {
-    roles?: string[];
-    mustChangePassword?: boolean;
-    authProvider?: string;
-  }
-}
-
-declare module 'next-auth/jwt' {
-  interface JWT {
-    authProvider?: string;
-    mustChangePassword?: boolean;
-    roles?: string[];
-    id?: string;
+    securityStamp?: number;
   }
 }

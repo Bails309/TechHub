@@ -42,8 +42,8 @@
 
 For in-depth technical guides, security reviews, and operational procedures, refer to the following documentation:
 
-- **[Architecture & Design](docs/ARCHITECTURE.md)**: Deep dive into the system design, data lifecycle, and standalone container architecture.
-- **[Security & Hardening](docs/SECURITY.md)**: Comprehensive guide on CSRF/SSRF prevention, nonce-based CSP, and session security.
+- **[Architecture & Design](ARCHITECTURE.md)**: Deep dive into the system design, data lifecycle, and standalone container architecture.
+- **[Security & Hardening](SECURITY.md)**: Comprehensive guide on CSRF/SSRF prevention, nonce-based CSP, and session security.
 - **[Azure Deployment (ACA)](docs/DEPLOYMENT_AZURE.md)**: Step-by-step instructions for deploying to Azure Container Apps behind a cloud ingress.
 - **[Administrative Operations](docs/ADMIN_OPS.md)**: Manual for user management, password recovery, and system troubleshooting.
 

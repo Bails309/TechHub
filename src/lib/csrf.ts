@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 // ---------------------------------------------------------------------------
 // HMAC-signed CSRF tokens (Signed Double-Submit Cookie pattern)
@@ -126,18 +126,13 @@ async function getSessionIdFromCookie(): Promise<string> {
     const { getToken } = await import('next-auth/jwt');
     const { headers: getHeaders } = await import('next/headers');
     const hdrs = await getHeaders();
-
-    // Build a minimal request-like object that getToken can read cookies from.
-    const cookieHeader = hdrs.get('cookie') ?? '';
-    const req = {
-      headers: { cookie: cookieHeader },
-      cookies: Object.fromEntries(
-        cookieHeader.split(';').map((c) => {
-          const [k, ...v] = c.trim().split('=');
-          return [k, v.join('=')];
-        })
-      ),
-    };
+    // Build a real NextRequest object using the actual headers from the context.
+    // This satisfies getToken's requirement for a request object while ensuring
+    // that standard Headers methods like .has() and .get() are available, even
+    // when next-auth performs extra checks behind a reverse proxy.
+    const req = new NextRequest('http://localhost', {
+      headers: hdrs,
+    });
 
     const token = await getToken({ req: req as any, secret: getSecret() });
     return token?.sub ?? '';
@@ -198,19 +193,13 @@ export async function validateApiCsrf(request: NextRequest): Promise<boolean> {
     const cookieVal = request.cookies.get('XSRF-TOKEN')?.value ?? null;
     if (!cookieVal || cookieVal !== token) return false;
 
-    // Extract session id (JWT sub) using next-auth's getToken helper against
-    // the incoming request cookies so the token can be HMAC-verified.
     const { getToken } = await import('next-auth/jwt');
-    const cookieHeader = request.headers.get('cookie') ?? '';
-    const req = {
-      headers: { cookie: cookieHeader },
-      cookies: Object.fromEntries(
-        cookieHeader.split(';').filter(Boolean).map((c) => {
-          const [k, ...v] = c.trim().split('=');
-          return [k, v.join('=')];
-        })
-      ),
-    } as any;
+    // Next-auth's getToken helper needs a request object. We create a NextRequest
+    // that preserves all headers (including cookies and proxy headers like X-Forwarded-Host)
+    // so that session validation succeeds even behind reverse proxies.
+    const req = new NextRequest(request.url, {
+      headers: request.headers,
+    });
 
     const tokenObj = await getToken({ req, secret: getSecret() });
     const sessionId = tokenObj?.sub ?? '';

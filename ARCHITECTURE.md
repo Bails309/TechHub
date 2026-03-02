@@ -28,7 +28,7 @@ graph TD
 
 ### Infrastructure Layer
 - **Standalone Container**: The application is built as a self-contained unit using the `node:20-slim` base image. It is optimized for **Azure Container Apps** and standard Kubernetes environments.
-- **Middleware Pipeline**: A high-performance request interceptor ([`src/middleware.ts`](../src/middleware.ts)) that handles:
+- **Middleware Pipeline**: A high-performance request interceptor ([`src/middleware.ts`](src/middleware.ts)) that handles:
   - **Security Headers**: Injecting Nonce-based CSP, HSTS, and Frame protection.
   - **Session Guards**: Enforcing idle/absolute timeouts and revocation.
   - **CSRF Token Generation**: Injecting signed HMAC tokens.
@@ -42,9 +42,10 @@ graph TD
 - **`auth.ts`**: The core authentication engine using Next-Auth. Handles credential validation, SSO provider mapping, and JWT consistency checks.
 - **`security/`**: A suite of specialized utilities:
   - `csrf.ts`: HMAC-signed token validation.
-  - `ssrf.ts`: Resolve-time DNS validation to prevent internal network scanning.
+  - `ssrf.ts`: Resolve-time DNS validation with **Pinned IP Clients** to prevent TOCTOU/DNS Rebinding attacks.
+  - `pinnedClient.ts`: Shared logic for creating security-hardened Azure and AWS SDK clients.
   - `crypto.ts`: Envelope encryption for storing cloud secrets in the database.
-- **`storage.ts`**: An abstraction layer that provides a consistent API for reading and writing icons regardless of the underlying cloud provider.
+- **`storage.ts`**: An abstraction layer that provides a consistent API for reading and writing icons regardless of the underlying cloud provider, with built-in **Magic Byte** detection for secure file handling.
 
 ## 3. Data Lifecycle
 
@@ -53,7 +54,7 @@ graph TD
 2. **Provider Redirect**: Handled via Next-Auth (Azure AD, Keycloak, or Credentials).
 3. **JWT Issue**: On success, a JWT is issued with an **Absolute Lifetime** (8 hours).
 4. **Session Guard**: Every subsequent request is checked against a **Redis-backed Idle Timer** (20 minutes).
-5. **Revocation**: If a user is deleted or their password changed elsewhere, the `jwt` callback detects the update and revokes the session in real-time.
+5. **Revocation**: Critical security events (password changes) rotate the user's `securityStamp`. The `jwt` callback detects this mismatch and revokes all active sessions across devices in real-time.
 
 ### Request Flow
 1. **Middleware**: Headers are set, and the session is validated.

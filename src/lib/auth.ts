@@ -203,32 +203,31 @@ export function getClientIp(headers: HeaderSource, remoteAddr?: string) {
   // (or the framework hides the immediate remote TCP socket entirely),
   // accept proxy-supplied headers (but only from configured trusted proxies).
   if (trustProxy) {
-    if ((remoteNormalized && isFromTrustedProxy(remoteNormalized)) || (!remoteNormalized && allowMissingRemoteIp)) {
-      const trustedClientIp = normalizeIp(readHeader(headers, 'x-client-ip'));
-      if (trustedClientIp) return trustedClientIp;
-
-      // Prefer x-forwarded-for but select the correct client IP by scanning
-      // from right-to-left and skipping any addresses that belong to trusted proxies.
-      const forwardedFor = readHeader(headers, 'x-forwarded-for');
-      if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
-        const parts = forwardedFor.split(',').map((s) => s.trim()).filter(Boolean);
-        for (let i = parts.length - 1; i >= 0; i--) {
-          const candidate = normalizeIp(parts[i]);
-          if (!candidate) continue;
-          // if candidate is a trusted proxy, skip it
-          if (isFromTrustedProxy(candidate)) continue;
-          return candidate;
-        }
-      }
-
-      // Only accept `x-client-ip` or the validated x-forwarded-for result above.
-      // Do NOT fall back to other single-value headers which may be spoofed
-      // by upstreams that don't strip them.
-      return remoteNormalized;
+    // Prefer x-azure-clientip if present (set by Azure ingress, less spoofable if configured)
+    const azureIp = readHeader(headers, 'x-azure-clientip');
+    if (typeof azureIp === 'string' && azureIp.trim()) {
+      const normalized = normalizeIp(azureIp);
+      if (normalized) return normalized;
     }
 
-    // TRUST_PROXY=true but immediate remote isn't trusted: ignore headers, use remote
-    return remoteNormalized ?? undefined;
+    // Prefer x-forwarded-for but select the correct client IP by scanning
+    // from right-to-left and skipping any addresses that belong to trusted proxies.
+    const forwardedFor = readHeader(headers, 'x-forwarded-for');
+    if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
+      const parts = forwardedFor.split(',').map((s) => s.trim()).filter(Boolean);
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const candidate = normalizeIp(parts[i]);
+        if (!candidate) continue;
+        // if candidate is a trusted proxy, skip it
+        if (isFromTrustedProxy(candidate)) continue;
+        return candidate;
+      }
+    }
+
+    // Only accept the validated x-forwarded-for result above.
+    // Do NOT fall back to other single-value headers which may be spoofed
+    // by upstreams that don't strip them.
+    return remoteNormalized;
   }
 
   // Not trusting proxy headers: prefer immediate remote address only.
@@ -665,13 +664,13 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                   // If this is an intentional 'update' trigger (e.g. from password change),
                   // do NOT revoke even if updatedAt has changed. This prevents a race where
                   // the user is logged out immediately after successfully changing their password.
-                  if (trigger !== 'update' && token.userUpdatedAt && new Date((userRecord as any).updatedAt).getTime() > token.userUpdatedAt) {
-                    console.warn('[AUTH] Revoking session for sub=%s. Reason: user_updated (Security: password/profile changed elsewhere)', String(token.sub));
+                  if (trigger !== 'update' && token.securityStamp && new Date((userRecord as any).securityStamp).getTime() > token.securityStamp) {
+                    console.warn('[AUTH] Revoking session for sub=%s. Reason: security_stamp_updated (Security: password/credentials changed elsewhere)', String(token.sub));
                     token.revoked = true;
                   }
                   token.roles = (userRecord as any).roles?.map((r: any) => r.role.name) ?? [];
                   if (typeof (userRecord as any).mustChangePassword === 'boolean') token.mustChangePassword = (userRecord as any).mustChangePassword;
-                  token.userUpdatedAt = (userRecord as any).updatedAt ? new Date((userRecord as any).updatedAt).getTime() : undefined;
+                  token.securityStamp = (userRecord as any).securityStamp ? new Date((userRecord as any).securityStamp).getTime() : undefined;
                   token.lastCheckedAt = now;
                 }
               } catch (err) {
@@ -685,7 +684,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             } else {
               token.roles = meta.roles;
               if (typeof meta.mustChangePassword === 'boolean') token.mustChangePassword = meta.mustChangePassword;
-              if (typeof meta.updatedAt === 'number') token.userUpdatedAt = meta.updatedAt;
+              if (typeof meta.securityStamp === 'number') token.securityStamp = meta.securityStamp;
               token.lastCheckedAt = now;
             }
           } catch (err) {
