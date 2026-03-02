@@ -28,7 +28,7 @@ graph TD
 
 ### Infrastructure Layer
 - **Standalone Container**: The application is built as a self-contained unit using the `node:20-slim` base image. It is optimized for **Azure Container Apps** and standard Kubernetes environments.
-- **Middleware Pipeline**: A high-performance request interceptor (`src/middleware.ts`) that handles:
+- **Middleware Pipeline**: A high-performance request interceptor ([`src/middleware.ts`](../src/middleware.ts)) that handles:
   - **Security Headers**: Injecting Nonce-based CSP, HSTS, and Frame protection.
   - **Session Guards**: Enforcing idle/absolute timeouts and revocation.
   - **CSRF Token Generation**: Injecting signed HMAC tokens.
