@@ -379,6 +379,7 @@ function sanitizeSvg(svgContent: string): string {
     allowedTags: [
       'svg', 'g', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse',
       'defs', 'style', 'clipPath', 'mask', 'use', 'image', 'text', 'tspan',
+      'symbol', 'title', 'desc', // Added missing common tags
       'linearGradient', 'radialGradient', 'stop', 'filter', 'feGaussianBlur',
       'feOffset', 'feMerge', 'feMergeNode', 'feColorMatrix', 'feComponentTransfer',
       'feFuncR', 'feFuncG', 'feFuncB', 'feFuncA', 'feComposite', 'feFlood'
@@ -395,8 +396,10 @@ function sanitizeSvg(svgContent: string): string {
       'svg': ['xmlns', 'xmlns:xlink', 'version'],
     },
     parser: {
+      lowerCaseTags: false, // CRITICAL: preserve SVG tag casing (e.g. clipPath)
       lowerCaseAttributeNames: false,
     },
+    allowVulnerableTags: true, // Allow <style> tags without stripping contents
   });
 }
 

@@ -953,6 +953,7 @@ export async function updateApp(formData: FormData) {
       });
 
       await safeRevalidatePath('/admin');
+      await safeRevalidatePath('/admin/apps');
       await safeRevalidatePath('/');
     } catch (err) {
       // eslint-disable-next-line no-console
