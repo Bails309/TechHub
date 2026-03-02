@@ -48,14 +48,22 @@
 
 ---
 
+---
+
+## 📚 Platform Documentation
+
+For in-depth technical guides, security reviews, and operational procedures, refer to the following documentation:
+
+- **[Architecture & Design [docs/ARCHITECTURE.md]](docs/ARCHITECTURE.md)**: Deep dive into the system design, data lifecycle, and standalone container architecture.
+- **[Security & Hardening [docs/SECURITY.md]](docs/SECURITY.md)**: Comprehensive guide on CSRF/SSRF prevention, nonce-based CSP, and session security.
+- **[Azure Deployment (ACA) [docs/DEPLOYMENT_AZURE.md]](docs/DEPLOYMENT_AZURE.md)**: Step-by-step instructions for deploying to Azure Container Apps behind a cloud ingress.
+- **[Administrative Operations [docs/ADMIN_OPS.md]](docs/ADMIN_OPS.md)**: Manual for user management, password recovery, and system troubleshooting.
+
+---
+
 ## 🏗️ Architecture
 
 TechHub is designed as a **Standalone Container** architecture. It is fully self-contained and ready to be deployed behind any modern cloud ingress or reverse proxy.
-
-- **Frontend/Backend**: Next.js (React) unified App Router.
-- **Database**: PostgreSQL (managed via Prisma).
-- **Cache**: Redis for session management and rate limiting.
-- **Security**: Hardened at the application layer; no sidecar proxy required for core safety. Fully strictly nonced CSP.
 
 ---
 

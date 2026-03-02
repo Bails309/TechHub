@@ -1,57 +1,74 @@
 # TechHub Architecture
 
-TechHub is a consolidated application portal designed for high availability, security, and scalability. It leverages a modern web stack with a **Standalone Container** architecture to ensure seamless management of internal applications.
+TechHub is a high-performance, secure application portal designed for enterprise environments. It follows a **Standalone Container** architecture, consolidating its request pipeline, security enforcement, and data orchestration into a single, scalable unit.
 
-## System Overview
+## 1. System Overview
 
-The following diagram illustrates the high-level flow of requests and data within the TechHub environment.
+TechHub leverages a modern web stack to balance development velocity with robust security.
 
 ```mermaid
 graph TD
     User([User / Admin]) --> Ingress[Cloud Ingress / Proxy]
-    Ingress --> Web[Next.js App Router]
+    Ingress -- "HTTPS" --> Web[Next.js TechHub App]
     
-    subgraph "Application Layer"
-        Web -- "Session / Metadata" --> Redis[(Redis Cache)]
-        Web -- "Core Data" --> DB[(PostgreSQL)]
-        Web -- "Icons / Assets" --> Storage{Storage Provider}
+    subgraph "Application Core"
+        Web -- "Session & Rate Limit" --> Redis[(Azure Redis Cache)]
+        Web -- "Relational Data" --> DB[(PostgreSQL)]
+        Web -- "Icon Storage" --> Storage{Unified Storage Interface}
     end
     
-    subgraph "Storage Options"
-        Storage -- "Default" --> Local[Local Filesystem]
-        Storage -- "Cloud" --> S3[AWS S3 / Compatible]
+    subgraph "Storage Providers"
+        Storage -- "Public Cloud" --> S3[AWS S3]
         Storage -- "Enterprise" --> Azure[Azure Blob Storage]
+        Storage -- "Developer" --> Local[Local Filesystem]
     end
 ```
 
-## Core Components
+## 2. Component Breakdown
 
-### 1. Ingress Layer
-TechHub is designed to be deployed behind a modern Cloud Ingress or Reverse Proxy (e.g., Azure Container Apps Ingress, Azure Front Door, AWS ALB, or Nginx). Unlike older architectures that required an Nginx "sidecar" inside the container orchestration, TechHub is a **Standalone Container** that handles its own security headers and logic. The Ingress layer now focuses primarily on:
-- **TLS Termination**: Secure HTTPS communication.
-- **Global Path Routing**: Directing traffic to the TechHub container on Port 3000.
-- **Load Balancing**: Distributing traffic across multiple instances.
+### Infrastructure Layer
+- **Standalone Container**: The application is built as a self-contained unit using the `node:20-slim` base image. It is optimized for **Azure Container Apps** and standard Kubernetes environments.
+- **Middleware Pipeline**: A high-performance request interceptor (`src/middleware.ts`) that handles:
+  - **Security Headers**: Injecting Nonce-based CSP, HSTS, and Frame protection.
+  - **Session Guards**: Enforcing idle/absolute timeouts and revocation.
+  - **CSRF Token Generation**: Injecting signed HMAC tokens.
 
-### 2. Application Layer (Next.js Standalone)
-The core of TechHub is a self-contained Next.js application. It is fully hardened at the application layer:
-- **Self-Managed Security**: HSTS, CSP, and X-Frame-Options are managed directly in the application middleware.
-- **Strict Content Security Policy**: Uses dynamic nonces to allow scripts and styles while blocking all unauthorized inline code.
-- **Resource Efficiency**: Optimized for container runtimes with a stabilized internal port (3000).
+### Application Layer (`src/app`)
+- **App Router**: Uses Next.js 15 App Router for optimized server-side rendering (SSR) and streaming.
+- **Server Actions**: All mutations (e.g., updating user profiles, adding apps) are handled via safe Server Actions that enforce RBAC and CSRF protection natively.
+- **Admin Module**: A dedicated area for managing the catalogue, user roles, SSO configuration, and system health.
 
-### 3. Caching Layer (Redis)
-Redis is critical for high-concurrency environments:
-- **Session Metadata**: Faster session lookups and reduced database load.
-- **Rate Limiting**: Centralized tracking of request frequency across multiple app instances.
-- **Consistency**: Ensuring users have immediate access to updated roles and permissions.
+### Logic & Security Layer (`src/lib`)
+- **`auth.ts`**: The core authentication engine using Next-Auth. Handles credential validation, SSO provider mapping, and JWT consistency checks.
+- **`security/`**: A suite of specialized utilities:
+  - `csrf.ts`: HMAC-signed token validation.
+  - `ssrf.ts`: Resolve-time DNS validation to prevent internal network scanning.
+  - `crypto.ts`: Envelope encryption for storing cloud secrets in the database.
+- **`storage.ts`**: An abstraction layer that provides a consistent API for reading and writing icons regardless of the underlying cloud provider.
 
-### 4. Database (PostgreSQL)
-The primary source of truth for:
-- **User Profiles**: Names, emails, and role assignments.
-- **App Catalogue**: Links, categories, and descriptions.
-- **Audit Logs**: A permanent record of all admin and security events.
+## 3. Data Lifecycle
 
-### 5. Decoupled Storage
-TechHub supports a flexible storage architecture for application icons:
-- **Abstraction**: A unified interface (`src/lib/storage.ts`) masks the complexity of different providers.
-- **Providers**: Supports Local storage (default for small setups), AWS S3 (for cloud scale), and Azure Blob Storage (for enterprise environments).
-- **Cleanup**: Built-in tools reach out to the active provider to purge orphaned files, keeping storage costs lean.
+### Authentication Flow
+1. **Initiation**: User hits `/auth/signin`.
+2. **Provider Redirect**: Handled via Next-Auth (Azure AD, Keycloak, or Credentials).
+3. **JWT Issue**: On success, a JWT is issued with an **Absolute Lifetime** (8 hours).
+4. **Session Guard**: Every subsequent request is checked against a **Redis-backed Idle Timer** (20 minutes).
+5. **Revocation**: If a user is deleted or their password changed elsewhere, the `jwt` callback detects the update and revokes the session in real-time.
+
+### Request Flow
+1. **Middleware**: Headers are set, and the session is validated.
+2. **Page Load**: Next.js fetches meta-data from Redis (roles, profile pic) to avoid DB overhead.
+3. **App Rendering**: The catalogue is rendered based on the user's specific roles and audience permissions.
+4. **Feedback**: Audit logs are generated for all state changes (`writeAuditLog`).
+
+## 4. Key Dependencies
+
+| Dependency | Purpose |
+| :--- | :--- |
+| **Next.js** | Core framework for SSR and API routes. |
+| **Prisma** | Type-safe ORM for PostgreSQL. |
+| **Next-Auth** | Authentication and session management. |
+| **Redis (ioredis)** | Distributed caching and rate limiting. |
+| **Zod** | End-to-end schema validation. |
+| **Lucide React** | Consistent, high-quality iconography. |
+| **ipaddr.js** | Precise IP/CIDR validation for proxy trust logic. |

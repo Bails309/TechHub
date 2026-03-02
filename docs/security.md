@@ -1,44 +1,58 @@
 # TechHub Security & Hardening
 
-Security is a core pillar of TechHub. The application implements multiple layers of protection to ensure administrative integrity and user safety.
+TechHub implements a "Defense-in-Depth" strategy, ensuring that multiple security layers protect administrative integrity and user data. The application is hardened out-of-the-box for enterprise cloud deployments.
 
 ## 1. Authentication & Session Management
 
-- **Provider Diversity**: Supports SSO (Azure AD, Keycloak) and Local Credentials.
-- **Must Change Password**: New credential-based users are forced to change their password on the first login.
-- **Session Guards**:
-  - **Idle Timeout**: Automatically terminates sessions after 20 minutes of inactivity.
-  - **Absolute Timeout**: Forces re-authentication after 8 hours to rotate keys and session signatures.
-  - **Anti-Loop Protection**: `SessionGuard` prevents rapid-fire redirection loops by tracking state transitions.
-- **Secure Key Rotation**: SSO provider secrets are encrypted at rest using a master key (`SSO_MASTER_KEY`).
+- **Provider Diversity**: Native support for **Azure Entra ID (SSO)**, **Keycloak**, and **Local Credentials**.
+- **Must Change Password**: New local users are forced to update their credentials upon first login.
+- **Session Hardening**:
+  - **Absolute Timeout (8h)**: Prevents long-lived session hijacking by forcing re-authentication once per shift.
+  - **Idle Timeout (20m)**: Automatically terminates sessions after 20 minutes of inactivity.
+  - **Session Guard**: A specialized middleware logic that prevents rapid-fire redirection loops and ensures session consistency across administrative state changes.
+- **Real-time Revocation**: If an account is updated or deleted in the database, the `jwt` callback detects the `updatedAt` change and revokes the session in real-time.
 
-## 2. Access Control
+## 2. Infrastructure Security
 
-- **Role-Based Access Control (RBAC)**: Apps are assigned visibility based on roles (e.g., `admin`, `staff`) or specific user IDs.
-- **Server-Side Validation**: Every Administrative Server Action enforces strict role checks using `getServerAuthSession`.
-- **Pre-Provisioning**: The `REQUIRE_PREPROVISIONED_USERS` flag prevents unknown users from self-registering via SSO, ensuring only authorized employees gain access.
+### Strict Content Security Policy (CSP)
+TechHub enforces a strict, nonce-based CSP via `src/middleware.ts`. 
+- **Dynamic Nonces**: Every request generates a cryptographically secure 128-bit nonce.
+- **No `'unsafe-inline'`**: All scripts and styles must be nonced, effectively neutering XSS vectors.
+- **Strict Headers**: HSTS, `X-Content-Type-Options: nosniff`, and `X-Frame-Options: SAMEORIGIN` are enforced.
 
-## 3. Infrastructure & Network Security
+### SSRF Policy & DNS Rebinding Protection
+Administrative features that fetch external assets (e.g., S3/Azure Blob icons) or interact with SSO providers are protected by `src/lib/ssrf.ts`:
+- **Resolve-time Validation**: Validates the underlying IP address *after* DNS resolution but *before* the request is made.
+- **Internal IP Blocking**: Automatically rejects attempts to scan or access private network ranges (RFC 1918), loopback, or link-local addresses.
 
-- **Standalone Hardening**: TechHub consolidates its security posture within the application layer. This makes it compatible with modern cloud ingresses (Azure Container Apps, AWS ALB) and standard reverse proxies.
-- **Native Security Headers**: HSTS, Content Security Policy (CSP), X-Frame-Options, and No-Sniff are enforced directly in the middleware and application configuration.
-- **Strict CSP**: The application implements a **Strict CSP** using server-generated nonces for every request. It explicitly forbids `'unsafe-inline'` for both scripts and styles, mitigating XSS risks even if an attacker manages to inject markup.
-- **Redis-Backed Rate Limiting**: In production, rate limiting is centralized in Redis. This prevents "password spraying" or DoS attacks that target multiple container instances simultaneously.
-- **Database Hardening**:
-  - **Pre-Start Checks**: The application refuses to start in production if weak database passwords (e.g., `techhub/techhub`) are detected.
-  - **Prisma Transactions**: Critical operations use database transactions to ensure data consistency.
+## 3. Request Integrity
 
-## 4. Audit Logging
+### Signed Double-Submit CSRF Protection
+TechHub implements a custom, high-security CSRF layer in `src/lib/csrf.ts`:
+- **HMAC Signatures**: CSRF tokens are cryptographically bound to the user's secret session sub.
+- **Public Flow Protection**: Even unauthenticated flows (e.g., login, password reset) are protected by tokens bound to a persistent `visitor-id` cookie.
+- **Timing-Safe Validation**: Uses `crypto.timingSafeEqual` to prevent side-channel attacks during token verification.
 
-Every security-relevant event is captured in a permanent audit log:
-- **Login Events**: Successes, failures, and sign-outs.
-- **User Management**: Role updates, password changes, and account deletions.
-- **App Management**: Catalogue updates and storage cleanup jobs.
+### Rate Limiting
+- **Redis-Backed**: In production, rate limits are centralized in Redis to ensure consistency across multiple container instances.
+- **Tiered Filtering**: Protects against automated password spraying and brute-force attacks at the IP and User levels.
 
-Audit logs capture the **Actor**, the **Action**, the **Target**, and technical details like the **Client IP** for forensic analysis.
+## 4. Storage & Media Security
 
-## 5. Defensive Implementation Details
+- **Path Traversal Prevention**: The `readIcon` implementation in `src/lib/storage.ts` strictly validates path segments to prevent `../` traversal attacks.
+- **Decoupled Access**: Media assets are never served directly from the filesystem. They are streamed via a proxy route (`src/app/uploads/[...path]/route.ts`) which reinforces `nosniff` headers and content-type isolation.
+- **URL Sanitization**: The `sanitizeIconUrl` utility blocks `javascript:`, `data:`, and `vbscript:` schemes, ensuring icons only load from trusted same-origin or configured cloud sources.
 
-- **Input Validation**: All forms are validated server-side using `Zod` schemas.
-- **CSRF Protection**: Native CSRF tokens are enforced on all Server Actions.
-- **Secure Storage**: Application icons are protected by a decoupled storage layer that handles path traversal prevention and ensures no unauthenticated access to the underlying filesystem objects.
+## 5. Audit & Compliance
+
+Every security-relevant operation is recorded in the `AuditLog` table:
+
+![Admin Audit Log](images/admin_audit.png)
+
+- **Actor**: Who performed the action (User ID or 'system').
+- **Target**: The resource being modified (User ID, App ID, etc.).
+- **Outcome**: Success or failure (with detailed reason).
+- **Context**: Client IP and latency tracking.
+
+> [!NOTE]
+> In Azure Container Apps (ACA), ensure `TRUST_PROXY=true` and `ALLOW_MISSING_REMOTE_IP=true` are set to allow the audit logger to correctly resolve the client's original IP address through the Azure ingress layer.
