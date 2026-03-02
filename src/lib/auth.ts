@@ -326,14 +326,18 @@ function buildCredentialsProvider() {
       }
 
       try {
+        // Use shared key generation to ensure consistent rate-limit keys across the codebase.
+        const ipKey = getRateLimitKey(req?.headers, undefined, remoteAddr); // yields `ip:...` when IP present
+        const userKey = getRateLimitKey(undefined, emailKey, undefined); // yields `user:email`
+
         if (clientIp) {
-          await assertRateLimit(`ip:${clientIp}`);
+          await assertRateLimit(ipKey);
         } else {
           // clientIp missing but fallback allowed — skip IP-based limit
           console.debug('auth: skipping IP rate limit, using email-only fallback');
         }
         // If IP rate limit passed (or was skipped), enforce per-user rate limit
-        await assertRateLimit(`user:${emailKey}`);
+        await assertRateLimit(userKey);
       } catch {
         console.warn('auth: login rejected - rate limited email=%s ip=%s', emailKey, clientIp ?? 'none');
         writeAuditLog({

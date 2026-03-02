@@ -43,11 +43,18 @@ import { lookup } from 'dns/promises';
 import https from 'https';
 import http from 'http';
 import ipaddr from 'ipaddr.js';
-// Detect SQLite by inspecting DATABASE_URL so we avoid DB-specific SQL like FOR UPDATE
-const isSqlite = (() => {
+// Runtime assertion to ensure PostgreSQL is the configured provider.
+// The application ships with PostgreSQL as a required dependency; several
+// queries below rely on Postgres-specific SQL (FOR UPDATE) and will crash
+// on SQLite. Call `assertPostgres()` at runtime before executing DB SQL
+// that requires Postgres semantics.
+function assertPostgres() {
   const url = String(process.env.DATABASE_URL ?? '').toLowerCase();
-  return url.startsWith('file:') || url.includes('sqlite');
-})();
+  const ok = url.startsWith('postgres:') || url.startsWith('postgresql:') || url.includes('postgres://') || url.includes('postgresql://') || url.includes('postgres');
+  if (!ok) {
+    throw new Error('Unsupported database provider: PostgreSQL is required');
+  }
+}
 import { assertUrlNotPrivate, isPublicIp } from '../../lib/ssrf';
 import { getStorageConfigMapWithDeps, StorageProviderId } from '@/lib/storageConfig';
 import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
@@ -155,22 +162,17 @@ async function saveIcon(file: File) {
 async function safeDeleteIcon(iconPath?: string) {
   if (!iconPath) return;
   try {
-    // Dynamically import the storage module so test-time mocks and
-    // runtime replacements are respected. Some test runners or
-    // module-aliasing can cause the top-level imported symbol to
-    // not point at the mocked function used in tests, so resolve at
-    // call-time to ensure we invoke the current implementation.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = await import('../../lib/storage');
-    const deleteFn = (mod as any).deleteIcon ?? (mod as any).default;
-    if (typeof deleteFn === 'function') {
-      await deleteFn(iconPath);
+    // Use the statically imported delete function to keep module
+    // resolution consistent with test-runner mocking (e.g. vi.mock()).
+    if (typeof storageDeleteIcon === 'function') {
+      await storageDeleteIcon(iconPath);
     }
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn('Failed to delete old icon', iconPath, err);
   }
 }
+
 
 function parseAzureConnectionString(raw: string) {
   const accountMatch = raw.match(/AccountName=([^;]+)/i);
@@ -608,6 +610,11 @@ export async function updateSiteLogos(formData: FormData) {
         // If a new light logo was uploaded, ensure dark is set to the same value (overwrite if needed)
         if (newLogoLight) {
           if (newLogoDark !== newLogoLight) {
+            // If we're about to overwrite a newly uploaded dark logo (not an existing stored file),
+            // ensure it gets cleaned up to avoid orphaning it in storage.
+            if (newLogoDark && newLogoDark !== existing?.logoDark && newLogoDark !== existing?.logo) {
+              toDelete.push(newLogoDark);
+            }
             if (existing?.logoDark && existing.logoDark !== newLogoLight) toDelete.push(existing.logoDark);
             newLogoDark = newLogoLight;
           }
@@ -615,6 +622,11 @@ export async function updateSiteLogos(formData: FormData) {
         // If a new dark logo was uploaded, ensure light is set to the same value (overwrite if needed)
         if (newLogoDark) {
           if (newLogoLight !== newLogoDark) {
+            // If we're about to overwrite a newly uploaded light logo (not an existing stored file),
+            // ensure it gets cleaned up to avoid orphaning it in storage.
+            if (newLogoLight && newLogoLight !== existing?.logoLight && newLogoLight !== existing?.logo) {
+              toDelete.push(newLogoLight);
+            }
             if (existing?.logoLight && existing.logoLight !== newLogoDark) toDelete.push(existing.logoLight);
             newLogoLight = newLogoDark;
           }
@@ -1071,18 +1083,12 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
     try {
       await prisma.$transaction(async (tx) => {
         // Lock the admin role row so concurrent updates serialize here.
-        if (!isSqlite) {
-          await tx.$queryRaw`
-            SELECT id FROM "Role" WHERE id = ${adminRoleCheck.id} FOR UPDATE
-          `;
-        } else {
-          // SQLite does not support FOR UPDATE. Force an exclusive write lock
-          // on the row by issuing a no-op UPDATE; this serializes concurrent
-          // transactions and prevents the last-admin race condition.
-          await tx.$queryRaw`
-            UPDATE "Role" SET id = id WHERE id = ${adminRoleCheck.id}
-          `;
-        }
+        // This logic requires PostgreSQL; assert that the configured
+        // provider is Postgres and use FOR UPDATE to obtain a row lock.
+        assertPostgres();
+        await tx.$queryRaw`
+          SELECT id FROM "Role" WHERE id = ${adminRoleCheck.id} FOR UPDATE
+        `;
 
         // If we're removing the admin role from this user, ensure we won't drop to zero admins.
         const targetIsAdmin = await tx.userRole.findFirst({ where: { userId: parsed.data.userId, roleId: adminRoleCheck.id } });
@@ -1196,16 +1202,11 @@ export async function deleteUser(formData: FormData): Promise<AdminActionState> 
   if (adminRole) {
     try {
       await prisma.$transaction(async (tx) => {
-        if (!isSqlite) {
-          await tx.$queryRaw`
-            SELECT id FROM "Role" WHERE id = ${adminRole.id} FOR UPDATE
-          `;
-        } else {
-          // Force a write-lock in SQLite to serialize concurrent admin checks.
-          await tx.$queryRaw`
-            UPDATE "Role" SET id = id WHERE id = ${adminRole.id}
-          `;
-        }
+        // Use Postgres FOR UPDATE; ensure the configured DB is Postgres.
+        assertPostgres();
+        await tx.$queryRaw`
+          SELECT id FROM "Role" WHERE id = ${adminRole.id} FOR UPDATE
+        `;
 
         const adminCount = await tx.userRole.count({ where: { roleId: adminRole.id } });
         const targetIsAdmin = await tx.userRole.findFirst({ where: { userId, roleId: adminRole.id } });
