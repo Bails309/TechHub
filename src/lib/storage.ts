@@ -379,6 +379,7 @@ function sanitizeSvg(svgContent: string): string {
     allowedTags: [
       'svg', 'g', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse',
       'defs', 'style', 'clipPath', 'mask', 'use', 'image', 'text', 'tspan',
+      'symbol', 'title', 'desc', // Added missing common tags
       'linearGradient', 'radialGradient', 'stop', 'filter', 'feGaussianBlur',
       'feOffset', 'feMerge', 'feMergeNode', 'feColorMatrix', 'feComponentTransfer',
       'feFuncR', 'feFuncG', 'feFuncB', 'feFuncA', 'feComposite', 'feFlood'
@@ -390,13 +391,16 @@ function sanitizeSvg(svgContent: string): string {
         'x', 'y', 'x1', 'y1', 'x2', 'y2', 'points', 'transform', 'opacity',
         'offset', 'stop-color', 'stop-opacity', 'stdDeviation', 'in', 'result',
         'mode', 'values', 'type', 'operator', 'k1', 'k2', 'k3', 'k4', 'clip-path',
-        'mask', 'href', 'xlink:href'
+        'mask', 'href', 'xlink:href',
+        'font-family', 'font-size', 'font-weight', 'text-anchor', 'dominant-baseline'
       ],
       'svg': ['xmlns', 'xmlns:xlink', 'version'],
     },
     parser: {
+      lowerCaseTags: false, // CRITICAL: preserve SVG tag casing (e.g. clipPath)
       lowerCaseAttributeNames: false,
     },
+    allowVulnerableTags: true, // Allow <style> tags without stripping contents
   });
 }
 

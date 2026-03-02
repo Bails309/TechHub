@@ -1,42 +1,12 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { useFormState } from 'react-dom';
-import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
-import { changePassword, ChangePasswordState } from './actions';
-import HiddenCsrfInput from '@/components/HiddenCsrfInput';
-
-const initialState: ChangePasswordState = { status: 'idle', message: '' };
+import ChangePasswordForm from '@/components/ChangePasswordForm';
 
 export default function ChangePasswordPage() {
-  const [state, formAction] = useFormState(changePassword, initialState);
-  const { data: session, update } = useSession();
-  const successRedirected = useRef(false);
-  const router = useRouter();
-
-  // Log session state for debugging
-  useEffect(() => {
-    if (session) {
-      console.log('[DEBUG] ChangePasswordPage: session state', {
-        authenticated: true,
-        mustChangePassword: session.user.mustChangePassword,
-        email: session.user.email
-      });
-    }
-  }, [session]);
-
-  useEffect(() => {
-    if (state.status === 'success' && !successRedirected.current) {
-      successRedirected.current = true;
-      const finish = async () => {
-        await update({ user: { mustChangePassword: false } as { mustChangePassword: boolean } });
-        // Force a hard reload to ensure middleware sees the new cookie
-        window.location.assign('/');
-      };
-      void finish();
-    }
-  }, [state.status, update]);
+  const handleSuccess = () => {
+    // Force a hard reload to ensure middleware sees the new cookie
+    window.location.assign('/');
+  };
 
   return (
     <div className="px-6 md:px-12 py-12">
@@ -49,57 +19,7 @@ export default function ChangePasswordPage() {
           </p>
         </div>
 
-        <form action={formAction} className="space-y-4">
-          <HiddenCsrfInput />
-          <div>
-            <label className="form-label" htmlFor="currentPassword">
-              Current password
-            </label>
-            <input
-              id="currentPassword"
-              name="currentPassword"
-              type="password"
-              required
-              className="input-field"
-            />
-          </div>
-          <div>
-            <label className="form-label" htmlFor="newPassword">
-              New password
-            </label>
-            <input
-              id="newPassword"
-              name="newPassword"
-              type="password"
-              required
-              className="input-field"
-            />
-          </div>
-          <div>
-            <label className="form-label" htmlFor="confirmPassword">
-              Confirm new password
-            </label>
-            <input
-              id="confirmPassword"
-              name="confirmPassword"
-              type="password"
-              required
-              className="input-field"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={state.pending}
-            className="btn-primary w-full"
-          >
-            {state.pending ? 'Updating…' : 'Update password'}
-          </button>
-          {state.status !== 'idle' ? (
-            <p className={state.status === 'success' ? 'text-emerald-300 text-xs' : 'text-rose-300 text-xs'}>
-              {state.message}
-            </p>
-          ) : null}
-        </form>
+        <ChangePasswordForm onSuccess={handleSuccess} />
       </div>
     </div>
   );

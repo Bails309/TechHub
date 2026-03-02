@@ -3,20 +3,21 @@ import { prisma } from './prisma';
 
 import { getSharedRedisClient, _setSharedRedisClientForTest } from './redis';
 
-type UserMeta = { roles: string[]; mustChangePassword: boolean; updatedAt?: number };
+type UserMeta = { roles: string[]; mustChangePassword: boolean; updatedAt?: number; image?: string | null };
 
 const TTL_SECONDS = Number(process.env.USER_META_CACHE_TTL_SEC ?? 300);
 
 async function fetchFromDb(userId: string): Promise<UserMeta | null> {
   const rec = await prisma.user.findUnique({
     where: { id: userId },
-    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
+    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true, image: true }
   });
   if (!rec) return null;
   return {
     roles: rec.roles.map((r) => r.role.name),
     mustChangePassword: !!rec.mustChangePassword,
-    updatedAt: rec.updatedAt ? new Date(rec.updatedAt).getTime() : undefined
+    updatedAt: rec.updatedAt ? new Date(rec.updatedAt).getTime() : undefined,
+    image: rec.image
   };
 }
 

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, ShieldCheck, LogIn, Menu, X, LayoutDashboard, Settings } from 'lucide-react';
+import { Home, ShieldCheck, LogIn, Menu, X, LayoutDashboard, Settings, User as UserIcon } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import { useState } from 'react';
 import ThemeToggle from './ThemeToggle';
@@ -66,9 +66,9 @@ export default function SideNav({ logo, logoLight, logoDark }: { logo?: string; 
                         <Link
                             href="/"
                             onClick={() => setIsMobileOpen(false)}
-                            className={`flex items-center gap-4 px-4 pl-3 py-3 rounded-xl transition-all group ${!isAdminPanel ? 'bg-ocean-100 dark:bg-ocean-500/10 text-ocean-900 dark:text-white font-semibold' : 'text-ink-500 dark:text-ink-300 hover:text-ink-900 dark:hover:text-white hover:bg-ink-50 dark:hover:bg-ink-800/50 font-semibold'} ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
+                            className={`flex items-center gap-4 px-4 pl-3 py-3 rounded-xl transition-all group ${pathname === '/' ? 'bg-ocean-100 dark:bg-ocean-500/10 text-ocean-900 dark:text-white font-semibold' : 'text-ink-500 dark:text-ink-300 hover:text-ink-900 dark:hover:text-white hover:bg-ink-50 dark:hover:bg-ink-800/50 font-semibold'} ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
                         >
-                            <LayoutDashboard size={20} className={!isAdminPanel ? 'text-ocean-600 dark:text-ocean-400' : 'text-ink-400 dark:text-ink-400 group-hover:text-ink-600 dark:group-hover:text-white'} />
+                            <LayoutDashboard size={20} className={pathname === '/' ? 'text-ocean-600 dark:text-ocean-400' : 'text-ink-400 dark:text-ink-400 group-hover:text-ink-600 dark:group-hover:text-white'} />
                             <span className="lg:inline whitespace-nowrap">Dashboard</span>
                         </Link>
 
@@ -82,6 +82,17 @@ export default function SideNav({ logo, logoLight, logoDark }: { logo?: string; 
                                 <span className="lg:inline whitespace-nowrap">Administration</span>
                             </Link>
                         )}
+
+                        {isAuthenticated && (
+                            <Link
+                                href="/profile"
+                                onClick={() => setIsMobileOpen(false)}
+                                className={`flex items-center gap-4 px-4 pl-3 py-3 rounded-xl transition-all group ${pathname === '/profile' ? 'bg-ocean-100 dark:bg-ocean-500/10 text-ocean-900 dark:text-white font-semibold' : 'text-ink-500 dark:text-ink-300 hover:text-ink-900 dark:hover:text-white hover:bg-ink-50 dark:hover:bg-ink-800/50 font-semibold'} ${user?.mustChangePassword ? 'opacity-50 pointer-events-none' : ''}`}
+                            >
+                                <UserIcon size={20} className={pathname === '/profile' ? 'text-ocean-600 dark:text-ocean-400' : 'text-ink-400 dark:text-ink-400 group-hover:text-ink-600 dark:group-hover:text-white'} />
+                                <span className="lg:inline whitespace-nowrap">Profile</span>
+                            </Link>
+                        )}
                     </nav>
                 </div>
 
@@ -93,28 +104,32 @@ export default function SideNav({ logo, logoLight, logoDark }: { logo?: string; 
 
                     {user ? (
                         <div className="flex flex-col gap-2">
-                            {isLocalUser && (
-                                <Link
-                                    href="/auth/change-password"
-                                    className="w-full text-center text-xs py-2 rounded-lg bg-ink-100 dark:bg-ink-800 text-ink-700 dark:text-ink-300 hover:bg-ink-200 dark:hover:bg-ink-700 transition"
-                                    onClick={() => setIsMobileOpen(false)}
-                                >
-                                    <span className="md:hidden lg:inline">Change Password</span>
-                                    <span className="hidden md:inline lg:hidden">Pwd</span>
-                                </Link>
-                            )}
                             <button
                                 type="button"
                                 onClick={() => signOut({ callbackUrl: '/auth/signin' })}
-                                className="flex items-center gap-3 p-3 rounded-xl bg-ink-900 dark:bg-white/5 border border-transparent dark:border-white/10 text-white dark:text-ink-300 hover:bg-ink-800 dark:hover:bg-white/10 dark:hover:text-white transition-all justify-center lg:justify-start mx-auto lg:mx-0 w-full"
+                                className="group relative flex items-center gap-4 p-2.5 pl-3 rounded-xl bg-ink-900 dark:bg-white/5 border border-transparent dark:border-white/10 text-white dark:text-ink-300 hover:bg-ink-800 dark:hover:bg-white/10 dark:hover:text-white transition-all justify-start w-full overflow-hidden"
                             >
-                                <LogIn size={18} className="shrink-0" />
-                                <div className="flex flex-col items-start md:hidden lg:flex overflow-hidden">
-                                    <span className="text-sm font-medium">Sign out</span>
-                                    <span className="text-[10px] opacity-70 truncate w-full max-w-[150px]">
-                                        {user.name ?? user.email ?? 'Signed in'}
+                                <div className="shrink-0 flex items-center justify-center">
+                                    <LogIn size={20} className="transition-transform group-hover:scale-110" />
+                                </div>
+                                <div className="flex flex-col items-start md:hidden lg:flex overflow-hidden flex-1 min-w-0">
+                                    <span className="text-sm font-medium text-left">Sign out</span>
+                                    <span className="text-[10px] opacity-70 truncate w-full text-left">
+                                        {user?.name ?? user?.email ?? 'Signed in'}
                                     </span>
                                 </div>
+                                {user?.image && (
+                                    <div className="shrink-0 h-10 w-10 rounded-full overflow-hidden border-2 border-ink-950 dark:border-ink-900 shadow-xl transition-transform group-hover:scale-105">
+                                        <img
+                                            src={user.image}
+                                            alt=""
+                                            className="h-full w-full object-cover"
+                                            onError={(e) => {
+                                                (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+                                            }}
+                                        />
+                                    </div>
+                                )}
                             </button>
                         </div>
                     ) : (

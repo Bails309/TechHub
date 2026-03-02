@@ -13,10 +13,18 @@ export const dynamic = 'force-dynamic';
 export default async function Home() {
   try {
     const session = await getServerAuthSession();
-    const roles = session?.user?.roles ?? [];
+    const sessionRoles = session?.user?.roles ?? [];
 
-    const roleRecords = roles.length
-      ? await prisma.role.findMany({ where: { name: { in: roles } } })
+    // Fetch role records for all names in the session, using case-insensitive
+    // matching to handle mismatches between local DB (usually lowercase)
+    // and SSO providers (which may use Title Case).
+    const roleRecords = sessionRoles.length
+      ? await prisma.role.findMany({
+        where: {
+          name: { in: sessionRoles, mode: 'insensitive' }
+        },
+        select: { id: true }
+      })
       : [];
     const roleIds = roleRecords.map((role) => role.id);
 

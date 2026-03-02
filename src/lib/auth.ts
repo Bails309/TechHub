@@ -557,6 +557,9 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           if (typeof updatedMustChange === 'boolean') {
             token.mustChangePassword = updatedMustChange;
           }
+          if (session?.user?.image !== undefined) {
+            token.image = session.user.image;
+          }
           // Persist logout reason from the client into the JWT so that the
           // signOut event handler (which does NOT run the jwt callback) can
           // read it from the decoded token and log the correct audit action.
@@ -582,6 +585,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
         if (!token.authProvider && user?.authProvider) {
           token.authProvider = user.authProvider;
+        }
+
+        if (user?.image) {
+          token.image = user.image;
         }
 
         if (user?.roles) {
@@ -743,14 +750,16 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
               ]) as any;
               if (meta) {
                 session.user.roles = meta.roles ?? [];
+                session.user.image = meta.image ?? session.user.image;
                 // AUTH-FIX: Trust token.mustChangePassword === false (terminal state)
                 // to avoid stale cache lockout after password change.
                 const tokenMustChange = (token as any).mustChangePassword;
                 session.user.mustChangePassword = tokenMustChange === false ? false : (meta.mustChangePassword ?? false);
               } else {
-                const typedToken = token as unknown as { roles?: string[]; mustChangePassword?: boolean };
+                const typedToken = token as unknown as { roles?: string[]; mustChangePassword?: boolean; image?: string | null };
                 session.user.roles = typedToken.roles ?? [];
                 session.user.mustChangePassword = typedToken.mustChangePassword ?? false;
+                session.user.image = typedToken.image ?? session.user.image;
               }
             } catch (err) {
               console.error('[AUTH] session callback error fetching meta for sub=%s:', token.sub, err);

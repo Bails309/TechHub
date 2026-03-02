@@ -41,6 +41,12 @@ export default function RoleMultiSelect({ options, initialSelected = [] }: RoleM
         return () => form.removeEventListener('reset', handleReset);
     }, [initialSelected]);
 
+    // Sync state if props change (e.g. after a server action revalidates)
+    const initialSelectedKey = JSON.stringify(initialSelected);
+    useEffect(() => {
+        setSelectedRoleIds(initialSelected);
+    }, [initialSelectedKey]);
+
     const toggleRole = (roleId: string) => {
         setSelectedRoleIds((prev) =>
             prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId]

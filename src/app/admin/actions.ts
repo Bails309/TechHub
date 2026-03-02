@@ -432,6 +432,7 @@ export async function createApp(formData: FormData) {
       });
 
       await safeRevalidatePath('/admin');
+      await safeRevalidatePath('/admin/apps');
       await safeRevalidatePath('/');
       return { status: 'success', message: 'App created' } as const;
     } catch (err) {
@@ -493,6 +494,7 @@ export async function deleteApp(formData: FormData) {
   });
 
   await safeRevalidatePath('/admin');
+  await safeRevalidatePath('/admin/apps');
   await safeRevalidatePath('/');
   return { status: 'success', message: 'App deleted' } as const;
 }
@@ -951,6 +953,7 @@ export async function updateApp(formData: FormData) {
       });
 
       await safeRevalidatePath('/admin');
+      await safeRevalidatePath('/admin/apps');
       await safeRevalidatePath('/');
     } catch (err) {
       // eslint-disable-next-line no-console
