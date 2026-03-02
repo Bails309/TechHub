@@ -12,6 +12,14 @@ const nextConfig = {
     config.resolve.alias['@'] = path.resolve(process.cwd(), 'src');
     return config;
   },
+  serverActions: {
+    bodySizeLimit: '10mb',
+  },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
+  },
   async headers() {
     // Security headers are consolidated here for consistency across environments.
     // HSTS is included; browsers will ignore it on local HTTP but respect it when relayed via an HTTPS Ingress or Reverse Proxy.
