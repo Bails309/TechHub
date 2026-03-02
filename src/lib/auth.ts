@@ -36,6 +36,7 @@ const allowEmailLinking = false;
 const trustProxy = process.env.TRUST_PROXY === 'true';
 const trustedProxiesEnv = String(process.env.TRUSTED_PROXIES ?? '').trim();
 const rateLimitFallbackAllowProxy = process.env.RATE_LIMIT_FALLBACK_ALLOW_PROXY === 'true';
+const allowMissingRemoteIp = process.env.ALLOW_MISSING_REMOTE_IP === 'true';
 
 // Session lifetime (OWASP baseline: 8-hour absolute, 20-minute idle)
 function getSessionMaxAgeSeconds(): number {
@@ -202,7 +203,7 @@ export function getClientIp(headers: HeaderSource, remoteAddr?: string) {
   // (or the framework hides the immediate remote TCP socket entirely),
   // accept proxy-supplied headers (but only from configured trusted proxies).
   if (trustProxy) {
-    if (!remoteNormalized || isFromTrustedProxy(remoteNormalized)) {
+    if ((remoteNormalized && isFromTrustedProxy(remoteNormalized)) || (!remoteNormalized && allowMissingRemoteIp)) {
       const trustedClientIp = normalizeIp(readHeader(headers, 'x-client-ip'));
       if (trustedClientIp) return trustedClientIp;
 
@@ -537,8 +538,11 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         return true;
       },
       async jwt({ token, user, account, trigger, session }: { token: JWT; user?: User; account?: Account | null; trigger?: string; session?: Session | null }) {
-        // Diagnostic: Always log token start in this phase
-        console.log('auth: jwt callback start sub=%s user_present=%s', token?.sub ?? 'none', !!user);
+        // Diagnostic: Log trigger and state
+        if (trigger === 'update') {
+          console.log('[AUTH] jwt update start sub=%s mustChangePassword=%s session_interacted=%s',
+            token?.sub ?? 'none', String(session?.user?.mustChangePassword), String(!!session?.interacted));
+        }
 
         if (!process.env.NEXTAUTH_SECRET) {
           console.error('auth: CRITICAL - NEXTAUTH_SECRET is not set in environment!');
@@ -651,7 +655,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                     details: { reason: 'user_deleted' },
                   });
                 } else {
-                  if (token.userUpdatedAt && new Date((userRecord as any).updatedAt).getTime() > token.userUpdatedAt) {
+                  // If this is an intentional 'update' trigger (e.g. from password change),
+                  // do NOT revoke even if updatedAt has changed. This prevents a race where
+                  // the user is logged out immediately after successfully changing their password.
+                  if (trigger !== 'update' && token.userUpdatedAt && new Date((userRecord as any).updatedAt).getTime() > token.userUpdatedAt) {
                     console.warn('[AUTH] Revoking session for sub=%s. Reason: user_updated (Security: password/profile changed elsewhere)', String(token.sub));
                     token.revoked = true;
                   }
@@ -736,13 +743,17 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
               ]) as any;
               if (meta) {
                 session.user.roles = meta.roles ?? [];
-                session.user.mustChangePassword = meta.mustChangePassword ?? false;
+                // AUTH-FIX: Trust token.mustChangePassword === false (terminal state)
+                // to avoid stale cache lockout after password change.
+                const tokenMustChange = (token as any).mustChangePassword;
+                session.user.mustChangePassword = tokenMustChange === false ? false : (meta.mustChangePassword ?? false);
               } else {
                 const typedToken = token as unknown as { roles?: string[]; mustChangePassword?: boolean };
                 session.user.roles = typedToken.roles ?? [];
                 session.user.mustChangePassword = typedToken.mustChangePassword ?? false;
               }
-            } catch {
+            } catch (err) {
+              console.error('[AUTH] session callback error fetching meta for sub=%s:', token.sub, err);
               const typedToken = token as unknown as { roles?: string[]; mustChangePassword?: boolean };
               session.user.roles = typedToken.roles ?? [];
               session.user.mustChangePassword = typedToken.mustChangePassword ?? false;

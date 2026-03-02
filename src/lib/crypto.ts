@@ -197,34 +197,24 @@ export function decryptSecret(payload: string) {
     const tag = Buffer.from(tagB64, 'base64');
     const data = Buffer.from(dataB64, 'base64');
 
-    const orderedIds = keyId && ring.keys.has(keyId)
-      ? [keyId, ...ring.orderedIds.filter((id) => id !== keyId)]
-      : ring.orderedIds;
-
-    let lastError: unknown;
-    for (const id of orderedIds) {
-      const key = ring.keys.get(id);
-      if (!key) {
-        continue;
-      }
-      try {
-        const wrapDecipher = crypto.createDecipheriv('aes-256-gcm', key, wrapIv);
-        wrapDecipher.setAuthTag(wrapTag);
-        const dataKey = Buffer.concat([wrapDecipher.update(wrappedKey), wrapDecipher.final()]);
-
-        const decipher = crypto.createDecipheriv('aes-256-gcm', dataKey, iv);
-        decipher.setAuthTag(tag);
-        const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
-        return decrypted.toString('utf8');
-      } catch (error) {
-        lastError = error;
-      }
+    if (!keyId || !ring.keys.has(keyId)) {
+      throw new Error('Missing or unknown key ID for V3 payload');
     }
 
-    if (lastError instanceof Error) {
-      throw lastError;
+    const key = ring.keys.get(keyId)!;
+    try {
+      const wrapDecipher = crypto.createDecipheriv('aes-256-gcm', key, wrapIv);
+      wrapDecipher.setAuthTag(wrapTag);
+      const dataKey = Buffer.concat([wrapDecipher.update(wrappedKey), wrapDecipher.final()]);
+
+      const decipher = crypto.createDecipheriv('aes-256-gcm', dataKey, iv);
+      decipher.setAuthTag(tag);
+      const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+      return decrypted.toString('utf8');
+    } catch (error) {
+      if (error instanceof Error) throw error;
+      throw new Error('Unable to decrypt V3 secret');
     }
-    throw new Error('Unable to decrypt secret');
   }
 
   let keyId: string | null = null;
@@ -251,16 +241,27 @@ export function decryptSecret(payload: string) {
   const tag = Buffer.from(tagB64, 'base64');
   const data = Buffer.from(dataB64, 'base64');
 
-  const orderedIds = keyId && ring.keys.has(keyId)
-    ? [keyId, ...ring.orderedIds.filter((id) => id !== keyId)]
-    : ring.orderedIds;
-
-  let lastError: unknown;
-  for (const id of orderedIds) {
-    const key = ring.keys.get(id);
-    if (!key) {
-      continue;
+  if (version === TOKEN_PREFIX_V2) {
+    if (!keyId || !ring.keys.has(keyId)) {
+      throw new Error('Missing or unknown key ID for V2 payload');
     }
+    const key = ring.keys.get(keyId)!;
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+      decipher.setAuthTag(tag);
+      const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+      return decrypted.toString('utf8');
+    } catch (error) {
+      if (error instanceof Error) throw error;
+      throw new Error('Unable to decrypt V2 secret');
+    }
+  }
+
+  // V1 Fallback (No Key ID)
+  let lastError: unknown;
+  for (const id of ring.orderedIds) {
+    const key = ring.keys.get(id);
+    if (!key) continue;
     try {
       const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
       decipher.setAuthTag(tag);
@@ -271,10 +272,8 @@ export function decryptSecret(payload: string) {
     }
   }
 
-  if (lastError instanceof Error) {
-    throw lastError;
-  }
-  throw new Error('Unable to decrypt secret');
+  if (lastError instanceof Error) throw lastError;
+  throw new Error('Unable to decrypt V1 secret');
 }
 
 export type KeyState = 'valid' | 'missing' | 'invalid';

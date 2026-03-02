@@ -10,7 +10,7 @@ export function isPublicIp(address: string) {
   }
 }
 
-export async function assertUrlNotPrivate(rawUrl: string) {
+export async function assertUrlNotPrivate(rawUrl: string): Promise<string> {
   let url: URL;
   try {
     url = new URL(rawUrl);
@@ -29,17 +29,19 @@ export async function assertUrlNotPrivate(rawUrl: string) {
   }
 
   const isIpLiteral = ipaddr.isValid(hostname);
-  if (isIpLiteral && !isPublicIp(hostname)) {
-    throw new Error('Endpoint must be a public IP address');
+  if (isIpLiteral) {
+    if (!isPublicIp(hostname)) {
+      throw new Error('Endpoint must be a public IP address');
+    }
+    return hostname;
   }
 
-  if (!isIpLiteral) {
-    const records = await lookup(hostname, { all: true, verbatim: true });
-    if (!records.length) throw new Error('Endpoint host could not be resolved');
-    const validRecords = records.filter((r) => Boolean(r.address) && (r.family === 4 || r.family === 6));
-    if (!validRecords.length) throw new Error('Endpoint host resolved to no valid IPs');
-    for (const rec of validRecords) {
-      if (!isPublicIp(String(rec.address))) throw new Error('Endpoint must be a public hostname');
-    }
+  const records = await lookup(hostname, { all: true, verbatim: true });
+  if (!records.length) throw new Error('Endpoint host could not be resolved');
+  const validRecords = records.filter((r) => Boolean(r.address) && (r.family === 4 || r.family === 6));
+  if (!validRecords.length) throw new Error('Endpoint host resolved to no valid IPs');
+  for (const rec of validRecords) {
+    if (!isPublicIp(String(rec.address))) throw new Error('Endpoint must be a public hostname');
   }
+  return String(validRecords[0].address);
 }

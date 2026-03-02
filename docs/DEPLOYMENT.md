@@ -46,6 +46,7 @@ Only these variables are strictly required to get the portal running securely in
 | `AUTH_TRUST_HOST` | **Required** | Set to `true` when using custom domains/CNAMEs in Azure. |
 | `SSO_MASTER_KEY` | **Required** | Used to encrypt storage/SSO secrets in your database. |
 | `TRUST_PROXY` | **Required** | Set to `true` behind Azure's Ingress/Load Balancer. |
+| `ALLOW_MISSING_REMOTE_IP` | **Required** | Set to `true` for Azure Container Apps Ingress to trust headers when socket IP is missing. |
 | `NODE_ENV` | **Required** | Set to `production`. |
 
 ### 2. Standalone Configuration

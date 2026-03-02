@@ -6,6 +6,11 @@ export async function GET(
   context: { params: Promise<{ path: string[] }> }
 ) {
   const { path: segments = [] } = await context.params;
+
+  if (segments.some(seg => seg === '..' || seg === '.' || seg.includes('/'))) {
+    return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
+  }
+
   const filename = segments.join('/');
 
   if (!filename) {
