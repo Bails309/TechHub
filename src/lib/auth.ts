@@ -14,7 +14,26 @@ import { getUserMeta } from './userCache';
 import { getSsoConfigMap } from './sso';
 import { writeAuditLog } from './audit';
 import { getSharedRedisClient } from './redis';
-import ipaddr from 'ipaddr.js';
+import {
+  getClientIp,
+  isPrivateOrLocal,
+  normalizeIp,
+  type HeaderSource,
+  readHeader,
+  trustProxy,
+  trustedProxiesEnv
+} from './ip';
+
+// Re-export for backward compatibility and consume from other modules
+export {
+  getClientIp,
+  isPrivateOrLocal,
+  normalizeIp,
+  type HeaderSource,
+  readHeader,
+  trustProxy,
+  trustedProxiesEnv
+};
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -33,8 +52,6 @@ const keycloakConfiguredEnv =
 
 const credentialsEnabledEnv = process.env.ENABLE_CREDENTIALS !== 'false';
 const allowEmailLinking = false;
-const trustProxy = process.env.TRUST_PROXY === 'true';
-const trustedProxiesEnv = String(process.env.TRUSTED_PROXIES ?? '').trim();
 const rateLimitFallbackAllowProxy = process.env.RATE_LIMIT_FALLBACK_ALLOW_PROXY === 'true';
 const allowMissingRemoteIp = process.env.ALLOW_MISSING_REMOTE_IP === 'true';
 
@@ -50,50 +67,6 @@ function getSessionIdleTimeoutMs(): number {
   return Number(process.env.SESSION_IDLE_TIMEOUT_MS ?? 1200000);
 }
 
-// Parse TRUSTED_PROXIES into CIDR tuples using ipaddr.js
-let trustedProxyCidrs: Array<[ipaddr.IPv4 | ipaddr.IPv6, number]> = [];
-if (trustedProxiesEnv) {
-  trustedProxyCidrs = trustedProxiesEnv
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((cidr) => {
-      try {
-        const parsed = ipaddr.parseCIDR(cidr);
-        // convert readonly tuple to mutable tuple for compatibility with ipaddr.match
-        return [parsed[0], parsed[1]] as [ipaddr.IPv4 | ipaddr.IPv6, number];
-      } catch {
-        return undefined as unknown as [ipaddr.IPv4 | ipaddr.IPv6, number] | undefined;
-      }
-    })
-    .filter(Boolean) as Array<[ipaddr.IPv4 | ipaddr.IPv6, number]>;
-}
-
-function isFromTrustedProxy(remoteIp: string | undefined) {
-  if (!remoteIp) return false;
-  if (!trustedProxyCidrs.length) return false;
-  try {
-    const addr = ipaddr.parse(remoteIp);
-    for (const cidr of trustedProxyCidrs) {
-      if (addr.match(cidr)) return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-function isPrivateOrLocal(remoteIp: string | undefined) {
-  if (!remoteIp) return false;
-  try {
-    const addr = ipaddr.parse(remoteIp);
-    const range = addr.range();
-    // treat private, loopback, linkLocal, and uniqueLocal as internal/proxy
-    return range === 'private' || range === 'loopback' || range === 'linkLocal' || range === 'uniqueLocal';
-  } catch {
-    return false;
-  }
-}
-
 // Startup-time warning for common misconfiguration: if TRUST_PROXY is false
 // but deployers have not configured `TRUSTED_PROXIES`, we warn in production
 // to avoid silent IP-spoofing behind a reverse proxy which can enable mass
@@ -102,6 +75,7 @@ if (!trustProxy && !trustedProxiesEnv && process.env.NODE_ENV === 'production') 
   console.warn('[AUTH] Warning: TRUST_PROXY is not enabled and TRUSTED_PROXIES is unset.');
   console.warn('[AUTH] If this app runs behind a reverse proxy (ALB, Nginx, etc.) set TRUST_PROXY=true and TRUSTED_PROXIES to the proxy CIDR(s).');
 }
+
 const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
 
 // In-memory fallback for termination log deduplication when Redis is unavailable.
@@ -152,99 +126,6 @@ async function logSessionTerminationOnce(userId: string, reason: string, issuedA
 // so test-time mocks of `@next-auth/prisma-adapter` take effect when
 // `getAuthOptions()` is imported after `vi.doMock` is applied.
 let BASE_PRISMA_ADAPTER: Adapter | null = null;
-
-type HeaderSource = Record<string, string | string[] | undefined> | Headers | undefined;
-
-function readHeader(headers: HeaderSource, name: string) {
-  if (!headers) {
-    return undefined;
-  }
-  if (headers instanceof Headers) {
-    return headers.get(name) ?? undefined;
-  }
-  const value = headers[name];
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function parseForwarded(forwarded: string | undefined) {
-  if (!forwarded) {
-    return undefined;
-  }
-  const match = forwarded.match(/for=([^;]+)/i);
-  return match?.[1]?.replace(/^"|"$/g, '') ?? undefined;
-}
-
-function normalizeIp(raw: string | undefined) {
-  if (!raw) return undefined;
-  const trimmed = raw.trim();
-  if (!trimmed) return undefined;
-
-  // IPv6 with brackets [::1]
-  if (trimmed.startsWith('[')) {
-    const end = trimmed.indexOf(']');
-    const inside = end >= 0 ? trimmed.slice(1, end) : trimmed.slice(1);
-    return ipaddr.isValid(inside) ? ipaddr.process(inside).toString() : undefined;
-  }
-
-  // host:port formats (IPv4 or hostname with port)
-  if (trimmed.includes(':') && trimmed.indexOf(':') === trimmed.lastIndexOf(':') && trimmed.includes('.')) {
-    const withoutPort = trimmed.split(':')[0];
-    return ipaddr.isValid(withoutPort) ? ipaddr.process(withoutPort).toString() : undefined;
-  }
-
-  return ipaddr.isValid(trimmed) ? ipaddr.process(trimmed).toString() : undefined;
-}
-
-export function getClientIp(headers: HeaderSource, remoteAddr?: string) {
-  // Prefer immediate remote address when available
-  const remoteNormalized = normalizeIp(remoteAddr ?? undefined);
-
-  // If TRUST_PROXY is enabled and the immediate remote is a trusted proxy
-  // (or the framework hides the immediate remote TCP socket entirely),
-  // accept proxy-supplied headers (but only from configured trusted proxies).
-  if (trustProxy) {
-    // Prefer x-azure-clientip if present (set by Azure ingress, less spoofable if configured)
-    const azureIp = readHeader(headers, 'x-azure-clientip');
-    if (typeof azureIp === 'string' && azureIp.trim()) {
-      const normalized = normalizeIp(azureIp);
-      if (normalized) return normalized;
-    }
-
-    // Prefer x-forwarded-for but select the correct client IP by scanning
-    // from right-to-left and skipping any addresses that belong to trusted proxies.
-    const forwardedFor = readHeader(headers, 'x-forwarded-for');
-    if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
-      const parts = forwardedFor.split(',').map((s) => s.trim()).filter(Boolean);
-      for (let i = parts.length - 1; i >= 0; i--) {
-        const candidate = normalizeIp(parts[i]);
-        if (!candidate) continue;
-        // if candidate is a trusted proxy, skip it
-        if (isFromTrustedProxy(candidate)) continue;
-        return candidate;
-      }
-    }
-
-    // Only accept the validated x-forwarded-for result above.
-    // Do NOT fall back to other single-value headers which may be spoofed
-    // by upstreams that don't strip them.
-    return remoteNormalized;
-  }
-
-  // Not trusting proxy headers: prefer immediate remote address only.
-  // Do NOT fall back to proxy-supplied headers (x-real-ip) when TRUST_PROXY is false,
-  // as these headers can be spoofed by clients. If the immediate remote address
-  // cannot be determined, return undefined so callers do not rely on unverified headers.
-  if (!remoteNormalized) {
-    // Fallback for environments where socket IP might be missing (e.g. certain Docker/Serverless setups)
-    // We log this as a warning but allow it to proceed with a safe default for rate limiting.
-    if (process.env.NODE_ENV === 'production') {
-      console.warn('[AUTH] Missing client IP detection, falling back to 127.0.0.1');
-    }
-    // Return undefined in test environment to preserve existing test expectations
-    return process.env.NODE_ENV === 'test' ? undefined : '127.0.0.1';
-  }
-  return remoteNormalized;
-}
 
 export function getRateLimitKey(headers: HeaderSource, fallbackKey?: string, remoteAddr?: string) {
   const ip = getClientIp(headers, remoteAddr);
@@ -547,7 +428,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           console.error('auth: CRITICAL - NEXTAUTH_SECRET is not set in environment!');
         }
 
-        if (process.env.NODE_ENV === 'test' || process.env.DEBUG_AUTH === 'true' || true) { // Force on for now
+        if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
           // eslint-disable-next-line no-console
           console.log('[AUTH-DEBUG] jwt callback start token=%o user=%o', token, user);
         }
@@ -637,7 +518,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                 if ((process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') && typeof prisma?.user?.findUnique === 'function') {
                   const p = prisma.user.findUnique({
                     where: { id: String(token.sub) },
-                    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
+                    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true, securityStamp: true }
                   });
                   const race = await Promise.race([p, new Promise((res) => setTimeout(() => res('__DB_TIMEOUT__'), 2000))]);
                   if (race === '__DB_TIMEOUT__') {
@@ -647,7 +528,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                 } else {
                   userRecord = await prisma.user.findUnique({
                     where: { id: String(token.sub) },
-                    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true }
+                    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true, securityStamp: true }
                   });
                 }
 
