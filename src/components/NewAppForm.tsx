@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition, useRef } from 'react';
 import { Upload, X } from 'lucide-react';
 import SelectField, { SelectOption } from './SelectField';
 import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
@@ -27,6 +27,7 @@ export default function NewAppForm({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [audience, setAudience] = useState('AUTHENTICATED');
+  const formRef = useRef<HTMLFormElement>(null);
   const safePreviewUrl = useMemo(() => sanitizeIconUrl(previewUrl), [previewUrl]);
 
   const handleAudienceChange = (value: string) => {
@@ -62,31 +63,35 @@ export default function NewAppForm({
         formData.set('csrfToken', getCsrfTokenFromCookie());
         setStatusMessage(null);
         setStatusTone(null);
-        startTransition(() => {
-          void (async () => {
-            try {
-              const result = await action(formData);
-              if (result && result.status === 'success') {
-                setStatusMessage(result.message ?? 'App created.');
-                setStatusTone('success');
-                setFileName(null);
-                setPreviewUrl(null);
-              } else if (result && result.status === 'error') {
-                setStatusMessage(result.message ?? 'Unable to create app.');
-                setStatusTone('error');
-              } else {
-                setStatusMessage('App created.');
-                setStatusTone('success');
-                setFileName(null);
-                setPreviewUrl(null);
-              }
-            } catch {
-              setStatusMessage('Unable to create app.');
+        startTransition(async () => {
+          try {
+            const result = await action(formData);
+            if (result && result.status === 'success') {
+              setStatusMessage(result.message ?? 'App created.');
+              setStatusTone('success');
+              setFileName(null);
+              setPreviewUrl(null);
+              formRef.current?.reset();
+              setAudience('AUTHENTICATED');
+            } else if (result && result.status === 'error') {
+              setStatusMessage(result.message ?? 'Unable to create app.');
               setStatusTone('error');
+            } else {
+              setStatusMessage('App created.');
+              setStatusTone('success');
+              setFileName(null);
+              setPreviewUrl(null);
+              formRef.current?.reset();
+              setAudience('AUTHENTICATED');
             }
-          })();
+          } catch (err) {
+            console.error('Error creating app:', err);
+            setStatusMessage('Unable to create app.');
+            setStatusTone('error');
+          }
         });
       }}
+      ref={formRef}
       encType="multipart/form-data"
       className="grid gap-4 md:grid-cols-2 w-full"
     >
