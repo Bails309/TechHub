@@ -178,18 +178,42 @@ export function decryptSecret(payload: string) {
 
   const ring = loadKeyRing();
 
-  if (version === TOKEN_PREFIX_V3) {
-    const keyId = parts[1] || null;
-    const wrapIvB64 = parts[2];
-    const wrapTagB64 = parts[3];
-    const wrappedKeyB64 = parts[4];
-    const ivB64 = parts[5];
-    const tagB64 = parts[6];
-    const dataB64 = parts[7];
-    if (!wrapIvB64 || !wrapTagB64 || !wrappedKeyB64 || !ivB64 || !tagB64 || !dataB64) {
-      throw new Error('Invalid secret payload');
-    }
+  // For V2/V3, we have a preferred keyId. Try it first for O(1) performance.
+  const preferredKeyId = (version === TOKEN_PREFIX_V2 || version === TOKEN_PREFIX_V3) ? parts[1] : null;
 
+  if (preferredKeyId && ring.keys.has(preferredKeyId)) {
+    try {
+      return attemptDecryption(version, preferredKeyId, ring.keys.get(preferredKeyId)!, parts);
+    } catch (err) {
+      console.debug('[CRYPTO] Fast-path decryption failed for keyId=%s, falling back to full ring', preferredKeyId);
+    }
+  }
+
+  // Fallback: Loop through all keys (including the preferred one again if it failed,
+  // to keep the logic simple, or we could skip it).
+  let lastError: unknown;
+  for (const id of ring.orderedIds) {
+    const key = ring.keys.get(id);
+    if (!key) continue;
+    try {
+      return attemptDecryption(version, id, key, parts);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError instanceof Error) throw lastError;
+  throw new Error(`Unable to decrypt ${version} secret`);
+}
+
+/** Helper to attempt decryption for a specific version and key */
+function attemptDecryption(version: string, _keyId: string, key: Buffer, parts: string[]): string {
+  if (version === TOKEN_PREFIX_V3) {
+    // V3: [v3, keyId, wrapIv, wrapTag, wrappedKey, iv, tag, data]
+    const [, , wrapIvB64, wrapTagB64, wrappedKeyB64, ivB64, tagB64, dataB64] = parts;
+    if (!wrapIvB64 || !wrapTagB64 || !wrappedKeyB64 || !ivB64 || !tagB64 || !dataB64) {
+      throw new Error('Invalid V3 payload');
+    }
     const wrapIv = Buffer.from(wrapIvB64, 'base64');
     const wrapTag = Buffer.from(wrapTagB64, 'base64');
     const wrappedKey = Buffer.from(wrappedKeyB64, 'base64');
@@ -197,83 +221,41 @@ export function decryptSecret(payload: string) {
     const tag = Buffer.from(tagB64, 'base64');
     const data = Buffer.from(dataB64, 'base64');
 
-    if (!keyId || !ring.keys.has(keyId)) {
-      throw new Error('Missing or unknown key ID for V3 payload');
-    }
+    const wrapDecipher = crypto.createDecipheriv('aes-256-gcm', key, wrapIv);
+    wrapDecipher.setAuthTag(wrapTag);
+    const dataKey = Buffer.concat([wrapDecipher.update(wrappedKey), wrapDecipher.final()]);
 
-    const key = ring.keys.get(keyId)!;
-    try {
-      const wrapDecipher = crypto.createDecipheriv('aes-256-gcm', key, wrapIv);
-      wrapDecipher.setAuthTag(wrapTag);
-      const dataKey = Buffer.concat([wrapDecipher.update(wrappedKey), wrapDecipher.final()]);
-
-      const decipher = crypto.createDecipheriv('aes-256-gcm', dataKey, iv);
-      decipher.setAuthTag(tag);
-      const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
-      return decrypted.toString('utf8');
-    } catch (error) {
-      if (error instanceof Error) throw error;
-      throw new Error('Unable to decrypt V3 secret');
-    }
+    const decipher = crypto.createDecipheriv('aes-256-gcm', dataKey, iv);
+    decipher.setAuthTag(tag);
+    const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+    return decrypted.toString('utf8');
   }
-
-  let keyId: string | null = null;
-  let ivB64: string | undefined;
-  let tagB64: string | undefined;
-  let dataB64: string | undefined;
 
   if (version === TOKEN_PREFIX_V2) {
-    keyId = parts[1] || null;
-    ivB64 = parts[2];
-    tagB64 = parts[3];
-    dataB64 = parts[4];
-  } else {
-    ivB64 = parts[1];
-    tagB64 = parts[2];
-    dataB64 = parts[3];
+    // V2: [v2, keyId, iv, tag, data]
+    const [, , ivB64, tagB64, dataB64] = parts;
+    if (!ivB64 || !tagB64 || !dataB64) throw new Error('Invalid V2 payload');
+    const iv = Buffer.from(ivB64, 'base64');
+    const tag = Buffer.from(tagB64, 'base64');
+    const data = Buffer.from(dataB64, 'base64');
+
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(tag);
+    const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+    return decrypted.toString('utf8');
   }
 
-  if (!ivB64 || !tagB64 || !dataB64) {
-    throw new Error('Invalid secret payload');
-  }
-
+  // V1: [v1, iv, tag, data]
+  const [, ivB64, tagB64, dataB64] = parts;
+  if (!ivB64 || !tagB64 || !dataB64) throw new Error('Invalid V1 payload');
   const iv = Buffer.from(ivB64, 'base64');
   const tag = Buffer.from(tagB64, 'base64');
   const data = Buffer.from(dataB64, 'base64');
 
-  if (version === TOKEN_PREFIX_V2) {
-    if (!keyId || !ring.keys.has(keyId)) {
-      throw new Error('Missing or unknown key ID for V2 payload');
-    }
-    const key = ring.keys.get(keyId)!;
-    try {
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-      decipher.setAuthTag(tag);
-      const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
-      return decrypted.toString('utf8');
-    } catch (error) {
-      if (error instanceof Error) throw error;
-      throw new Error('Unable to decrypt V2 secret');
-    }
-  }
-
-  // V1 Fallback (No Key ID)
-  let lastError: unknown;
-  for (const id of ring.orderedIds) {
-    const key = ring.keys.get(id);
-    if (!key) continue;
-    try {
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-      decipher.setAuthTag(tag);
-      const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
-      return decrypted.toString('utf8');
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  if (lastError instanceof Error) throw lastError;
-  throw new Error('Unable to decrypt V1 secret');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(tag);
+  const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+  return decrypted.toString('utf8');
 }
 
 export type KeyState = 'valid' | 'missing' | 'invalid';
