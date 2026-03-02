@@ -290,7 +290,7 @@ export async function middleware(request: NextRequest) {
   if (token?.mustChangePassword &&
     token?.authProvider === 'credentials' &&
     pathname !== '/auth/change-password' &&
-    !isApiAllowed) {
+    !pathname.startsWith('/api/auth/')) {
     console.log('middleware: enforcing change-password redirect for sub=%s from path=%s', token.sub, pathname);
 
     if (pathname.startsWith('/api/')) {

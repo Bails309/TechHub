@@ -203,43 +203,12 @@ type PinnedEndpoint = {
 };
 
 async function resolvePinnedEndpoint(rawUrl: string): Promise<PinnedEndpoint> {
-  let url: URL;
-  try {
-    url = new URL(rawUrl);
-  } catch {
-    throw new Error('Endpoint must be a valid URL');
-  }
-
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    throw new Error('Endpoint must use http or https');
-  }
-
+  const address = await assertUrlNotPrivate(rawUrl);
+  const url = new URL(rawUrl);
   const hostname = url.hostname.toLowerCase();
-  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
-    throw new Error('Endpoint must be a public hostname');
-  }
-
-  const isIpLiteral = ipaddr.isValid(hostname);
-  if (isIpLiteral) {
-    if (!isPublicIp(hostname)) throw new Error('Endpoint must be a public IP address');
-    const normalized = ipaddr.process(hostname).toNormalizedString();
-    return { url, hostname, address: normalized, family: ipaddr.process(hostname).kind() === 'ipv6' ? 6 : 4 };
-  }
-
-  const records = await lookup(hostname, { all: true, verbatim: true });
-  if (!records.length) throw new Error('Endpoint host could not be resolved');
-
-  const validRecords = records
-    .filter((record) => Boolean(record.address) && (record.family === 4 || record.family === 6))
-    .map((record) => ({ address: String(record.address), family: record.family as 4 | 6 }))
-    .filter((record) => isPublicIp(record.address));
-
-  if (!validRecords.length) throw new Error('Endpoint host resolved to no public IPs');
-
-  const ordered = [...validRecords].sort((a, b) => a.family - b.family);
-  const chosen = ordered[0];
-  const normalized = ipaddr.process(chosen.address).toNormalizedString();
-  return { url, hostname, address: normalized, family: chosen.family };
+  const normalized = ipaddr.process(address).toNormalizedString();
+  const family = ipaddr.process(address).kind() === 'ipv6' ? 6 : 4;
+  return { url, hostname, address: normalized, family };
 }
 
 function createPinnedAgents(address: string, family: 4 | 6) {
@@ -966,7 +935,7 @@ export async function updateApp(formData: FormData) {
     // non-critical: the DB update already committed and should be treated as
     // successful even if cleanup steps fail. Catch and log any errors so a
     // cleanup failure doesn't surface as a save failure to the UI.
-      try {
+    try {
       if (existingApp?.icon) {
         if (iconRemove || (iconPath && existingApp.icon !== iconPath)) {
           await safeDeleteIcon(existingApp.icon);
@@ -1764,71 +1733,17 @@ type ResolvedIssuer = {
 };
 
 async function validateIssuerUrl(rawIssuer: string): Promise<ResolvedIssuer> {
-  let url: URL;
-  try {
-    url = new URL(rawIssuer);
-  } catch {
-    throw new Error('Issuer URL must be a valid URL');
-  }
-
-  if (url.protocol !== 'https:') {
-    throw new Error('Issuer URL must use https');
-  }
-
+  const address = await assertUrlNotPrivate(rawIssuer);
+  const url = new URL(rawIssuer);
   const hostname = url.hostname.toLowerCase();
-  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
-    throw new Error('Issuer URL must be a public hostname');
-  }
+  const normalized = normalizeIssuer(url.toString());
+  const parsed = ipaddr.process(address);
+  const family = parsed.kind() === 'ipv6' ? 6 : 4;
 
-  const isIpLiteral = ipaddr.isValid(hostname);
-  if (isIpLiteral && !isPublicIp(hostname)) {
-    throw new Error('Issuer URL must be a public hostname');
-  }
-
-  if (!isIpLiteral) {
-    const records = await lookup(hostname, { all: true, verbatim: true });
-    if (!records.length) {
-      throw new Error('Issuer URL host could not be resolved');
-    }
-    const validRecords = records
-      .filter((record) => Boolean(record.address) && (record.family === 4 || record.family === 6))
-      .map((record) => ({ address: String(record.address), family: record.family as 4 | 6 }));
-
-    if (!validRecords.length) {
-      throw new Error('Issuer URL host resolved to no valid IPs');
-    }
-
-    for (const rec of validRecords) {
-      if (!isPublicIp(rec.address)) {
-        throw new Error('Issuer URL must be a public hostname');
-      }
-    }
-
-    // Deduplicate by address
-    const seen = new Set<string>();
-    const uniqueRecords: Array<{ address: string; family: 4 | 6 }> = [];
-    for (const rec of validRecords) {
-      if (!seen.has(rec.address)) {
-        seen.add(rec.address);
-        uniqueRecords.push(rec);
-      }
-    }
-
-    return {
-      normalized: normalizeIssuer(url.toString()),
-      hostname,
-      addresses: uniqueRecords.map((rec) => ({
-        address: ipaddr.process(rec.address).toNormalizedString(),
-        family: rec.family
-      }))
-    };
-  }
-
-  const literal = ipaddr.process(hostname);
   return {
-    normalized: normalizeIssuer(url.toString()),
+    normalized,
     hostname,
-    addresses: [{ address: hostname, family: literal.kind() === 'ipv6' ? 6 : 4 }]
+    addresses: [{ address: parsed.toNormalizedString(), family: family as 4 | 6 }]
   };
 }
 

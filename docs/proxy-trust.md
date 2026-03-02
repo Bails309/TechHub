@@ -26,6 +26,13 @@ When running TechHub behind a reverse proxy, load balancer, or cloud ingress (e.
 
 - **Rate Limiting and Audit Logs**: Both are based on server-validated client IPs; do not rely on raw header values without a trusted proxy configuration.
 
+### Missing Remote IP (Cloud Ingress)
+
+In some cloud environments (e.g., **Azure Container Apps Ingress**), the immediate remote connection IP is not exposed to the container. TechHub's security core will "fail closed" in this scenario if `TRUST_PROXY` is enabled, as it cannot verify the proxy's identity.
+
+To support these environments, set:
+- `ALLOW_MISSING_REMOTE_IP=true`: This explicitly instructs TechHub to trust the proxy headers even when the underlying connection address is unavailable.
+
 ### Example (env)
 
 ```env
