@@ -53,7 +53,7 @@ function hex2buf(hex: string) {
 }
 
 function timingSafeEqual(a: string, b: string) {
-  if (a.length !== b.length) return false;
+  if (a.length !== b.length || a.length === 0) return false;
   let result = 0;
   for (let i = 0; i < a.length; i++) {
     result |= a.charCodeAt(i) ^ b.charCodeAt(i);
@@ -63,7 +63,7 @@ function timingSafeEqual(a: string, b: string) {
 
 async function validateCsrfToken(token: string, sessionId: string): Promise<boolean> {
   const secret = process.env.NEXTAUTH_SECRET ?? '';
-  if (!token || !sessionId || !secret) return false;
+  if (!token || !sessionId || !secret || sessionId.trim() === '') return false;
 
   const dotIdx = token.indexOf('.');
   if (dotIdx < 1) return false;
@@ -96,8 +96,44 @@ async function validateCsrfToken(token: string, sessionId: string): Promise<bool
   }
 }
 
+async function validatePublicCsrfToken(token: string, visitorId: string): Promise<boolean> {
+  const secret = process.env.NEXTAUTH_SECRET ?? '';
+  if (!token || !visitorId || !secret || visitorId.trim() === '') return false;
+
+  const dotIdx = token.indexOf('.');
+  if (dotIdx < 1) return false;
+
+  const nonce = token.slice(0, dotIdx);
+  const sig = token.slice(dotIdx + 1);
+  if (!nonce || !sig) return false;
+
+  const crypto = (globalThis as any).crypto;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  try {
+    const signature = await crypto.subtle.sign(
+      'HMAC',
+      key,
+      enc.encode('public:' + nonce + ':' + visitorId)
+    );
+
+    const sigHex = buf2hex(signature);
+    return timingSafeEqual(sigHex, sig);
+  } catch (err) {
+    return false;
+  }
+}
+
 async function createCsrfToken(sessionId: string): Promise<string> {
   const secret = process.env.NEXTAUTH_SECRET ?? '';
+  if (!sessionId) throw new Error('CSRF: sessionId required');
   const crypto = (globalThis as any).crypto;
   const nonce = getSecureNonce();
 
@@ -114,6 +150,31 @@ async function createCsrfToken(sessionId: string): Promise<string> {
     'HMAC',
     key,
     enc.encode(nonce + ':' + sessionId)
+  );
+
+  const sigHex = buf2hex(signature);
+  return nonce + '.' + sigHex;
+}
+
+async function createPublicCsrfToken(visitorId: string): Promise<string> {
+  const secret = process.env.NEXTAUTH_SECRET ?? '';
+  if (!visitorId) throw new Error('CSRF: visitorId required');
+  const crypto = (globalThis as any).crypto;
+  const nonce = getSecureNonce();
+
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    enc.encode('public:' + nonce + ':' + visitorId)
   );
 
   const sigHex = buf2hex(signature);
@@ -137,26 +198,51 @@ export async function middleware(request: NextRequest) {
   }
 
   // Generate an HMAC-signed CSRF cookie on every GET request.
-  // The token is bound to the user's session (JWT `sub`), so it
-  // can't be replayed across sessions or forged without the secret.
   if (request.method === 'GET') {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    const sessionId = token?.sub ?? '';
+    const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    const sessionId = tokenObj?.sub ?? '';
     const forwardedProto = request.headers.get('x-forwarded-proto');
     const isSecure = forwardedProto === 'https' || request.nextUrl.protocol === 'https:';
-    // Only set the CSRF cookie for authenticated users (who have a session)
+    const secureFlag = process.env.NODE_ENV === 'production' ? true : isSecure;
+    const maxAge = 60 * 60; // 1 hour
+
+    let visitorId = request.cookies.get('visitor-id')?.value;
+    if (!visitorId) {
+      visitorId = getSecureNonce(); // reuse nonce generator for random ID
+      response.cookies.set({
+        name: 'visitor-id',
+        value: visitorId,
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: secureFlag,
+        path: '/',
+        maxAge: 60 * 60 * 24 * 365 // 1 year
+      });
+    }
+
     if (sessionId) {
       const existing = request.cookies.get('XSRF-TOKEN')?.value;
       const isValid = existing ? await validateCsrfToken(existing, sessionId) : false;
       if (!isValid) {
         const newToken = await createCsrfToken(sessionId);
-        // Limit lifetime and use SameSite lax to allow typical top-level navigations
-        // while still protecting against cross-site requests. Use secure in prod
-        // when the request appears secure.
-        const maxAge = 60 * 60; // 1 hour
-        const secureFlag = process.env.NODE_ENV === 'production' ? true : isSecure;
         response.cookies.set({
           name: 'XSRF-TOKEN',
+          value: newToken,
+          httpOnly: false,
+          sameSite: 'lax',
+          secure: secureFlag,
+          path: '/',
+          maxAge
+        });
+      }
+    } else {
+      // Unauthenticated visitor: set XSRF-TOKEN-PUBLIC
+      const existing = request.cookies.get('XSRF-TOKEN-PUBLIC')?.value;
+      const isValid = existing ? await validatePublicCsrfToken(existing, visitorId) : false;
+      if (!isValid) {
+        const newToken = await createPublicCsrfToken(visitorId);
+        response.cookies.set({
+          name: 'XSRF-TOKEN-PUBLIC',
           value: newToken,
           httpOnly: false,
           sameSite: 'lax',

@@ -25,9 +25,27 @@ function getSecret(): string {
  * Returns `nonce.signature`.
  */
 export function createCsrfToken(sessionId: string): string {
+  if (!sessionId) {
+    throw new Error('CSRF Error: Cannot create session-bound token without a valid sessionId');
+  }
   const nonce = randomBytes(16).toString('hex');
   const sig = createHmac('sha256', getSecret())
     .update(nonce + ':' + sessionId)
+    .digest('hex');
+  return nonce + '.' + sig;
+}
+
+/**
+ * Create an HMAC-signed CSRF token bound to a stable visitor identity.
+ * Used for unauthenticated flows.
+ */
+export function createPublicCsrfToken(visitorId: string): string {
+  if (!visitorId) {
+    throw new Error('CSRF Error: Cannot create visitor-bound token without a valid visitorId');
+  }
+  const nonce = randomBytes(16).toString('hex');
+  const sig = createHmac('sha256', getSecret())
+    .update('public:' + nonce + ':' + visitorId)
     .digest('hex');
   return nonce + '.' + sig;
 }
@@ -38,7 +56,7 @@ export function createCsrfToken(sessionId: string): string {
  */
 export function validateCsrfToken(token: string, sessionId: string): boolean {
   const secret = getSecret();
-  if (!token || !sessionId || !secret) return false;
+  if (!token || !sessionId || !secret || sessionId.trim() === '') return false;
 
   const dotIdx = token.indexOf('.');
   if (dotIdx < 1) return false;
@@ -51,7 +69,31 @@ export function validateCsrfToken(token: string, sessionId: string): boolean {
     .update(nonce + ':' + sessionId)
     .digest('hex');
 
-  // Both values are hex strings; compare as buffers for constant-time safety.
+  const sigBuf = Buffer.from(sig, 'utf-8');
+  const expectedBuf = Buffer.from(expected, 'utf-8');
+
+  if (sigBuf.length !== expectedBuf.length) return false;
+  return timingSafeEqual(sigBuf, expectedBuf);
+}
+
+/**
+ * Verify that `token` is a valid HMAC-signed token for `visitorId`.
+ */
+export function validatePublicCsrfToken(token: string, visitorId: string): boolean {
+  const secret = getSecret();
+  if (!token || !visitorId || !secret) return false;
+
+  const dotIdx = token.indexOf('.');
+  if (dotIdx < 1) return false;
+
+  const nonce = token.slice(0, dotIdx);
+  const sig = token.slice(dotIdx + 1);
+  if (!nonce || !sig) return false;
+
+  const expected = createHmac('sha256', secret)
+    .update('public:' + nonce + ':' + visitorId)
+    .digest('hex');
+
   const sigBuf = Buffer.from(sig, 'utf-8');
   const expectedBuf = Buffer.from(expected, 'utf-8');
 
@@ -104,6 +146,10 @@ async function getSessionIdFromCookie(): Promise<string> {
   }
 }
 
+async function getVisitorIdFromCookie(): Promise<string> {
+  return (await readCookieValue('visitor-id')) ?? '';
+}
+
 /**
  * Validate the CSRF token submitted in a FormData payload against the
  * cookie and the current session. Drop-in replacement for the old
@@ -113,13 +159,31 @@ export async function validateCsrf(formData: FormData): Promise<boolean> {
   const token = String(formData.get('csrfToken') ?? '');
   if (!token) return false;
 
-  const cookie = await readCookieValue('XSRF-TOKEN');
+  const sessionId = await getSessionIdFromCookie();
+  if (sessionId) {
+    const cookie = await readCookieValue('XSRF-TOKEN');
+    if (!cookie || cookie !== token) return false;
+    return validateCsrfToken(token, sessionId);
+  }
+
+  // Fallback to public/visitor-bound validation if no session exists.
+  return validatePublicCsrf(formData);
+}
+
+/**
+ * Explicitly validate CSRF for unauthenticated routes using the visitor identity.
+ */
+export async function validatePublicCsrf(formData: FormData): Promise<boolean> {
+  const token = String(formData.get('csrfToken') ?? '');
+  if (!token) return false;
+
+  const cookie = await readCookieValue('XSRF-TOKEN-PUBLIC');
   if (!cookie || cookie !== token) return false;
 
-  const sessionId = await getSessionIdFromCookie();
-  if (!sessionId) return false;
+  const visitorId = await getVisitorIdFromCookie();
+  if (!visitorId) return false;
 
-  return validateCsrfToken(token, sessionId);
+  return validatePublicCsrfToken(token, visitorId);
 }
 
 /**
