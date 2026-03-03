@@ -20,7 +20,8 @@
     "seed": "tsx prisma/seed.ts"
   },
   "overrides": {
-    "esbuild": "$esbuild"
+    "esbuild": "$esbuild",
+    "fast-xml-parser": "5.3.8"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.997.0",
