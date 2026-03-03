@@ -587,28 +587,26 @@ export async function readIcon(iconPath: string): Promise<{ buffer: Uint8Array; 
       if (!resp.Body) return null;
       const buffer = await resp.Body.transformToByteArray();
       return { buffer, contentType: resp.ContentType || 'application/octet-stream' };
-    } catch { return null; }
+    } catch (err: any) {
+      console.error('[readIcon] S3 download failed for key=%s:', key, err.message);
+      return null;
+    }
   }
 
   if (provider === 'azure') {
     const config = await resolveAzureConfig();
-    if (!config) return null;
+    if (!config) { console.error('[readIcon] Azure config not found'); return null; }
     const containerClient = await getAzureContainerClient(config);
-    if (!containerClient.containerName) return null;
+    if (!containerClient.containerName) { console.error('[readIcon] No container name'); return null; }
     try {
-      // Azure blob key might have container name prefix
-      const url = new URL(iconPath, 'https://example.com');
-      const pathName = url.pathname.replace(/^\//, '');
-      const containerNameLower = containerClient.containerName.toLowerCase();
-      let actualKey = pathName;
-      if (pathName.toLowerCase().startsWith(`${containerNameLower}/`)) {
-        actualKey = pathName.slice(containerClient.containerName.length + 1);
-      }
-      const blobClient = containerClient.getBlockBlobClient(actualKey);
+      const blobClient = containerClient.getBlockBlobClient(key);
       const buffer = await blobClient.downloadToBuffer();
       const props = await blobClient.getProperties();
       return { buffer, contentType: props.contentType || 'application/octet-stream' };
-    } catch { return null; }
+    } catch (err: any) {
+      console.error('[readIcon] Azure download failed for key=%s:', key, err.message, err.statusCode);
+      return null;
+    }
   }
 
   // Local

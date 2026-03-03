@@ -33,6 +33,8 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - NEXTAUTH_URL=${NEXTAUTH_URL}
       - NODE_ENV=${NODE_ENV:-production}
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       - db
       - redis
@@ -54,3 +56,4 @@ services:
 
 volumes:
   pgdata:
+  uploads:

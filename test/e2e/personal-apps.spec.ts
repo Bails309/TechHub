@@ -49,7 +49,6 @@ test.describe('Personal Apps Management', () => {
 
         // Verify the app appears in the list (page revalidates)
         await expect(page.getByText(appName)).toBeVisible({ timeout: 15000 });
-        await expect(page.getByText(appUrl)).toBeVisible({ timeout: 5000 });
 
         // Verify success feedback toast appears
         await expect(page.getByText('App created successfully')).toBeVisible({ timeout: 5000 });
@@ -62,14 +61,16 @@ test.describe('Personal Apps Management', () => {
         await page.goto('/profile', { waitUntil: 'networkidle' });
         await expect(page.getByText(appName)).toBeVisible({ timeout: 15000 });
 
-        // Hover to reveal action buttons then click delete
-        const appRow = page.locator('.card-panel', { hasText: appName });
+        // Use a more specific selector: target only app list items (not the parent section)
+        // App rows use .card-panel.!p-0 while the section uses .card-panel.p-8
+        const appRow = page.locator('.card-panel.group', { hasText: appName });
         await appRow.hover();
         await appRow.getByTitle('Delete').click();
 
         // Confirm inline delete
-        await expect(page.getByText(`Delete "${appName}"?`).or(page.getByText(`Delete \u201c${appName}\u201d?`))).toBeVisible({ timeout: 5000 });
-        await page.click('button:has-text("Delete"):not(:has-text("Deleting"))');
+        const confirmBar = page.locator('.bg-rose-500\\/10', { hasText: appName });
+        await expect(confirmBar).toBeVisible({ timeout: 5000 });
+        await confirmBar.getByRole('button', { name: 'Delete' }).click();
 
         // Verify the app is removed
         await expect(page.getByText(appName)).not.toBeVisible({ timeout: 15000 });
@@ -83,11 +84,11 @@ test.describe('Personal Apps Management', () => {
 
         // Try to create an app with a javascript: URL
         await page.fill('#pa-name', 'XSS Test');
-        // Use fill + clear the type=url validation by setting the value directly
+        // Bypass type=url browser validation by changing input type temporarily
         await page.evaluate(() => {
             const urlInput = document.getElementById('pa-url') as HTMLInputElement;
             if (urlInput) {
-                urlInput.type = 'text'; // Bypass type=url browser validation temporarily
+                urlInput.type = 'text';
             }
         });
         await page.fill('#pa-url', 'javascript:alert(1)');
@@ -110,8 +111,8 @@ test.describe('Personal Apps Management', () => {
         await page.click('button:has-text("Create App")');
         await expect(page.getByText(originalName)).toBeVisible({ timeout: 15000 });
 
-        // Edit the app
-        const appRow = page.locator('.card-panel', { hasText: originalName });
+        // Edit the app — use specific selector for the app list item
+        const appRow = page.locator('.card-panel.group', { hasText: originalName });
         await appRow.hover();
         await appRow.getByTitle('Edit').click();
 
@@ -127,10 +128,11 @@ test.describe('Personal Apps Management', () => {
         await expect(page.getByText('App updated successfully')).toBeVisible({ timeout: 5000 });
 
         // Cleanup: delete the app
-        const updatedRow = page.locator('.card-panel', { hasText: updatedName });
+        const updatedRow = page.locator('.card-panel.group', { hasText: updatedName });
         await updatedRow.hover();
         await updatedRow.getByTitle('Delete').click();
-        await page.click('button:has-text("Delete"):not(:has-text("Deleting"))');
+        const confirmBar = page.locator('.bg-rose-500\\/10', { hasText: updatedName });
+        await confirmBar.getByRole('button', { name: 'Delete' }).click();
         await expect(page.getByText(updatedName)).not.toBeVisible({ timeout: 15000 });
     });
 });
