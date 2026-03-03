@@ -55,9 +55,12 @@ function hex2buf(hex: string) {
 
 function timingSafeEqual(a: string, b: string) {
   if (a.length !== b.length || a.length === 0) return false;
+  const encoder = new TextEncoder();
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
   let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  for (let i = 0; i < aBytes.length; i++) {
+    result |= aBytes[i] ^ bBytes[i];
   }
   return result === 0;
 }
@@ -291,9 +294,16 @@ export async function middleware(request: NextRequest) {
 
     if (resolvedTimestamp > 0 && (now - resolvedTimestamp) > idleTimeoutMs) {
       console.warn('middleware: idle timeout for sub=%s, path=%s', token.sub, pathname);
-      const signInUrl = request.nextUrl.clone();
-      signInUrl.pathname = '/auth/signin';
-      const timeoutResponse = NextResponse.redirect(signInUrl);
+
+      let timeoutResponse;
+      if (pathname.startsWith('/api/')) {
+        timeoutResponse = NextResponse.json({ error: 'idle_timeout' }, { status: 401 });
+      } else {
+        const signInUrl = request.nextUrl.clone();
+        signInUrl.pathname = '/auth/signin';
+        timeoutResponse = NextResponse.redirect(signInUrl);
+      }
+
       timeoutResponse.cookies.delete('next-auth.session-token');
       timeoutResponse.cookies.delete('__Secure-next-auth.session-token');
       timeoutResponse.cookies.delete('techhub-activity');

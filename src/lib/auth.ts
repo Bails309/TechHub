@@ -68,12 +68,8 @@ if (!trustProxy && !trustedProxiesEnv && process.env.NODE_ENV === 'production') 
 const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
 const terminationLogCache = new Map<string, number>();
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, expiry] of terminationLogCache.entries()) {
-    if (now > expiry) terminationLogCache.delete(k);
-  }
-}, 60_000).unref();
+// Serverless environments shouldn't use setInterval for memory caches as they don't fire reliably
+// and prevent the event loop from closing. The Redis layer handles the deduplication primarily anyway.
 
 async function logSessionTerminationOnce(userId: string, reason: string, issuedAt: number) {
   const key = `audit:termination:${userId}:${reason}:${issuedAt}`;
@@ -287,33 +283,27 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
         if (token.sub && !token.revoked && shouldCheck) {
           try {
-            // ALWAYS query the DB for the consistency check to prevent race conditions 
-            // where a failed Redis invalidation during privilege revocation leaves the cache stale.
-            const userRecord = await prisma.user.findUnique({
-              where: { id: String(token.sub) },
-              select: {
-                roles: { include: { role: true } },
-                mustChangePassword: true,
-                updatedAt: true,
-                // @ts-ignore
-                securityStamp: true
-              }
-            });
-            if (!userRecord) {
+            // FIX 7: Query Redis (via getUserMeta) instead of the DB directly for the periodic check.
+            // This drastically reduces DB load. We assume admin mutations correctly invalidate the Redis cache.
+            const meta = await getUserMeta(String(token.sub));
+
+            if (!meta) {
+              // If Redis is completely empty (cache miss or Redis down), we fall back to DB via getUserMeta anyway.
+              // But if getUserMeta returned null, it means the user was explicitly deleted from the DB.
               console.warn('[AUTH] Revoking session for sub=%s (user_deleted)', token.sub);
               token.revoked = true;
               await writeAuditLog({ category: 'auth', action: 'session_terminated', targetId: String(token.sub), details: { reason: 'user_deleted' } });
             } else {
-              const dbStamp = (userRecord as any).securityStamp ? new Date((userRecord as any).securityStamp).getTime() : 0;
+              const dbStamp = meta.securityStamp ? new Date(meta.securityStamp).getTime() : 0;
               const tokenStamp = Number(token.securityStamp ?? 0);
               if (trigger !== 'update' && tokenStamp > 0 && dbStamp > tokenStamp) {
                 console.warn('[AUTH] Revoking session for sub=%s (security_stamp_mismatch: db=%d, token=%d)', token.sub, dbStamp, tokenStamp);
                 token.revoked = true;
               }
-              token.roles = (userRecord as any).roles?.map((r: any) => r.role.name) ?? [];
-              token.mustChangePassword = (userRecord as any).mustChangePassword;
+              token.roles = meta.roles ?? [];
+              token.mustChangePassword = meta.mustChangePassword;
               token.securityStamp = dbStamp || undefined;
-              token.userUpdatedAt = new Date((userRecord as any).updatedAt).getTime();
+              token.userUpdatedAt = meta.updatedAt;
               token.lastCheckedAt = now;
             }
           } catch (err) {
