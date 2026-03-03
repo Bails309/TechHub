@@ -29,6 +29,11 @@ export async function GET(
     'X-Content-Type-Options': 'nosniff'
   };
 
+  // Security: Prevent Stored XSS by forcing attachment for SVGs (prevents inline script execution)
+  if (iconData.contentType === 'image/svg+xml') {
+    headers['Content-Disposition'] = 'attachment';
+  }
+
   return new NextResponse(Buffer.from(iconData.buffer), {
     status: 200,
     headers

@@ -12,13 +12,11 @@ const nextConfig = {
     config.resolve.alias['@'] = path.resolve(process.cwd(), 'src');
     return config;
   },
-  serverActions: {
-    bodySizeLimit: '10mb',
-  },
   experimental: {
-    serverActions: {
-      bodySizeLimit: '10mb',
-    },
+    // Other experimental features if needed
+  },
+  serverActions: {
+    bodySizeLimit: '20mb',
   },
   async headers() {
     // Security headers are consolidated here for consistency across environments.

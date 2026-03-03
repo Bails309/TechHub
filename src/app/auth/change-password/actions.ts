@@ -99,7 +99,14 @@ export async function changePassword(
     }
 
     await tx.passwordHistory.create({ data: { userId: user.id, hash: nextHash } });
-    await tx.user.update({ where: { id: user.id }, data: { passwordHash: nextHash, mustChangePassword: false } });
+    await tx.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: nextHash,
+        mustChangePassword: false,
+        securityStamp: new Date()
+      }
+    });
 
     const excess = await tx.passwordHistory.findMany({
       where: { userId: user.id },

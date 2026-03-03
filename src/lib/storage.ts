@@ -8,6 +8,12 @@ import {
   StorageSharedKeyCredential
 } from '@azure/storage-blob';
 import { getStorageConfigMap } from './storageConfig';
+import { assertUrlNotPrivate } from './ssrf';
+import {
+  createPinnedHttpClient,
+  createPinnedAwsRequestHandler
+} from './pinnedClient';
+import ipaddr from 'ipaddr.js';
 
 const STORAGE_PROVIDER = process.env.STORAGE_PROVIDER || 'local';
 
@@ -45,7 +51,8 @@ async function saveLocal(file: File) {
   const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
   const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
   const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : '.bin');
+  const isSvg = buffer.toString('utf8', 0, 100).toLowerCase().includes('<svg');
+  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : (isSvg ? '.svg' : '.bin'));
   const filename = `${randomUUID()}${extension}`;
   const uploadDir = path.join(process.cwd(), 'uploads');
   await mkdir(uploadDir, { recursive: true });
@@ -114,7 +121,17 @@ async function cleanupLocalIcons(validIconPaths: string[]): Promise<number> {
 }
 
 // S3 implementation
-function getS3Client(config?: S3Config): S3Client {
+async function getS3Client(config?: S3Config): Promise<S3Client> {
+  const endpoint = config?.endpoint || process.env.S3_ENDPOINT;
+  let requestHandler: any = undefined;
+
+  if (endpoint) {
+    const address = await assertUrlNotPrivate(endpoint);
+    const parsed = ipaddr.process(address);
+    const family = parsed.kind() === 'ipv6' ? 6 : 4;
+    requestHandler = createPinnedAwsRequestHandler(parsed.toNormalizedString(), family as 4 | 6);
+  }
+
   if (config) {
     return new S3Client({
       region: config.region || process.env.S3_REGION,
@@ -122,10 +139,14 @@ function getS3Client(config?: S3Config): S3Client {
       forcePathStyle: config.forcePathStyle ?? (process.env.S3_FORCE_PATH_STYLE === 'true'),
       credentials: config.accessKeyId && config.secret
         ? { accessKeyId: config.accessKeyId, secretAccessKey: config.secret }
-        : undefined
+        : undefined,
+      requestHandler
     });
   }
-  return new S3Client({ region: process.env.S3_REGION });
+  return new S3Client({
+    region: process.env.S3_REGION,
+    requestHandler
+  });
 }
 
 async function resolveS3Config(): Promise<S3Config | null> {
@@ -151,9 +172,10 @@ async function saveS3(file: File) {
   const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
   const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
   const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : '.bin');
+  const isSvg = buffer.toString('utf8', 0, 100).toLowerCase().includes('<svg');
+  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : (isSvg ? '.svg' : '.bin'));
   const key = `uploads/${randomUUID()}${extension}`;
-  const s3 = getS3Client(config ?? undefined);
+  const s3 = await getS3Client(config ?? undefined);
   await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: file.type }));
   const region = config?.region || process.env.S3_REGION;
   const endpoint = config?.endpoint || process.env.S3_ENDPOINT;
@@ -184,7 +206,7 @@ async function deleteS3(iconPath?: string) {
   } catch {
     // not a URL
   }
-  const s3 = getS3Client(config ?? undefined);
+  const s3 = await getS3Client(config ?? undefined);
   await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })).catch(() => null);
 }
 
@@ -206,7 +228,7 @@ async function cleanupS3Icons(validIconPaths: string[]): Promise<number> {
     validKeys.add(key);
   }
 
-  const s3 = getS3Client(config ?? undefined);
+  const s3 = await getS3Client(config ?? undefined);
   let deletedCount = 0;
   let isTruncated = true;
   let continuationToken: string | undefined = undefined;
@@ -241,11 +263,28 @@ async function cleanupS3Icons(validIconPaths: string[]): Promise<number> {
 }
 
 // Azure Blob implementation
-function getAzureBlobServiceClient(config?: AzureConfig): BlobServiceClient {
+async function getAzureBlobServiceClient(config?: AzureConfig): Promise<BlobServiceClient> {
   const connectionString = config?.authMode === 'connection-string'
     ? config.secret
     : process.env.AZURE_STORAGE_CONNECTION_STRING;
+
   if (connectionString) {
+    // Parse to find endpoint for pinning
+    const accountMatch = connectionString.match(/AccountName=([^;]+)/i);
+    const protocolMatch = connectionString.match(/DefaultEndpointsProtocol=([^;]+)/i);
+    const suffixMatch = connectionString.match(/EndpointSuffix=([^;]+)/i);
+    const account = accountMatch?.[1];
+    if (account) {
+      const protocol = protocolMatch?.[1] || 'https';
+      const suffix = suffixMatch?.[1] || 'core.windows.net';
+      const endpoint = `${protocol}://${account}.blob.${suffix}`;
+      const address = await assertUrlNotPrivate(endpoint);
+      const parsed = ipaddr.process(address);
+      const family = parsed.kind() === 'ipv6' ? 6 : 4;
+      return BlobServiceClient.fromConnectionString(connectionString, {
+        httpClient: createPinnedHttpClient(parsed.toNormalizedString(), family as 4 | 6)
+      });
+    }
     return BlobServiceClient.fromConnectionString(connectionString);
   }
 
@@ -256,14 +295,20 @@ function getAzureBlobServiceClient(config?: AzureConfig): BlobServiceClient {
   }
 
   const endpoint = config?.endpoint || process.env.AZURE_BLOB_ENDPOINT || `https://${account}.blob.core.windows.net`;
+  const address = await assertUrlNotPrivate(endpoint);
+  const parsed = ipaddr.process(address);
+  const family = parsed.kind() === 'ipv6' ? 6 : 4;
   const credential = new StorageSharedKeyCredential(account, key);
-  return new BlobServiceClient(endpoint, credential);
+  return new BlobServiceClient(endpoint, credential, {
+    httpClient: createPinnedHttpClient(parsed.toNormalizedString(), family as 4 | 6)
+  });
 }
 
-function getAzureContainerClient(config?: AzureConfig) {
+async function getAzureContainerClient(config?: AzureConfig) {
   const container = config?.container || process.env.AZURE_BLOB_CONTAINER;
   if (!container) throw new Error('AZURE_BLOB_CONTAINER not configured');
-  return getAzureBlobServiceClient(config).getContainerClient(container);
+  const serviceClient = await getAzureBlobServiceClient(config);
+  return serviceClient.getContainerClient(container);
 }
 
 function parseAzureConnectionString(raw: string) {
@@ -297,13 +342,14 @@ async function saveAzure(file: File) {
   const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
   const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
   const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : '.bin');
+  const isSvg = buffer.toString('utf8', 0, 100).toLowerCase().includes('<svg');
+  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : (isSvg ? '.svg' : '.bin'));
   const key = `uploads/${randomUUID()}${extension}`;
   const config = await resolveAzureConfig();
-  const containerClient = getAzureContainerClient(config ?? undefined);
+  const containerClient = await getAzureContainerClient(config ?? undefined);
   const blobClient = containerClient.getBlockBlobClient(key);
   await blobClient.uploadData(buffer, {
-    blobHTTPHeaders: { blobContentType: file.type || 'application/octet-stream' },
+    blobHTTPHeaders: { blobContentType: isSvg ? 'image/svg+xml' : (file.type || 'application/octet-stream') },
   });
   // Return canonical same-origin path to be stored in DB (e.g. /uploads/<key>)
   return `/${key}`;
@@ -327,7 +373,7 @@ async function deleteAzure(iconPath?: string) {
   }
 
   if (!key) return;
-  const containerClient = getAzureContainerClient(config ?? undefined);
+  const containerClient = await getAzureContainerClient(config ?? undefined);
   await containerClient.deleteBlob(key).catch(() => null);
 }
 
@@ -336,7 +382,7 @@ async function cleanupAzureIcons(validIconPaths: string[]): Promise<number> {
   const config = await resolveAzureConfig();
   if (!config) return 0;
 
-  const containerClient = getAzureContainerClient(config);
+  const containerClient = await getAzureContainerClient(config);
   const container = containerClient.containerName;
   if (!container) return 0;
 
@@ -463,7 +509,7 @@ async function saveS3WithBuffer(buffer: Buffer, keySuffix: string, contentType: 
   const bucket = config?.bucket || process.env.S3_BUCKET;
   if (!bucket) throw new Error('S3_BUCKET not configured');
   const key = `uploads/${keySuffix}`;
-  const s3 = getS3Client(config ?? undefined);
+  const s3 = await getS3Client(config ?? undefined);
   await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: contentType }));
   const region = config?.region || process.env.S3_REGION;
   const endpoint = config?.endpoint || process.env.S3_ENDPOINT;
@@ -479,7 +525,7 @@ async function saveS3WithBuffer(buffer: Buffer, keySuffix: string, contentType: 
 async function saveAzureWithBuffer(buffer: Buffer, keySuffix: string, contentType: string) {
   const key = `uploads/${keySuffix}`;
   const config = await resolveAzureConfig();
-  const containerClient = getAzureContainerClient(config ?? undefined);
+  const containerClient = await getAzureContainerClient(config ?? undefined);
   const blobClient = containerClient.getBlockBlobClient(key);
   try {
     await blobClient.uploadData(buffer, {
@@ -520,7 +566,7 @@ export async function readIcon(iconPath: string): Promise<{ buffer: Uint8Array; 
     const config = await resolveS3Config();
     const bucket = config?.bucket || process.env.S3_BUCKET;
     if (!bucket) return null;
-    const s3 = getS3Client(config ?? undefined);
+    const s3 = await getS3Client(config ?? undefined);
     try {
       const resp = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
       if (!resp.Body) return null;
@@ -532,7 +578,7 @@ export async function readIcon(iconPath: string): Promise<{ buffer: Uint8Array; 
   if (provider === 'azure') {
     const config = await resolveAzureConfig();
     if (!config) return null;
-    const containerClient = getAzureContainerClient(config);
+    const containerClient = await getAzureContainerClient(config);
     if (!containerClient.containerName) return null;
     try {
       // Azure blob key might have container name prefix

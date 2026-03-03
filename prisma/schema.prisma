@@ -29,6 +29,7 @@ model User {
   appOrder      UserAppOrder?
   appAccesses   UserAppAccess[]
   favoriteApps  UserFavoriteApp[]
+  securityStamp DateTime  @default(now())
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }

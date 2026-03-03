@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { getServerActionIp } from './ip';
 
 export type AuditCategory = 'auth' | 'admin' | 'config';
 
@@ -22,6 +23,14 @@ export interface AuditEntry {
  */
 export async function writeAuditLog(entry: AuditEntry) {
     try {
+        // Automatically capture the IP from headers if not explicitly provided.
+        // This ensures Server Actions capture the correct client IP without
+        // needing to modify every caller.
+        let clientIp = entry.ip;
+        if (!clientIp) {
+            clientIp = await getServerActionIp();
+        }
+
         const result = await prisma.auditLog.create({
             data: {
                 category: entry.category,
@@ -29,7 +38,7 @@ export async function writeAuditLog(entry: AuditEntry) {
                 actorId: entry.actorId ?? null,
                 targetId: entry.targetId ?? null,
                 provider: entry.provider ?? null,
-                ip: entry.ip ?? null,
+                ip: clientIp ?? null,
                 latency: entry.latency ?? null,
                 details: entry.details ?? undefined,
             },

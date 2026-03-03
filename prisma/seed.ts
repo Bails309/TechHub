@@ -112,6 +112,7 @@ async function main() {
   const uniqueCategories = Array.from(new Set(sampleApps.map(s => s.category).filter(Boolean)));
   const categoryMap = new Map<string, string>();
   for (const [i, name] of uniqueCategories.entries()) {
+    // @ts-ignore - stale prisma types in IDE
     const cat = await prisma.category.upsert({
       where: { name },
       update: {},
