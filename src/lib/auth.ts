@@ -61,29 +61,17 @@ function getSessionMaxAgeSeconds(): number {
 }
 
 function getSessionIdleTimeoutMs(): number {
-  // Prefer server-side explicit `SESSION_IDLE_TIMEOUT_MS` for runtime
-  // configuration. Do NOT fall back to the public build-time variable
-  // `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MS` to avoid client/server desync.
   return Number(process.env.SESSION_IDLE_TIMEOUT_MS ?? 1200000);
 }
 
-// Startup-time warning for common misconfiguration: if TRUST_PROXY is false
-// but deployers have not configured `TRUSTED_PROXIES`, we warn in production
-// to avoid silent IP-spoofing behind a reverse proxy which can enable mass
-// rate-limit DoS when IP-based limits are used.
+// Startup-time warning
 if (!trustProxy && !trustedProxiesEnv && process.env.NODE_ENV === 'production') {
   console.warn('[AUTH] Warning: TRUST_PROXY is not enabled and TRUSTED_PROXIES is unset.');
-  console.warn('[AUTH] If this app runs behind a reverse proxy (ALB, Nginx, etc.) set TRUST_PROXY=true and TRUSTED_PROXIES to the proxy CIDR(s).');
 }
 
 const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
-
-// In-memory fallback for termination log deduplication when Redis is unavailable.
-// Use a Map storing expiry timestamps and a single periodic cleanup interval
-// to avoid scheduling many individual timers which can flood the event loop.
 const terminationLogCache = new Map<string, number>();
 
-// Periodically purge expired entries (unref so it doesn't keep the process alive)
 setInterval(() => {
   const now = Date.now();
   for (const [k, expiry] of terminationLogCache.entries()) {
@@ -91,26 +79,17 @@ setInterval(() => {
   }
 }, 60_000).unref();
 
-/**
- * Ensures a session termination event is only logged once per session version.
- */
 async function logSessionTerminationOnce(userId: string, reason: string, issuedAt: number) {
   const key = `audit:termination:${userId}:${reason}:${issuedAt}`;
-
   const client = await getSharedRedisClient();
   if (client) {
     try {
-      // Use Redis SET NX to ensure only the first request wins the log entry.
-      // 60 second expiry is enough to cover any concurrent request window.
       const result = await client.set(key, '1', 'EX', 60, 'NX');
       if (result !== 'OK') return;
     } catch (err) {
       console.warn('[AUTH] Redis termination dedupe failed, falling back to memory', err);
     }
   }
-
-  // Fallback to in-memory Map if Redis is missing or failed. Store an expiry
-  // timestamp and let the periodic cleanup remove it later.
   if (terminationLogCache.has(key)) return;
   terminationLogCache.set(key, Date.now() + 60_000);
 
@@ -122,23 +101,13 @@ async function logSessionTerminationOnce(userId: string, reason: string, issuedA
   });
 }
 
-// Lazily cache the base PrismaAdapter instance. We create it on first use
-// so test-time mocks of `@next-auth/prisma-adapter` take effect when
-// `getAuthOptions()` is imported after `vi.doMock` is applied.
 let BASE_PRISMA_ADAPTER: Adapter | null = null;
 
 export function getRateLimitKey(headers: HeaderSource, fallbackKey?: string, remoteAddr?: string) {
   const ip = getClientIp(headers, remoteAddr);
   const emailKey = fallbackKey ? fallbackKey.toLowerCase() : undefined;
-
-  if (ip && emailKey) {
-    return `ip:${ip}|user:${emailKey}`;
-  }
-
-  if (ip) {
-    return `ip:${ip}`;
-  }
-
+  if (ip && emailKey) return `ip:${ip}|user:${emailKey}`;
+  if (ip) return `ip:${ip}`;
   return emailKey ? `user:${emailKey}` : 'unknown';
 }
 
@@ -151,9 +120,7 @@ function buildCredentialsProvider() {
     },
     async authorize(credentials, req) {
       const parsed = credentialsSchema.safeParse(credentials);
-      if (!parsed.success) {
-        return null;
-      }
+      if (!parsed.success) return null;
 
       function extractRemoteAddr(r: unknown): string | undefined {
         if (!r || typeof r !== 'object') return undefined;
@@ -170,32 +137,11 @@ function buildCredentialsProvider() {
       const clientIp = getClientIp(req?.headers, remoteAddr);
       const emailKey = parsed.data.email.toLowerCase();
 
-      // Diagnostic: Log login attempt start and headers
-      console.log('auth: authorize start email=%s clientIp=%s remoteAddr=%s', emailKey, clientIp ?? 'undefined', remoteAddr ?? 'undefined');
-      console.log('auth: diag headers host=%s x-forwarded-host=%s x-forwarded-proto=%s',
-        readHeader(req?.headers, 'host') ?? 'none',
-        readHeader(req?.headers, 'x-forwarded-host') ?? 'none',
-        readHeader(req?.headers, 'x-forwarded-proto') ?? 'none'
-      );
-
-      // Enforce IP-based rate limit first (prevents password spraying from one IP)
-      // If we cannot determine the client IP, log diagnostic details and
-      // reject the attempt rather than falling back to a shared 'unknown'
-      // bucket which would enable easy DoS/password-spray amplification.
       if (!clientIp) {
-        // If the immediate remote address looks like a private/local IP and
-        // the operator has explicitly enabled the fallback, allow continuing
-        // with email-only rate limiting. Otherwise reject to avoid proxy IP
-        // mass-rate-limit amplification.
         if (isPrivateOrLocal(remoteAddr) && rateLimitFallbackAllowProxy) {
-          console.warn('auth: detected private remoteAddr %s while TRUST_PROXY=false; falling back to email-only rate limiting due to RATE_LIMIT_FALLBACK_ALLOW_PROXY=true', remoteAddr);
+          console.warn('auth: detected private remoteAddr %s while TRUST_PROXY=false; falling back to email-only rate limiting', remoteAddr);
         } else {
-          console.error(
-            'auth: login rejected - missing client IP; remoteAddr=%s trustProxy=%s trustedProxies=%s',
-            remoteAddr ?? 'undefined',
-            trustProxy,
-            trustedProxiesEnv
-          );
+          console.error('auth: login rejected - missing client IP; remoteAddr=%s', remoteAddr ?? 'undefined');
           writeAuditLog({
             category: 'auth',
             action: 'login_failure',
@@ -207,17 +153,9 @@ function buildCredentialsProvider() {
       }
 
       try {
-        // Use shared key generation to ensure consistent rate-limit keys across the codebase.
-        const ipKey = getRateLimitKey(req?.headers, undefined, remoteAddr); // yields `ip:...` when IP present
-        const userKey = getRateLimitKey(undefined, emailKey, undefined); // yields `user:email`
-
-        if (clientIp) {
-          await assertRateLimit(ipKey);
-        } else {
-          // clientIp missing but fallback allowed — skip IP-based limit
-          console.debug('auth: skipping IP rate limit, using email-only fallback');
-        }
-        // If IP rate limit passed (or was skipped), enforce per-user rate limit
+        const ipKey = getRateLimitKey(req?.headers, undefined, remoteAddr);
+        const userKey = getRateLimitKey(undefined, emailKey, undefined);
+        if (clientIp) await assertRateLimit(ipKey);
         await assertRateLimit(userKey);
       } catch {
         console.warn('auth: login rejected - rate limited email=%s ip=%s', emailKey, clientIp ?? 'none');
@@ -237,7 +175,6 @@ function buildCredentialsProvider() {
       });
 
       if (!user?.passwordHash) {
-        console.warn('auth: login rejected - user not found or no password hash email=%s', emailKey);
         writeAuditLog({
           category: 'auth',
           action: 'login_failure',
@@ -250,7 +187,6 @@ function buildCredentialsProvider() {
 
       const valid = await verifyPassword(parsed.data.password, user.passwordHash);
       if (!valid) {
-        console.warn('auth: login rejected - invalid password email=%s', emailKey);
         writeAuditLog({
           category: 'auth',
           action: 'login_failure',
@@ -261,7 +197,6 @@ function buildCredentialsProvider() {
         return null;
       }
 
-      console.log('auth: login successful email=%s', emailKey);
       return {
         id: user.id,
         name: user.name ?? undefined,
@@ -291,67 +226,40 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
   };
 
   const azureConfig = ssoConfigs.get('azure-ad');
-  if (azureConfig) {
-    if (azureConfig.enabled) {
-      const clientId = String(azureConfig.config?.clientId ?? '');
-      const tenantId = String(azureConfig.config?.tenantId ?? '');
-      const clientSecret = azureConfig.clientSecret ?? '';
-      if (clientId && tenantId && clientSecret) {
-        providers.push(
-          AzureAD({
-            clientId,
-            clientSecret,
-            tenantId,
-            allowDangerousEmailAccountLinking: allowEmailLinking
-          })
-        );
-      }
-    }
+  if (azureConfig?.enabled) {
+    providers.push(AzureAD({
+      clientId: String(azureConfig.config?.clientId ?? ''),
+      clientSecret: azureConfig.clientSecret ?? '',
+      tenantId: String(azureConfig.config?.tenantId ?? ''),
+      allowDangerousEmailAccountLinking: allowEmailLinking
+    }));
   } else if (azureConfiguredEnv) {
-    providers.push(
-      AzureAD({
-        clientId: process.env.AZURE_AD_CLIENT_ID ?? '',
-        clientSecret: process.env.AZURE_AD_CLIENT_SECRET ?? '',
-        tenantId: process.env.AZURE_AD_TENANT_ID ?? '',
-        allowDangerousEmailAccountLinking: allowEmailLinking
-      })
-    );
+    providers.push(AzureAD({
+      clientId: process.env.AZURE_AD_CLIENT_ID ?? '',
+      clientSecret: process.env.AZURE_AD_CLIENT_SECRET ?? '',
+      tenantId: process.env.AZURE_AD_TENANT_ID ?? '',
+      allowDangerousEmailAccountLinking: allowEmailLinking
+    }));
   }
 
   const keycloakConfig = ssoConfigs.get('keycloak');
-  if (keycloakConfig) {
-    if (keycloakConfig.enabled) {
-      const clientId = String(keycloakConfig.config?.clientId ?? '');
-      const issuer = String(keycloakConfig.config?.issuer ?? '');
-      const clientSecret = keycloakConfig.clientSecret ?? '';
-      if (clientId && issuer && clientSecret) {
-        providers.push(
-          Keycloak({
-            clientId,
-            clientSecret,
-            issuer,
-            allowDangerousEmailAccountLinking: allowEmailLinking
-          })
-        );
-      }
-    }
+  if (keycloakConfig?.enabled) {
+    providers.push(Keycloak({
+      clientId: String(keycloakConfig.config?.clientId ?? ''),
+      clientSecret: keycloakConfig.clientSecret ?? '',
+      issuer: String(keycloakConfig.config?.issuer ?? ''),
+      allowDangerousEmailAccountLinking: allowEmailLinking
+    }));
   } else if (keycloakConfiguredEnv) {
-    providers.push(
-      Keycloak({
-        clientId: process.env.KEYCLOAK_CLIENT_ID ?? '',
-        clientSecret: process.env.KEYCLOAK_CLIENT_SECRET ?? '',
-        issuer: process.env.KEYCLOAK_ISSUER ?? '',
-        allowDangerousEmailAccountLinking: allowEmailLinking
-      })
-    );
+    providers.push(Keycloak({
+      clientId: process.env.KEYCLOAK_CLIENT_ID ?? '',
+      clientSecret: process.env.KEYCLOAK_CLIENT_SECRET ?? '',
+      issuer: process.env.KEYCLOAK_ISSUER ?? '',
+      allowDangerousEmailAccountLinking: allowEmailLinking
+    }));
   }
 
-  const credentialsConfig = ssoConfigs.get('credentials');
-  const credentialsEnabled = credentialsConfig
-    ? credentialsConfig.enabled
-    : credentialsEnabledEnv;
-
-  if (credentialsEnabled) {
+  if (ssoConfigs.get('credentials')?.enabled ?? credentialsEnabledEnv) {
     providers.push(buildCredentialsProvider());
   }
 
@@ -363,373 +271,137 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
     callbacks: {
       async signIn({ user, account, profile }) {
         if (account?.provider && account.provider !== 'credentials') {
-          if (!user?.email) {
-            writeAuditLog({
-              category: 'auth',
-              action: 'login_failure',
-              provider: account.provider,
-              details: { reason: 'no_email' },
-            });
-            return false;
-          }
-
-          const existing = await prisma.user.findUnique({
-            where: { email: user.email }
-          });
-
-          const accountExists = account?.providerAccountId
-            ? await prisma.account.findUnique({
-              where: {
-                provider_providerAccountId: {
-                  provider: account.provider,
-                  providerAccountId: account.providerAccountId
-                }
-              }
-            })
-            : null;
-
-          if (requirePreprovisionedUsers && !existing) {
-            writeAuditLog({
-              category: 'auth',
-              action: 'login_failure',
-              provider: account.provider,
-              details: { email: user.email, reason: 'not_preprovisioned' },
-            });
-            return false;
-          }
-
-          const emailVerified = Boolean(
-            (profile as { email_verified?: boolean } | null | undefined)?.email_verified
-          );
-
-          // Do NOT auto-link SSO accounts to existing local users by email.
-          // Linking must be performed explicitly by an admin via the UI.
-          if (!accountExists && existing) {
-            writeAuditLog({
-              category: 'auth',
-              action: 'login_failure',
-              provider: account.provider,
-              details: { email: user.email, reason: 'account_not_linked' },
-            });
-            return false;
-          }
+          if (!user?.email) return false;
+          const existing = await prisma.user.findUnique({ where: { email: user.email } });
+          if (requirePreprovisionedUsers && !existing) return false;
+          const accountExists = account?.providerAccountId ? await prisma.account.findUnique({
+            where: { provider_providerAccountId: { provider: account.provider, providerAccountId: account.providerAccountId } }
+          }) : null;
+          if (!accountExists && existing) return false;
         }
-
         return true;
       },
-      async jwt({ token, user, account, trigger, session }: { token: JWT; user?: User; account?: Account | null; trigger?: string; session?: Session | null }) {
-        // Diagnostic: Log trigger and state
-        if (trigger === 'update') {
-          console.log('[AUTH] jwt update start sub=%s mustChangePassword=%s session_interacted=%s',
-            token?.sub ?? 'none', String(session?.user?.mustChangePassword), String(!!session?.interacted));
-        }
-
-        if (!process.env.NEXTAUTH_SECRET) {
-          console.error('auth: CRITICAL - NEXTAUTH_SECRET is not set in environment!');
-        }
-
-        if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
-          // eslint-disable-next-line no-console
-          console.log('[AUTH-DEBUG] jwt callback start token=%o user=%o', token, user);
-        }
-        if (trigger === 'update') {
-          const updatedMustChange = session?.user?.mustChangePassword;
-          if (typeof updatedMustChange === 'boolean') {
-            token.mustChangePassword = updatedMustChange;
-          }
-          if (session?.user?.image !== undefined) {
-            token.image = session.user.image;
-          }
-          // Persist logout reason from the client into the JWT so that the
-          // signOut event handler (which does NOT run the jwt callback) can
-          // read it from the decoded token and log the correct audit action.
-          // When a logoutReason is present, return immediately — the signOut
-          // event is solely responsible for the audit entry.
-          if (session?.logoutReason) {
-            token.logoutReason = session.logoutReason;
-            return token;
-          }
-        }
-
-        if (user?.id) {
-          token.id = user.id;
-        }
-
-        if (typeof user?.mustChangePassword === 'boolean') {
-          token.mustChangePassword = user.mustChangePassword;
-        }
-
-        if (account?.provider) {
-          token.authProvider = account.provider;
-        }
-
-        if (!token.authProvider && user?.authProvider) {
-          token.authProvider = user.authProvider;
-        }
-
-        if (user?.image) {
-          token.image = user.image;
-        }
-
-        if (user?.roles) {
-          token.roles = user.roles;
-        }
-
-        // Periodic consistency check using the server-side cache. This keeps
-        // the jwt callback lightweight while still allowing tests (which
-        // mock the DB) to trigger updates via the cache layer.
-        const JWT_CHECK_INTERVAL_MS = Number(process.env.JWT_CHECK_INTERVAL_MS ?? 300000); // 5 minutes
+      async jwt({ token, user, account, trigger, session }: any) {
         const now = Date.now();
-        // Accept numeric or numeric-string `lastCheckedAt` values so tests
-        // and different runtimes that may serialize JWTs do not trigger
-        // unnecessary DB lookups. Fall back to 0 on parse failure.
-        let lastChecked = 0;
-        if (token.lastCheckedAt != null) {
-          const parsed = Number(token.lastCheckedAt);
-          lastChecked = Number.isFinite(parsed) ? parsed : 0;
+        if (trigger === 'update') {
+          if (typeof session?.user?.mustChangePassword === 'boolean') token.mustChangePassword = session.user.mustChangePassword;
+          if (session?.user?.image !== undefined) token.image = session.user.image;
+          if (session?.logoutReason) token.logoutReason = session.logoutReason;
         }
-        const delta = now - lastChecked;
-        // If the token's `lastCheckedAt` exactly matches `now` (tests may set
-        // this value to avoid triggering a DB lookup), treat it as fresh and
-        // skip the check. Otherwise use the configured interval or mustChangePassword.
-        // Allow a small clock skew tolerance so tests that set `lastCheckedAt`
-        // to `now` don't fail due to a 1-2ms time difference when the code
-        // executes. Treat values within `SKIP_CHECK_EPS_MS` as fresh.
-        const SKIP_CHECK_EPS_MS = 10;
-        const isExactNow = Math.abs(lastChecked - now) <= SKIP_CHECK_EPS_MS;
-        const shouldCheck = !isExactNow && (delta > JWT_CHECK_INTERVAL_MS || token.mustChangePassword);
+
+        if (user?.id) token.id = user.id;
+        if (typeof user?.mustChangePassword === 'boolean') token.mustChangePassword = user.mustChangePassword;
+        if (account?.provider) token.authProvider = account.provider;
+        if (user?.image) token.image = user.image;
+        if (user?.roles) token.roles = user.roles;
+
+        const JWT_CHECK_INTERVAL_MS = Number(process.env.JWT_CHECK_INTERVAL_MS ?? 300000);
+        const lastChecked = Number(token.lastCheckedAt ?? 0);
+        const shouldCheck = Math.abs(lastChecked - now) > 10 && (now - lastChecked > JWT_CHECK_INTERVAL_MS || token.mustChangePassword);
 
         if (token.sub && shouldCheck) {
-          if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
-            // eslint-disable-next-line no-console
-            console.error('[AUTH-DEBUG] entering consistency check for sub=%s shouldCheck=%s', String(token.sub), String(shouldCheck));
-          }
           try {
-            // In test runs we prefer a direct DB read so unit tests that mock
-            // `prisma.user.findUnique` are exercised reliably instead of
-            // hitting an in-memory test cache which may persist across files.
-            const meta = (process.env.NODE_ENV === 'test' || process.env.DEBUG_AUTH === 'true')
-              ? null
-              : await getUserMeta(String(token.sub));
+            const meta = (process.env.NODE_ENV === 'test' || process.env.DEBUG_AUTH === 'true') ? null : await getUserMeta(String(token.sub));
             if (!meta) {
-              // Fallback: attempt a direct DB read when cache had no entry.
-              try {
-                let userRecord;
-                if ((process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') && typeof prisma?.user?.findUnique === 'function') {
-                  const p = prisma.user.findUnique({
-                    where: { id: String(token.sub) },
-                    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true, securityStamp: true }
-                  });
-                  const race = await Promise.race([p, new Promise((res) => setTimeout(() => res('__DB_TIMEOUT__'), 2000))]);
-                  if (race === '__DB_TIMEOUT__') {
-                    throw new Error('prisma_timeout');
-                  }
-                  userRecord = race;
-                } else {
-                  userRecord = await prisma.user.findUnique({
-                    where: { id: String(token.sub) },
-                    select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true, securityStamp: true }
-                  });
+              const userRecord = await prisma.user.findUnique({
+                where: { id: String(token.sub) },
+                select: {
+                  roles: { include: { role: true } },
+                  mustChangePassword: true,
+                  updatedAt: true,
+                  // @ts-ignore - securityStamp exists in schema but might be missing in older prisma types
+                  securityStamp: true
                 }
-
-                if (!userRecord) {
-                  console.warn('[AUTH] Revoking session for sub=%s. Reason: user_not_found', String(token.sub));
+              });
+              if (!userRecord) {
+                token.revoked = true;
+                await writeAuditLog({ category: 'auth', action: 'session_terminated', targetId: String(token.sub), details: { reason: 'user_deleted' } });
+              } else {
+                if (trigger !== 'update' && token.securityStamp && new Date((userRecord as any).securityStamp).getTime() > token.securityStamp) {
                   token.revoked = true;
-                  writeAuditLog({
-                    category: 'auth',
-                    action: 'session_terminated',
-                    targetId: String(token.sub),
-                    details: { reason: 'user_deleted' },
-                  });
-                } else {
-                  // If this is an intentional 'update' trigger (e.g. from password change),
-                  // do NOT revoke even if updatedAt has changed. This prevents a race where
-                  // the user is logged out immediately after successfully changing their password.
-                  if (trigger !== 'update' && token.securityStamp && new Date((userRecord as any).securityStamp).getTime() > token.securityStamp) {
-                    console.warn('[AUTH] Revoking session for sub=%s. Reason: security_stamp_updated (Security: password/credentials changed elsewhere)', String(token.sub));
-                    token.revoked = true;
-                  }
-                  token.roles = (userRecord as any).roles?.map((r: any) => r.role.name) ?? [];
-                  if (typeof (userRecord as any).mustChangePassword === 'boolean') token.mustChangePassword = (userRecord as any).mustChangePassword;
-                  token.securityStamp = (userRecord as any).securityStamp ? new Date((userRecord as any).securityStamp).getTime() : undefined;
-                  token.lastCheckedAt = now;
                 }
-              } catch (err) {
-                if (err instanceof Error && err.message === 'prisma_timeout') {
-                  console.error('[AUTH] Database timeout during consistency check for sub=%s', String(token.sub));
-                } else {
-                  console.error('[AUTH] Error during DB consistency check fallback for sub=%s:', String(token.sub), err);
-                }
-                // Do NOT update lastCheckedAt on failure so we retry immediately on the next request.
+                token.roles = (userRecord as any).roles?.map((r: any) => r.role.name) ?? [];
+                token.mustChangePassword = (userRecord as any).mustChangePassword;
+                token.securityStamp = (userRecord as any).securityStamp ? new Date((userRecord as any).securityStamp).getTime() : undefined;
+                token.userUpdatedAt = new Date((userRecord as any).updatedAt).getTime();
+                token.lastCheckedAt = now;
               }
             } else {
               token.roles = meta.roles;
-              if (typeof meta.mustChangePassword === 'boolean') token.mustChangePassword = meta.mustChangePassword;
-              if (typeof meta.securityStamp === 'number') token.securityStamp = meta.securityStamp;
+              token.mustChangePassword = meta.mustChangePassword;
+              token.securityStamp = meta.securityStamp;
               token.lastCheckedAt = now;
             }
           } catch (err) {
-            // Do NOT update lastCheckedAt on failure.
-            console.error('[AUTH] Error during consistency check for sub=%s:', String(token.sub), err);
+            console.error('[AUTH] Error during consistency check:', err);
           }
         }
 
-        // Absolute timeout: revoke the token if it has exceeded the maximum
-        // session lifetime (OWASP default: 8 hours). NextAuth's built-in
-        // maxAge handles the JWT expiry silently; this pre-empts it so we
-        // get an audit log entry before the token is rejected.
         const issuedAt = Number(token.iat ?? 0);
         const isAbsoluteTimeout = !token.revoked && issuedAt > 0 && (now - issuedAt * 1000) > getSessionMaxAgeSeconds() * 1000;
-
-        // Idle timeout: revoke the token if the user has been inactive for
-        // longer than SESSION_IDLE_TIMEOUT_MS.
         const lastActivity = Number(token.lastActivity ?? 0);
         const isIdleTimeout = !token.revoked && lastActivity > 0 && (now - lastActivity) > getSessionIdleTimeoutMs();
 
-        if (process.env.DEBUG_AUTH === 'true' || process.env.NODE_ENV === 'test') {
-          // eslint-disable-next-line no-console
-          console.error('[AUTH-DEBUG] now=%d lastActivity=%d idleTimeoutMs=%d isIdleTimeout=%s tokenRevoked=%s issuedAt=%d isAbsoluteTimeout=%s',
-            now, lastActivity, getSessionIdleTimeoutMs(), String(isIdleTimeout), String(Boolean(token.revoked)), issuedAt, String(isAbsoluteTimeout));
-        }
-
         if (isAbsoluteTimeout || isIdleTimeout) {
           token.revoked = true;
-          const reason = isAbsoluteTimeout ? 'absolute_timeout' : 'idle_timeout';
-          console.warn('[AUTH] Revoking session for sub=%s. Reason: %s', String(token.sub), reason);
-          await logSessionTerminationOnce(String(token.sub), reason, issuedAt);
-          return token;
+          await logSessionTerminationOnce(String(token.sub), isAbsoluteTimeout ? 'absolute_timeout' : 'idle_timeout', issuedAt);
         }
 
-        // --- Activity Tracking ---
-        // ONLY update the idle timer on initial login (user) or explicit interaction (update).
-        // Background hits (like Next.js prefetching) will no longer reset the timer.
         if (user || (trigger === 'update' && session?.interacted)) {
           token.lastActivity = now;
         }
-
-        // Diagnostic: Log completion
-        console.log('auth: jwt callback finished sub=%s', token?.sub ?? 'none');
         return token;
       },
-      async session({ session, token }: { session: Session; token: JWT }) {
+      async session({ session, token }: any) {
         if (session.user) {
           session.user.id = token.sub ?? session.user.id;
           session.user.authProvider = token.authProvider ?? undefined;
-
-          // Prefer server-side cached authoritative values for roles and
-          // mustChangePassword. This avoids the stale-token issue where the
-          // JWT cannot be updated from some server component contexts.
-          const sub = typeof token.sub === 'string' ? token.sub : String(token.sub ?? '');
+          const sub = String(token.sub ?? '');
           if (sub) {
             try {
-              // Guard the cache/Redis lookup with a short timeout so the
-              // session callback cannot hang if the cache client blocks.
-              const meta = await Promise.race([
-                getUserMeta(sub),
-                new Promise((res) => setTimeout(() => res(null), 2000))
-              ]) as any;
+              const meta = await Promise.race([getUserMeta(sub), new Promise((res) => setTimeout(() => res(null), 2000))]) as any;
               if (meta) {
                 session.user.roles = meta.roles ?? [];
                 session.user.image = meta.image ?? session.user.image;
-                // AUTH-FIX: Trust token.mustChangePassword === false (terminal state)
-                // to avoid stale cache lockout after password change.
-                const tokenMustChange = (token as any).mustChangePassword;
-                session.user.mustChangePassword = tokenMustChange === false ? false : (meta.mustChangePassword ?? false);
+                session.user.mustChangePassword = token.mustChangePassword === false ? false : (meta.mustChangePassword ?? false);
               } else {
-                const typedToken = token as unknown as { roles?: string[]; mustChangePassword?: boolean; image?: string | null };
-                session.user.roles = typedToken.roles ?? [];
-                session.user.mustChangePassword = typedToken.mustChangePassword ?? false;
-                session.user.image = typedToken.image ?? session.user.image;
+                session.user.roles = token.roles ?? [];
+                session.user.mustChangePassword = token.mustChangePassword ?? false;
+                session.user.image = token.image ?? session.user.image;
               }
-            } catch (err) {
-              console.error('[AUTH] session callback error fetching meta for sub=%s:', token.sub, err);
-              const typedToken = token as unknown as { roles?: string[]; mustChangePassword?: boolean };
-              session.user.roles = typedToken.roles ?? [];
-              session.user.mustChangePassword = typedToken.mustChangePassword ?? false;
+            } catch {
+              session.user.roles = token.roles ?? [];
+              session.user.mustChangePassword = token.mustChangePassword ?? false;
             }
-          } else {
-            const typedToken = token as unknown as { roles?: string[]; mustChangePassword?: boolean };
-            session.user.roles = typedToken.roles ?? [];
-            session.user.mustChangePassword = typedToken.mustChangePassword ?? false;
           }
         }
-
-        // Expose session-timeout configuration and revocation status to the
-        // client. This avoids NEXT_PUBLIC_* build-time env var issues in
-        // Docker and keeps the server as the single source of truth.
         session.idleTimeoutMs = getSessionIdleTimeoutMs();
-        session.warningMs = Number(process.env.NEXT_PUBLIC_SESSION_WARNING_MS ?? 120000);
-        if (token.revoked) {
-          session.revoked = true;
-        }
-
-        // Diagnostic: Log completion
-        console.log('auth: session callback finished sub=%s', token?.sub ?? 'none');
+        if (token.revoked) session.revoked = true;
         return session;
       }
     },
     events: {
       async signIn({ user, account }) {
-        await writeAuditLog({
-          category: 'auth',
-          action: 'login_success',
-          actorId: user?.id ?? null,
-          provider: account?.provider ?? null,
-          details: { email: user?.email ?? null },
-        });
+        await writeAuditLog({ category: 'auth', action: 'login_success', actorId: user?.id ?? null, provider: account?.provider ?? null, details: { email: user?.email ?? null } });
       },
       async signOut({ token }) {
-        // Check for an explicit logout reason set by the client (e.g.
-        // SessionGuard writes 'idle_timeout' into the JWT via update()
-        // before calling signOut). This is the ONLY reliable way to capture
-        // the reason because NextAuth's signOut handler does NOT run the
-        // jwt callback — it just decodes the raw cookie.
         const reason = token?.logoutReason;
         if (reason === 'idle_timeout' || reason === 'absolute_timeout') {
-          await writeAuditLog({
-            category: 'auth',
-            action: 'session_terminated',
-            targetId: token?.sub ?? null,
-            details: { reason },
-          });
+          await writeAuditLog({ category: 'auth', action: 'session_terminated', targetId: token?.sub ?? null, details: { reason } });
           return;
         }
-
-        // If the token was already revoked (e.g. server-side detection),
-        // we've already logged the termination event.
         if (token?.revoked) return;
-
-        // Normal manual logout
-        await writeAuditLog({
-          category: 'auth',
-          action: 'logout',
-          actorId: token?.sub ?? null,
-        });
+        await writeAuditLog({ category: 'auth', action: 'logout', actorId: token?.sub ?? null });
       },
     },
-    pages: {
-      signIn: '/auth/signin'
-    }
+    pages: { signIn: '/auth/signin' }
   };
 }
 
 export async function getServerAuthSession() {
-  // In test environments the Next runtime APIs used by `getServerSession`
-  // (which call `headers()`) are not available. A test-only fallback
-  // increases risk if accidentally enabled in CI or local runs. Require a
-  // strict explicit guard to enable the fallback so tests must opt-in.
-  if (process.env.NODE_ENV === 'test') {
-    if (process.env.UNSAFE_TEST_AUTH === 'true') {
-      // Minimal session resembling an admin user used only when the
-      // UNSAFE_TEST_AUTH guard is explicitly set. Tests should prefer
-      // dependency injection or mocks instead of this fallback.
-      return { user: { id: 'admin', roles: ['admin'], authProvider: 'credentials', mustChangePassword: false } } as unknown as Session;
-    }
-    throw new Error(
-      'getServerAuthSession: test fallback disabled. For a fallback set UNSAFE_TEST_AUTH=true in your test environment, or use dependency injection/mocks.'
-    );
+  if (process.env.NODE_ENV === 'test' && process.env.UNSAFE_TEST_AUTH === 'true') {
+    return { user: { id: 'admin', roles: ['admin'], authProvider: 'credentials', mustChangePassword: false } } as unknown as Session;
   }
-
   const options = await getAuthOptions();
   return getServerSession(options);
 }
