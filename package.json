@@ -30,7 +30,6 @@
     "@prisma/client": "^5.18.0",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
-    "fast-xml-parser": "^5.3.8",
     "ioredis": "^5.4.1",
     "ipaddr.js": "^2.2.0",
     "lucide-react": "^0.453.0",
