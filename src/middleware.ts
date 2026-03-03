@@ -286,8 +286,10 @@ export async function middleware(request: NextRequest) {
 
   // 1. Handle Activity Timeout (Coherent Idle Timeout)
   if (token) {
-    const lastActivity = request.cookies.get('techhub-activity')?.value;
-    if (lastActivity && (now - Number(lastActivity)) > idleTimeoutMs) {
+    const lastActivityStr = request.cookies.get('techhub-activity')?.value;
+    const resolvedTimestamp = lastActivityStr ? Number(lastActivityStr) : (Number(token.iat ?? 0) * 1000);
+
+    if (resolvedTimestamp > 0 && (now - resolvedTimestamp) > idleTimeoutMs) {
       console.warn('middleware: idle timeout for sub=%s, path=%s', token.sub, pathname);
       const signInUrl = request.nextUrl.clone();
       signInUrl.pathname = '/auth/signin';
