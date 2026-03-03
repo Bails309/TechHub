@@ -22,7 +22,7 @@ function isAllowedUrl(raw: string): boolean {
     }
 }
 
-export async function createPersonalApp(formData: FormData): Promise<{ status: 'success' | 'error'; message: string; app?: any }> {
+export async function createPersonalApp(_prevState: any, formData: FormData): Promise<{ status: 'success' | 'error'; message: string; app?: any }> {
     if (!(await validateCsrf(formData))) {
         return { status: 'error', message: 'Invalid CSRF token' };
     }
@@ -89,7 +89,7 @@ export async function createPersonalApp(formData: FormData): Promise<{ status: '
     }
 }
 
-export async function updatePersonalApp(formData: FormData): Promise<{ status: 'success' | 'error'; message: string }> {
+export async function updatePersonalApp(_prevState: any, formData: FormData): Promise<{ status: 'success' | 'error'; message: string }> {
     if (!(await validateCsrf(formData))) {
         return { status: 'error', message: 'Invalid CSRF token' };
     }
@@ -165,7 +165,7 @@ export async function updatePersonalApp(formData: FormData): Promise<{ status: '
     }
 }
 
-export async function deletePersonalApp(formData: FormData): Promise<{ status: 'success' | 'error'; message: string }> {
+export async function deletePersonalApp(_prevState: any, formData: FormData): Promise<{ status: 'success' | 'error'; message: string }> {
     if (!(await validateCsrf(formData))) {
         return { status: 'error', message: 'Invalid CSRF token' };
     }
