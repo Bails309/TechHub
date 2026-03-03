@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('App Interaction Flow', () => {
-    test('should allow launching a public app without login', async ({ page }) => {
+    test('should allow launching a public app without login', async ({ page }: { page: any }) => {
         // Navigate to portal
         await page.goto('/');
 
@@ -24,7 +24,7 @@ test.describe('App Interaction Flow', () => {
         await expect(page).toHaveURL(/status\.example\.com/);
     });
 
-    test('should allow launching an authenticated app after login', async ({ page }) => {
+    test('should allow launching an authenticated app after login', async ({ page }: { page: any }) => {
         // Login first
         await page.goto('/auth/signin');
         await page.fill('input[name="email"]', 'admin@techhub.local');

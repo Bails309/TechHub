@@ -4,7 +4,7 @@ const ADMIN_EMAIL = 'admin@techhub.local';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'test-admin-password-123';
 
 test.describe('Admin Management Flow', () => {
-    test.beforeEach(async ({ page }) => {
+    test.beforeEach(async ({ page }: { page: any }) => {
         // Perform login once before each test in this block
         await page.goto('/auth/signin');
 
@@ -19,7 +19,7 @@ test.describe('Admin Management Flow', () => {
         await expect(page).toHaveURL(/\//);
     });
 
-    test('should allow creating a new category', async ({ page }) => {
+    test('should allow creating a new category', async ({ page }: { page: any }) => {
         // Navigate to Category Management
         await page.goto('/admin/category-mgmt');
 
