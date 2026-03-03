@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Mock next/headers to provide a Headers object with a loopback IP
+vi.mock('next/headers', () => ({
+  headers: async () => new Headers({ 'x-forwarded-for': '127.0.0.1' })
+}));
+
 describe('credentials provider authorize behavior', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -17,7 +22,7 @@ describe('credentials provider authorize behavior', () => {
     expect(provider).toBeDefined();
 
     const credentials = { email: 'noone@example.com', password: 'irrelevant' };
-    const req = { headers: {}, socket: { remoteAddress: '127.0.0.1' } } as any;
+    const req = { headers: {} } as any;
 
     const out = await provider.authorize(credentials, req);
     expect(out).toBeNull();
@@ -42,9 +47,10 @@ describe('credentials provider authorize behavior', () => {
     expect(provider).toBeDefined();
 
     const credentials = { email: 'user@example.com', password: 'wrong' };
-    const req = { headers: {}, socket: { remoteAddress: '127.0.0.1' } } as any;
+    const req = { headers: {} } as any;
 
     const out = await provider.authorize(credentials, req);
     expect(out).toBeNull();
   });
 });
+

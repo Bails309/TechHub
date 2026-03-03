@@ -202,9 +202,12 @@ export async function middleware(request: NextRequest) {
   if (request.method === 'GET') {
     const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
     const sessionId = tokenObj?.sub ?? '';
-    const forwardedProto = request.headers.get('x-forwarded-proto');
-    const isSecure = forwardedProto === 'https' || request.nextUrl.protocol === 'https:';
-    const secureFlag = process.env.NODE_ENV === 'production' ? true : isSecure;
+    let secureFlag = process.env.NODE_ENV === 'production';
+    try {
+      if (process.env.NEXTAUTH_URL) {
+        secureFlag = new URL(process.env.NEXTAUTH_URL).protocol === 'https:';
+      }
+    } catch { }
     const maxAge = 60 * 60; // 1 hour
 
     let visitorId = request.cookies.get('visitor-id')?.value;
@@ -338,9 +341,12 @@ export async function middleware(request: NextRequest) {
 
   // If authenticated and session is still valid, update activity cookie
   if (token && !token.revoked) {
-    const forwardedProto = request.headers.get('x-forwarded-proto');
-    const isSecure = forwardedProto === 'https' || request.nextUrl.protocol === 'https:';
-    const secureFlag = process.env.NODE_ENV === 'production' ? true : isSecure;
+    let secureFlag = process.env.NODE_ENV === 'production';
+    try {
+      if (process.env.NEXTAUTH_URL) {
+        secureFlag = new URL(process.env.NEXTAUTH_URL).protocol === 'https:';
+      }
+    } catch { }
 
     response.cookies.set({
       name: 'techhub-activity',

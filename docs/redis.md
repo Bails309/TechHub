@@ -20,6 +20,7 @@ REDIS_URL=redis://:password@redis.example.com:6379
 ```
 
 - Optionally set `REDIS_PASSWORD` and `REDIS_TLS=true` if your provider requires separate password/TLS flags. The app passes TLS options to `ioredis` when `REDIS_TLS=true`.
+- Set `REDIS_CLUSTER=true` if you are using a clustered Redis endpoint (like Azure Managed Redis with OSSCluster policy). This ensures the client follows `MOVED` redirects correctly.
 - Ensure `RATE_LIMIT_STORE=redis` is set in your production environment.
 
 > **Note:** In production the application enforces a centralized rate limiter. If `RATE_LIMIT_STORE` is not set to `redis`, the application will refuse to start (fail fast) to avoid insecure memory-based rate limiting across multiple instances. Use the in-memory store only for single-process local testing.
@@ -36,6 +37,7 @@ The application is designed to be **Resilient to Redis Outages**. While Redis is
 **Operational guidance:**
 
 - For production, provide a highly available Redis (clustered or managed service) and point `REDIS_URL` at it.
+- If using Azure Cache for Redis with Clustering enabled, you **must** set `REDIS_CLUSTER=true`.
 - Monitor logs for the `[REDIS]` prefix to identify connection issues or circuit breaker activations.
 - If you see `[REDIS] Circuit breaker ACTIVE`, verify your network rules and connection string.
 
