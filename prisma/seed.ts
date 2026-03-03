@@ -39,7 +39,7 @@ async function main() {
         passwordHash: process.env.ADMIN_PASSWORD
           ? await bcrypt.hash(adminPassword, SALT_ROUNDS)
           : existingAdmin.passwordHash,
-        mustChangePassword: true
+        mustChangePassword: process.env.ADMIN_MUST_CHANGE === 'false' ? false : true
       }
     }).then(user => {
       console.log(`SEED: Successfully updated admin password for ${adminEmail}`);
@@ -50,7 +50,7 @@ async function main() {
         email: adminEmail,
         name: 'TechHub Admin',
         passwordHash: await bcrypt.hash(adminPassword, SALT_ROUNDS),
-        mustChangePassword: true
+        mustChangePassword: process.env.ADMIN_MUST_CHANGE === 'false' ? false : true
       }
     }).then(user => {
       console.log(`SEED: Created new admin user: ${adminEmail}`);

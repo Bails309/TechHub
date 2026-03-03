@@ -73,12 +73,17 @@ jobs:
         run: npm run prisma:seed
         env:
           SSO_MASTER_KEY: Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
+          ADMIN_PASSWORD: test-admin-password-123
+          ADMIN_MUST_CHANGE: false
 
       - name: Audit dependencies
         run: npm audit --audit-level=high --omit=dev
 
       - name: Lint
-        run: npm run lint --if-present
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
 
       - name: Run unit tests (builder image)
         run: |
@@ -186,6 +191,8 @@ jobs:
           export SSO_MASTER_KEY=Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
           export NEXTAUTH_SECRET=placeholder-secret
           export NEXTAUTH_URL=http://localhost:3000
+          export ADMIN_PASSWORD=test-admin-password-123
+          export ADMIN_MUST_CHANGE=false
           npm run build
           npm run start &
           # Wait for app to be ready

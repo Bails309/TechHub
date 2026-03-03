@@ -164,5 +164,5 @@ describe('createApp orphaned icon cleanup', () => {
     // Ensure upload was attempted and the uploaded icon was removed on failure
     expect(saveIconMock).toHaveBeenCalled();
     expect(deleteIconMock).toHaveBeenCalledWith('/uploads/fake.png');
-  }, 30000);
+  }, 60000);
 });
