@@ -12,6 +12,7 @@ export default function SignInPage() {
   );
 
   useEffect(() => {
+    document.title = 'Sign In | TechHub';
     let mounted = true;
     const loadProviders = async () => {
       console.log('[SIGNIN] Loading providers...');

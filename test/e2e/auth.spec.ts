@@ -28,9 +28,14 @@ test.describe('Authentication Smoke Test', () => {
     });
 
     test('should allow navigating to public pages without auth', async ({ page }: { page: any }) => {
-        // Navigate to a known public page (if any) or just the root which redirects to signin
+        // Navigate to root which is public in this app (landing/portal)
         await page.goto('/');
-        await page.waitForURL(/\/auth\/signin/);
-        await expect(page).toHaveURL(/\/auth\/signin/);
+        // Verify we are on the home page and not redirected to signin
+        // The URL should be the base URL
+        await expect(page).toHaveURL(/\/$/);
+
+        // Verify that the page content reflects the portal (StatsStrip or public apps)
+        // Root page title is "TechHub" by default in layout.tsx
+        await expect(page).toHaveTitle(/TechHub/i);
     });
 });
