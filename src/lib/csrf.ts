@@ -161,7 +161,8 @@ export async function getSessionIdFromCookie(): Promise<string> {
       headers: hdrs,
     });
 
-    const token = await getToken({ req: req as any, secret: getSecret() });
+    const isSecure = process.env.NODE_ENV === 'production' || process.env.NEXTAUTH_URL?.startsWith('https:');
+    const token = await getToken({ req: req as any, secret: getSecret(), secureCookie: isSecure });
     return token?.sub ?? '';
   } catch {
     return '';

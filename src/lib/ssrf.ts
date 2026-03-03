@@ -28,12 +28,13 @@ export async function assertUrlNotPrivate(rawUrl: string): Promise<string> {
     throw new Error('Endpoint must be a public hostname');
   }
 
-  const isIpLiteral = ipaddr.isValid(hostname);
+  const cleanHostname = hostname.replace(/^\[|\]$/g, '');
+  const isIpLiteral = ipaddr.isValid(cleanHostname);
   if (isIpLiteral) {
-    if (!isPublicIp(hostname)) {
+    if (!isPublicIp(cleanHostname)) {
       throw new Error('Endpoint must be a public IP address');
     }
-    return hostname;
+    return cleanHostname;
   }
 
   const records = await lookup(hostname, { all: true, verbatim: true });

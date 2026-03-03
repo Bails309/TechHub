@@ -277,9 +277,21 @@ export async function middleware(request: NextRequest) {
       const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
       const sessionId = tokenObj?.sub ?? '';
 
+      // Support traditional HTML form submissions that can't set custom headers
+      let finalToken = csrfHeader;
+      if (!finalToken && request.headers.get('content-type')?.includes('application/x-www-form-urlencoded')) {
+        try {
+          const clonedReq = request.clone();
+          const formData = await clonedReq.formData();
+          finalToken = formData.get('csrfToken')?.toString() || null;
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+
       if (sessionId) {
         const cookieToken = request.cookies.get('XSRF-TOKEN')?.value;
-        const isValid = (csrfHeader && cookieToken && csrfHeader === cookieToken) ? await validateCsrfToken(cookieToken, sessionId) : false;
+        const isValid = (finalToken && cookieToken && finalToken === cookieToken) ? await validateCsrfToken(cookieToken, sessionId) : false;
         if (!isValid) {
           console.warn('middleware: CSRF validation failed for sub=%s, path=%s', sessionId, pathname);
           return NextResponse.json({ error: 'invalid_csrf_token' }, { status: 403 });
@@ -288,7 +300,7 @@ export async function middleware(request: NextRequest) {
         // Public/Unauthenticated CSRF (visitor-id based)
         const visitorId = request.cookies.get('visitor-id')?.value;
         const cookieToken = request.cookies.get('XSRF-TOKEN-PUBLIC')?.value;
-        const isValid = (csrfHeader && cookieToken && visitorId && csrfHeader === cookieToken) ? await validatePublicCsrfToken(cookieToken, visitorId) : false;
+        const isValid = (finalToken && cookieToken && visitorId && finalToken === cookieToken) ? await validatePublicCsrfToken(cookieToken, visitorId) : false;
         if (!isValid) {
           console.warn('middleware: Public CSRF validation failed, path=%s', pathname);
           return NextResponse.json({ error: 'invalid_csrf_token' }, { status: 403 });
