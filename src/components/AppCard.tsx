@@ -11,6 +11,7 @@ export interface AppCardProps {
     description?: string | null;
     category?: string | null;
     icon?: string | null;
+    isPersonal?: boolean;
   };
   onReorder: (fromId: string, toId: string, contextIds?: string[]) => void;
   contextIds?: string[];
@@ -49,8 +50,9 @@ export default function AppCard({ app, onReorder, contextIds, isPinned = false, 
 
   return (
     <Link
-      href={`/api/launch/${app.id}`}
+      href={app.isPersonal ? app.url : `/api/launch/${app.id}`}
       target="_blank"
+      rel={app.isPersonal ? 'noopener noreferrer' : undefined}
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
@@ -103,6 +105,7 @@ export default function AppCard({ app, onReorder, contextIds, isPinned = false, 
         </h3>
         {app.category && (
           <p className="mt-0.5 absolute bottom-4 left-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity truncate text-[0.65rem] uppercase tracking-wider text-ink-500 dark:text-ink-300">
+            {app.isPersonal && <span className="text-emerald-400 mr-1">●</span>}
             {app.category}
           </p>
         )}

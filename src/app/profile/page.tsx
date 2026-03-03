@@ -1,9 +1,11 @@
 import { getServerAuthSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
+import { prisma } from '@/lib/prisma';
 import ProfileImageUploader from '@/components/ProfileImageUploader';
 import ChangePasswordForm from '@/components/ChangePasswordForm';
+import PersonalAppManager from '@/components/PersonalAppManager';
 import { updateProfileImage } from './actions';
-import { User, Mail, Shield, Key } from 'lucide-react';
+import { User, Mail, Shield, Key, LayoutGrid } from 'lucide-react';
 
 export default async function ProfilePage() {
     const session = await getServerAuthSession();
@@ -13,6 +15,13 @@ export default async function ProfilePage() {
     }
 
     const isLocalUser = session.user.authProvider === 'credentials';
+
+    // Fetch the user's personal apps
+    const personalApps = await prisma.personalApp.findMany({
+        where: { userId: session.user.id },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, name: true, url: true, description: true, icon: true },
+    });
 
     return (
         <div className="px-6 md:px-12 py-12 max-w-4xl mx-auto space-y-12">
@@ -32,7 +41,7 @@ export default async function ProfilePage() {
                     </div>
                 </div>
 
-                {/* Right Column: Info & Security */}
+                {/* Right Column: Info & Security & Personal Apps */}
                 <div className="md:col-span-2 space-y-8">
                     {/* Account Info */}
                     <section className="card-panel p-8 space-y-6">
@@ -59,6 +68,18 @@ export default async function ProfilePage() {
                                 <p className="text-ink-200 font-medium capitalize">{session.user.authProvider || 'Local'}</p>
                             </div>
                         </div>
+                    </section>
+
+                    {/* Personal Apps */}
+                    <section className="card-panel p-8 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                        <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+                            <LayoutGrid className="h-5 w-5 text-emerald-400" />
+                            <h2 className="text-lg font-medium text-ink-100">My Apps</h2>
+                        </div>
+                        <p className="text-sm text-ink-300">
+                            Add your own private app shortcuts. These are only visible to you.
+                        </p>
+                        <PersonalAppManager apps={personalApps} />
                     </section>
 
                     {/* Security / Password */}
