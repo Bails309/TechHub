@@ -249,7 +249,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
   return {
     adapter,
     secret: process.env.NEXTAUTH_SECRET,
-    session: { strategy: 'jwt', maxAge: getSessionMaxAgeSeconds() },
+    session: { strategy: 'jwt', maxAge: getSessionMaxAgeSeconds(), updateAge: 60 },
     providers,
     callbacks: {
       async signIn({ user, account, profile }) {
@@ -387,6 +387,20 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           return;
         }
         if (token?.revoked) return;
+
+        // Blacklist the JWT on explicit logout to prevent replay of stolen tokens
+        if (token?.jti) {
+          const client = await getSharedRedisClient();
+          if (client) {
+            const now = Date.now();
+            const exp = Number(token.exp ?? 0) * 1000;
+            const ttl = Math.max(0, Math.floor((exp - now) / 1000));
+            if (ttl > 0) {
+              await client.set(`auth:blacklist:${token.jti}`, '1', 'EX', ttl).catch(() => null);
+            }
+          }
+        }
+
         await writeAuditLog({ category: 'auth', action: 'logout', actorId: token?.sub ?? null });
       },
     },
