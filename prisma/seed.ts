@@ -150,8 +150,8 @@ async function main() {
 
     // Ensure we have a master key for the encryption call
     if (!process.env.SSO_MASTER_KEY) {
-      // 32-byte key: "TechHubDefaultMasterKeyForSeeding!" (exactly 32 chars)
-      process.env.SSO_MASTER_KEY = Buffer.from('TechHubDefaultMasterKeyForSeeding!').toString('base64');
+      // 32-byte key: Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
+      process.env.SSO_MASTER_KEY = 'Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=';
     }
 
     await prisma.ssoConfig.create({

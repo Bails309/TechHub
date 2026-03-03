@@ -71,6 +71,8 @@ jobs:
 
       - name: Prisma seed
         run: npm run prisma:seed
+        env:
+          SSO_MASTER_KEY: Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
 
       - name: Audit dependencies
         run: npm audit --audit-level=high --omit=dev
@@ -89,6 +91,7 @@ jobs:
             -e DATABASE_URL="postgres://techhub:techhub@localhost:5432/techhub" \
             -e REDIS_URL="redis://localhost:6379" \
             -e RATE_LIMIT_STORE=redis \
+            -e SSO_MASTER_KEY=Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E= \
             techhub-tests sh -lc "CI=true npm test -- --run"
 
       - name: Build Next.js
@@ -121,7 +124,12 @@ jobs:
           done
       - name: Run container from built image and smoke-check health endpoint
         run: |
-          docker run -d --name techhub-ci --link ci-postgres:postgres --link ci-redis:redis -e DATABASE_URL=postgres://techhub:techhub@postgres:5432/techhub -e REDIS_URL=redis://redis:6379 -e RATE_LIMIT_STORE=redis -p 3000:3000 techhub:ci
+          docker run -d --name techhub-ci --link ci-postgres:postgres --link ci-redis:redis \
+            -e DATABASE_URL=postgres://techhub:techhub@postgres:5432/techhub \
+            -e REDIS_URL=redis://redis:6379 \
+            -e RATE_LIMIT_STORE=redis \
+            -e SSO_MASTER_KEY=Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E= \
+            -p 3000:3000 techhub:ci
           for i in {1..60}; do
             if curl -sSf http://localhost:3000/api/health >/dev/null 2>&1; then
               echo "health ok"; break
@@ -167,7 +175,7 @@ jobs:
       - name: Prepare Database and Seed
         run: |
           export DATABASE_URL=postgres://techhub:techhub@localhost:5432/techhub
-          export SSO_MASTER_KEY=VGVjaEh1YkRlZmF1bHRNYXN0ZXJLZXlGb3JTZWVkaW5nIQ==
+          export SSO_MASTER_KEY=Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
           npm run prisma:push
           npm run prisma:seed
 
@@ -175,7 +183,7 @@ jobs:
         run: |
           export DATABASE_URL=postgres://techhub:techhub@localhost:5432/techhub
           export REDIS_URL=redis://localhost:6379
-          export SSO_MASTER_KEY=VGVjaEh1YkRlZmF1bHRNYXN0ZXJLZXlGb3JTZWVkaW5nIQ==
+          export SSO_MASTER_KEY=Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
           export NEXTAUTH_SECRET=placeholder-secret
           export NEXTAUTH_URL=http://localhost:3000
           npm run build
