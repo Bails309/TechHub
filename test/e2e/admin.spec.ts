@@ -26,8 +26,9 @@ test.describe('Admin Management Flow', () => {
         });
 
         // 2. Definitive check for authenticated state - wait for the portal to actually load
-        // and for the "Admin" link to be INTERACTABLE.
-        const adminLink = page.getByRole('link', { name: /Admin/i });
+        // and for the "Administration" link to be INTERACTABLE.
+        // Using exact match to avoid collision with "Microsoft 365 Admin" app card.
+        const adminLink = page.getByRole('link', { name: 'Administration', exact: true });
         await expect(adminLink).toBeVisible({ timeout: 20000 });
 
         // Ensure we are in a stable state before returning
@@ -36,7 +37,6 @@ test.describe('Admin Management Flow', () => {
 
     test('should allow creating a new category', async ({ page }: { page: any }) => {
         // Navigate to Category Management from a stable base state (the portal)
-        // Using 'load' instead of 'networkidle' here to avoid over-waiting if some small asset is slow
         await page.goto('/admin/category-mgmt', { waitUntil: 'load' });
 
         const categoryName = `Test Category ${Date.now()}`;

@@ -5,7 +5,7 @@ test.describe('App Interaction Flow', () => {
         // Higher default timeout for E2E interactions in CI
         test.setTimeout(60000);
 
-        // Mock external domains to prevent DNS errors in CI
+        // Broaden mock patterns to catch any protocol/subdomain of the mock destinations
         await context.route('**/*.example.com/**', (route: any) => route.fulfill({
             status: 200,
             contentType: 'text/html',
@@ -47,7 +47,6 @@ test.describe('App Interaction Flow', () => {
         }
 
         // Verify the final page URL pattern
-        // Note: With mocking, it might land on the mock page quickly
         await expect(newPage).toHaveURL(/status\.example\.com/, { timeout: 20000 });
         await expect(newPage.locator('h1')).toHaveText('Mock External Page', { timeout: 10000 });
     });
@@ -61,7 +60,10 @@ test.describe('App Interaction Flow', () => {
 
         // Wait for login to complete and stable state
         await page.waitForURL((url: URL) => !url.pathname.includes('/auth/signin'), { timeout: 30000 });
-        await expect(page.getByRole('link', { name: /Admin/i })).toBeVisible({ timeout: 15000 });
+
+        // Fix strict mode violation by using exact: true for Administration link
+        const adminLink = page.getByRole('link', { name: 'Administration', exact: true });
+        await expect(adminLink).toBeVisible({ timeout: 20000 });
 
         // Navigate to root/portal
         await page.goto('/', { waitUntil: 'networkidle' });
