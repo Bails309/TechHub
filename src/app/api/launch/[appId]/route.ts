@@ -13,12 +13,18 @@ export async function GET(
     try {
         const session = await getServerAuthSession();
 
-        // Find the app
-        const app = await prisma.appLink.findUnique({
-            where: { id: appId },
+        // Find the app with a conditional filter:
+        // If unauthenticated, we only allow fetching apps with a PUBLIC audience.
+        // This prevents unauthenticated probing of private app IDs (Information Leakage Fix).
+        const app = await prisma.appLink.findFirst({
+            where: {
+                id: appId,
+                ...(session ? {} : { audience: 'PUBLIC' })
+            },
         });
 
         if (!app) {
+            // If not found or restricted, return 404 to avoid leaking ID existence
             return new NextResponse('App not found', { status: 404 });
         }
 
@@ -57,13 +63,10 @@ export async function GET(
             // Direct redirect from our own UI
             return NextResponse.redirect(new URL(app.url));
         } else {
-            // Untrusted referer or direct link -- enforce confirmation interstitial
-            // Use the standard Host header (set by browser/proxy, safe) — NOT x-forwarded-host (spoofable).
-            // Derive protocol from NEXTAUTH_URL (admin-configured, not user-spoofable).
-            const hostHeader = request.headers.get('host') ?? request.nextUrl.host;
-            let proto = 'http';
-            try { proto = new URL(process.env.NEXTAUTH_URL ?? '').protocol.replace(':', ''); } catch { };
-            const confirmUrl = new URL(`/launch-confirm/${app.id}`, `${proto}://${hostHeader}`);
+            // Use NEXTAUTH_URL as the safe base origin if available to avoid Resolving to 0.0.0.0 in Docker.
+            // This is secure against Open Redirects because the destination path is hardcoded.
+            const origin = process.env.NEXTAUTH_URL ? new URL(process.env.NEXTAUTH_URL).origin : request.nextUrl.origin;
+            const confirmUrl = new URL(`/launch-confirm/${app.id}`, origin);
             return NextResponse.redirect(confirmUrl);
         }
     } catch (error) {

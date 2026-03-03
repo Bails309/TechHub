@@ -34,12 +34,12 @@ const memCache = new Map<string, { value: UserMeta; expiresAt: number }>();
 export async function getUserMeta(userId: string): Promise<UserMeta | null> {
   if (!userId) return null;
 
-  // Short-circuit to memCache in tests to avoid requiring Redis during unit tests.
+  // Short-circuit to memCache in test mode if explicitly seeded.
   if (process.env.NODE_ENV === 'test') {
     const entry = memCache.get(userId);
     if (entry && entry.expiresAt > Date.now()) return entry.value;
-    // If tests didn't seed the mem cache, return null so callers fall back to DB.
-    return null;
+    // Fall back to database if not explicitly seeded in tests.
+    return await fetchFromDb(userId);
   }
 
   const client = await getSharedRedisClient();

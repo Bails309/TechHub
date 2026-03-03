@@ -40,8 +40,9 @@ async function ensureLimiter() {
 
   try {
     await limiterInitPromise;
-  } finally {
+  } catch (error) {
     limiterInitPromise = null;
+    throw error;
   }
 }
 
