@@ -182,21 +182,18 @@ export async function validatePublicCsrf(formData: FormData): Promise<boolean> {
 }
 
 /**
- * Validate CSRF for standard API requests. Reads the `x-xsrf-token` header
+ * Validate CSRF for standard API requests. Reads the `x-csrf-token` header
  * and compares it to the `XSRF-TOKEN` cookie and the session-bound HMAC.
  */
 export async function validateApiCsrf(request: NextRequest): Promise<boolean> {
   try {
-    const token = String(request.headers.get('x-xsrf-token') ?? '');
+    const token = String(request.headers.get('x-csrf-token') ?? '');
     if (!token) return false;
 
     const cookieVal = request.cookies.get('XSRF-TOKEN')?.value ?? null;
     if (!cookieVal || cookieVal !== token) return false;
 
     const { getToken } = await import('next-auth/jwt');
-    // Next-auth's getToken helper needs a request object. We create a NextRequest
-    // that preserves all headers (including cookies and proxy headers like X-Forwarded-Host)
-    // so that session validation succeeds even behind reverse proxies.
     const req = new NextRequest(request.url, {
       headers: request.headers,
     });
@@ -209,4 +206,40 @@ export async function validateApiCsrf(request: NextRequest): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Flexible CSRF validation for Server Actions.
+ * Checks for token in headers (x-csrf-token) or formData (csrfToken).
+ */
+export async function validateActionCsrf(formData?: FormData): Promise<boolean> {
+  const { headers: getHeaders } = await import('next/headers');
+  const hdrs = await getHeaders();
+
+  // 1. Try header first (most robust for non-form calls)
+  let token = hdrs.get('x-csrf-token');
+
+  // 2. Fallback to formData if provided
+  if (!token && formData) {
+    token = String(formData.get('csrfToken') ?? '');
+  }
+
+  if (!token) return false;
+
+  const sessionId = await getSessionIdFromCookie();
+  if (sessionId) {
+    const cookie = await readCookieValue('XSRF-TOKEN');
+    if (!cookie || cookie !== token) return false;
+    return validateCsrfToken(token, sessionId);
+  }
+
+  // Support public CSRF as well
+  const visitorId = await getVisitorIdFromCookie();
+  if (visitorId) {
+    const cookie = await readCookieValue('XSRF-TOKEN-PUBLIC');
+    if (!cookie || cookie !== token) return false;
+    return validatePublicCsrfToken(token, visitorId);
+  }
+
+  return false;
 }

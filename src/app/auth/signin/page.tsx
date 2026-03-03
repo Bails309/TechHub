@@ -14,7 +14,9 @@ export default function SignInPage() {
   useEffect(() => {
     let mounted = true;
     const loadProviders = async () => {
+      console.log('[SIGNIN] Loading providers...');
       const available = await getProviders();
+      console.log('[SIGNIN] Available providers:', JSON.stringify(available));
       if (mounted) {
         setProviders(available);
       }
@@ -25,6 +27,7 @@ export default function SignInPage() {
     };
   }, []);
 
+  console.log('[SIGNIN_BUTTONS] Providers received:', JSON.stringify(providers));
   const credentialsEnabled = providers ? Boolean(providers.credentials) : true;
 
   async function handleCredentials(event: React.FormEvent<HTMLFormElement>) {

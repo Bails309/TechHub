@@ -3,8 +3,14 @@
 import { prisma } from '../../lib/prisma';
 import { getServerAuthSession } from '../../lib/auth';
 import { revalidatePath } from 'next/cache';
+import { validateActionCsrf } from '../../lib/csrf';
 
 export async function toggleFavoriteApp(appId: string) {
+    // Validate CSRF for function-style server action
+    if (!(await validateActionCsrf())) {
+        return { success: false, error: 'Invalid CSRF token' };
+    }
+
     const session = await getServerAuthSession();
 
     if (!session?.user?.id) {

@@ -208,9 +208,13 @@ export default function PortalView({ apps, isAuthenticated, initialOrder, pinned
     if (!isAuthenticated) {
       return;
     }
+    const { getCsrfTokenFromCookie } = await import('./HiddenCsrfInput');
     await fetch('/api/app-order', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-csrf-token': getCsrfTokenFromCookie()
+      },
       body: JSON.stringify({ order: nextOrder })
     });
   };

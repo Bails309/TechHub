@@ -244,6 +244,8 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
     providers.push(buildCredentialsProvider());
   }
 
+  console.log('[AUTH] Final providers list:', providers.map(p => p.id));
+
   return {
     adapter,
     secret: process.env.NEXTAUTH_SECRET,
@@ -279,47 +281,69 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         // --- 1. Periodic Consistency Checks (DB/Cache) ---
         const JWT_CHECK_INTERVAL_MS = Number(process.env.JWT_CHECK_INTERVAL_MS ?? 300000);
         const lastChecked = Number(token.lastCheckedAt ?? 0);
-        const shouldCheck = Math.abs(lastChecked - now) > 10 && (now - lastChecked > JWT_CHECK_INTERVAL_MS || token.mustChangePassword);
+        // FIX 3: Remove || token.mustChangePassword from the interval check. 
+        const shouldCheck = Math.abs(lastChecked - now) > 10 && (now - lastChecked > JWT_CHECK_INTERVAL_MS);
 
-        if (token.sub && !token.revoked && shouldCheck) {
-          try {
-            // FIX 7: Query Redis (via getUserMeta) instead of the DB directly for the periodic check.
-            // This drastically reduces DB load. We assume admin mutations correctly invalidate the Redis cache.
-            const meta = await getUserMeta(String(token.sub));
+        if (token.sub && !token.revoked) {
+          const client = await getSharedRedisClient();
 
-            if (!meta) {
-              // If Redis is completely empty (cache miss or Redis down), we fall back to DB via getUserMeta anyway.
-              // But if getUserMeta returned null, it means the user was explicitly deleted from the DB.
-              console.warn('[AUTH] Revoking session for sub=%s (user_deleted)', token.sub);
-              token.revoked = true;
-              await writeAuditLog({ category: 'auth', action: 'session_terminated', targetId: String(token.sub), details: { reason: 'user_deleted' } });
-            } else {
-              const dbStamp = meta.securityStamp ? new Date(meta.securityStamp).getTime() : 0;
-              const tokenStamp = Number(token.securityStamp ?? 0);
-              if (trigger !== 'update' && tokenStamp > 0 && dbStamp > tokenStamp) {
-                console.warn('[AUTH] Revoking session for sub=%s (security_stamp_mismatch: db=%d, token=%d)', token.sub, dbStamp, tokenStamp);
+          // FIX 1: Stateless JWT Blacklist check (Replay Protection)
+          if (client && token.jti) {
+            try {
+              const isBlacklisted = await client.get(`auth:blacklist:${token.jti}`);
+              if (isBlacklisted) {
+                console.warn('[AUTH] Blocking blacklisted token jti=%s sub=%s', token.jti, token.sub);
                 token.revoked = true;
               }
-              token.roles = meta.roles ?? [];
-              token.mustChangePassword = meta.mustChangePassword;
-              token.securityStamp = dbStamp || undefined;
-              token.userUpdatedAt = meta.updatedAt;
-              token.lastCheckedAt = now;
+            } catch (err) {
+              console.warn('[AUTH] Redis blacklist check failed', err);
             }
-          } catch (err) {
-            console.error('[AUTH] Error during consistency check:', err);
           }
-        }
 
-        // --- 2. Session Lifetime Enforcement ---
-        const issuedAt = Number(token.iat ?? 0);
+          if (!token.revoked && shouldCheck) {
+            try {
+              const meta = await getUserMeta(String(token.sub));
+              if (!meta) {
+                console.warn('[AUTH] Revoking session for sub=%s (user_deleted)', token.sub);
+                token.revoked = true;
+                await writeAuditLog({ category: 'auth', action: 'session_terminated', targetId: String(token.sub), details: { reason: 'user_deleted' } });
+              } else {
+                const dbStamp = meta.securityStamp ? new Date(meta.securityStamp).getTime() : 0;
+                const tokenStamp = Number(token.securityStamp ?? 0);
+                if (trigger !== 'update' && tokenStamp > 0 && dbStamp > tokenStamp) {
+                  console.warn('[AUTH] Revoking session for sub=%s (security_stamp_mismatch: db=%d, token=%d)', token.sub, dbStamp, tokenStamp);
+                  token.revoked = true;
+                }
+                token.roles = meta.roles ?? [];
+                token.mustChangePassword = meta.mustChangePassword;
+                token.securityStamp = dbStamp || undefined;
+                token.userUpdatedAt = meta.updatedAt;
+                token.lastCheckedAt = now;
+              }
+            } catch (err) {
+              console.error('[AUTH] Error during consistency check:', err);
+            }
+          }
 
-        // Absolute session timeout (e.g. 8 hours)
-        const isAbsoluteTimeout = !token.revoked && issuedAt > 0 && (now - issuedAt * 1000) > getSessionMaxAgeSeconds() * 1000;
-        if (isAbsoluteTimeout) {
-          console.warn('[AUTH] Revoking session for sub=%s (absolute_timeout: iat=%d, now=%d, limit=%d)', token.sub, issuedAt, Math.floor(now / 1000), getSessionMaxAgeSeconds());
-          token.revoked = true;
-          await logSessionTerminationOnce(String(token.sub), 'absolute_timeout', issuedAt);
+          // --- 2. Session Lifetime Enforcement ---
+          const issuedAt = Number(token.iat ?? 0);
+          const isAbsoluteTimeout = !token.revoked && issuedAt > 0 && (now - issuedAt * 1000) > getSessionMaxAgeSeconds() * 1000;
+          if (isAbsoluteTimeout) {
+            console.warn('[AUTH] Revoking session for sub=%s (absolute_timeout: iat=%d, now=%d, limit=%d)', token.sub, issuedAt, Math.floor(now / 1000), getSessionMaxAgeSeconds());
+            token.revoked = true;
+            await logSessionTerminationOnce(String(token.sub), 'absolute_timeout', issuedAt);
+          }
+
+          // If newly revoked, ensure we blacklist the JTI in Redis to prevent replay
+          if (token.revoked && token.jti) {
+            const client = await getSharedRedisClient();
+            if (client) {
+              const ttl = Math.max(0, Math.floor((Number(token.exp ?? 0) * 1000 - now) / 1000));
+              if (ttl > 0) {
+                await client.set(`auth:blacklist:${token.jti}`, '1', 'EX', ttl).catch(() => null);
+              }
+            }
+          }
         }
 
         return token;
@@ -353,10 +377,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
       }
     },
     events: {
-      async signIn({ user, account }) {
+      async signIn({ user, account }: any) {
         await writeAuditLog({ category: 'auth', action: 'login_success', actorId: user?.id ?? null, provider: account?.provider ?? null, details: { email: user?.email ?? null } });
       },
-      async signOut({ token }) {
+      async signOut({ token }: any) {
         const reason = token?.logoutReason;
         if (reason === 'idle_timeout' || reason === 'absolute_timeout') {
           await writeAuditLog({ category: 'auth', action: 'session_terminated', targetId: token?.sub ?? null, details: { reason } });

@@ -513,7 +513,13 @@ async function saveS3WithBuffer(buffer: Buffer, keySuffix: string, contentType: 
   if (!bucket) throw new Error('S3_BUCKET not configured');
   const key = `uploads/${keySuffix}`;
   const s3 = await getS3Client(config ?? undefined);
-  await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: contentType }));
+  await s3.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+    ContentDisposition: contentType === 'image/svg+xml' ? 'attachment' : undefined
+  }));
   const region = config?.region || process.env.S3_REGION;
   const endpoint = config?.endpoint || process.env.S3_ENDPOINT;
   const baseUrl = endpoint
@@ -532,7 +538,10 @@ async function saveAzureWithBuffer(buffer: Buffer, keySuffix: string, contentTyp
   const blobClient = containerClient.getBlockBlobClient(key);
   try {
     await blobClient.uploadData(buffer, {
-      blobHTTPHeaders: { blobContentType: contentType || 'application/octet-stream' },
+      blobHTTPHeaders: {
+        blobContentType: contentType || 'application/octet-stream',
+        blobContentDisposition: contentType === 'image/svg+xml' ? 'attachment' : undefined
+      },
     });
   } catch (err: any) {
     console.error('[AZURE-REST-ERROR]', {
