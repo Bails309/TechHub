@@ -57,11 +57,15 @@ const allowMissingRemoteIp = process.env.ALLOW_MISSING_REMOTE_IP === 'true';
 
 // Session lifetime (OWASP baseline: 8-hour absolute, 20-minute idle)
 function getSessionMaxAgeSeconds(): number {
-  return Number(process.env.SESSION_MAX_AGE_SECONDS ?? 28800);
+  const env = process.env.SESSION_MAX_AGE_SECONDS;
+  const val = env ? Number(env) : 28800; // 8 hours default
+  return val > 0 ? val : 28800;
 }
 
 function getSessionIdleTimeoutMs(): number {
-  return Number(process.env.SESSION_IDLE_TIMEOUT_MS ?? 1200000);
+  const env = process.env.SESSION_IDLE_TIMEOUT_MS;
+  const val = env ? Number(env) : 1200000; // 20 minutes default
+  return val > 0 ? val : 1200000;
 }
 
 // Startup-time warning
@@ -295,11 +299,12 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         if (user?.image) token.image = user.image;
         if (user?.roles) token.roles = user.roles;
 
+        // --- 1. Periodic Consistency Checks (DB/Cache) ---
         const JWT_CHECK_INTERVAL_MS = Number(process.env.JWT_CHECK_INTERVAL_MS ?? 300000);
         const lastChecked = Number(token.lastCheckedAt ?? 0);
         const shouldCheck = Math.abs(lastChecked - now) > 10 && (now - lastChecked > JWT_CHECK_INTERVAL_MS || token.mustChangePassword);
 
-        if (token.sub && shouldCheck) {
+        if (token.sub && !token.revoked && shouldCheck) {
           try {
             const meta = (process.env.NODE_ENV === 'test' || process.env.DEBUG_AUTH === 'true') ? null : await getUserMeta(String(token.sub));
             if (!meta) {
@@ -309,20 +314,24 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                   roles: { include: { role: true } },
                   mustChangePassword: true,
                   updatedAt: true,
-                  // @ts-ignore - securityStamp exists in schema but might be missing in older prisma types
+                  // @ts-ignore
                   securityStamp: true
                 }
               });
               if (!userRecord) {
+                console.warn('[AUTH] Revoking session for sub=%s (user_deleted)', token.sub);
                 token.revoked = true;
                 await writeAuditLog({ category: 'auth', action: 'session_terminated', targetId: String(token.sub), details: { reason: 'user_deleted' } });
               } else {
-                if (trigger !== 'update' && token.securityStamp && new Date((userRecord as any).securityStamp).getTime() > token.securityStamp) {
+                const dbStamp = (userRecord as any).securityStamp ? new Date((userRecord as any).securityStamp).getTime() : 0;
+                const tokenStamp = Number(token.securityStamp ?? 0);
+                if (trigger !== 'update' && tokenStamp > 0 && dbStamp > tokenStamp) {
+                  console.warn('[AUTH] Revoking session for sub=%s (security_stamp_mismatch: db=%d, token=%d)', token.sub, dbStamp, tokenStamp);
                   token.revoked = true;
                 }
                 token.roles = (userRecord as any).roles?.map((r: any) => r.role.name) ?? [];
                 token.mustChangePassword = (userRecord as any).mustChangePassword;
-                token.securityStamp = (userRecord as any).securityStamp ? new Date((userRecord as any).securityStamp).getTime() : undefined;
+                token.securityStamp = dbStamp || undefined;
                 token.userUpdatedAt = new Date((userRecord as any).updatedAt).getTime();
                 token.lastCheckedAt = now;
               }
@@ -337,19 +346,32 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           }
         }
 
+        // --- 2. Session Lifetime Enforcement ---
         const issuedAt = Number(token.iat ?? 0);
-        const isAbsoluteTimeout = !token.revoked && issuedAt > 0 && (now - issuedAt * 1000) > getSessionMaxAgeSeconds() * 1000;
         const lastActivity = Number(token.lastActivity ?? 0);
-        const isIdleTimeout = !token.revoked && lastActivity > 0 && (now - lastActivity) > getSessionIdleTimeoutMs();
 
-        if (isAbsoluteTimeout || isIdleTimeout) {
+        // Absolute session timeout (e.g. 8 hours)
+        const isAbsoluteTimeout = !token.revoked && issuedAt > 0 && (now - issuedAt * 1000) > getSessionMaxAgeSeconds() * 1000;
+        if (isAbsoluteTimeout) {
+          console.warn('[AUTH] Revoking session for sub=%s (absolute_timeout: iat=%d, now=%d, limit=%d)', token.sub, issuedAt, Math.floor(now / 1000), getSessionMaxAgeSeconds());
           token.revoked = true;
-          await logSessionTerminationOnce(String(token.sub), isAbsoluteTimeout ? 'absolute_timeout' : 'idle_timeout', issuedAt);
+          await logSessionTerminationOnce(String(token.sub), 'absolute_timeout', issuedAt);
         }
 
-        if (user || (trigger === 'update' && session?.interacted)) {
+        // Idle session timeout (e.g. 20 minutes)
+        // Only enforce if we have a previous activity record (prevents kicking users on code deploy if field was missing)
+        const isIdleTimeout = !token.revoked && lastActivity > 0 && (now - lastActivity) > getSessionIdleTimeoutMs();
+        if (isIdleTimeout) {
+          console.warn('[AUTH] Revoking session for sub=%s (idle_timeout: lastActivity=%d, now=%d, limit=%d)', token.sub, lastActivity, now, getSessionIdleTimeoutMs());
+          token.revoked = true;
+          await logSessionTerminationOnce(String(token.sub), 'idle_timeout', issuedAt);
+        }
+
+        // Update activity on every request if still valid
+        if (!token.revoked) {
           token.lastActivity = now;
         }
+
         return token;
       },
       async session({ session, token }: any) {
