@@ -41,17 +41,6 @@ export default function CommandPalette({ apps, isOpen, onClose }: CommandPalette
     // Handle keyboard shortcuts to toggle palette
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-                e.preventDefault();
-                if (isOpen) {
-                    onClose();
-                } else {
-                    // A hack to trigger open from outside this component would require a context
-                    // but since this is rendered in layout/PortalView, we'll assume the parent handles opening. 
-                    // For now, this just handles closing.
-                    onClose();
-                }
-            }
             if (e.key === 'Escape' && isOpen) {
                 onClose();
             }

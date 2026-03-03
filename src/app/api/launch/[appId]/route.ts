@@ -59,9 +59,23 @@ export async function GET(
             details: { name: app.name, url: app.url }
         });
 
-        if (isTrustedReferer) {
+            let targetUrl: URL | null = null;
+            try {
+                const parsed = new URL(app.url);
+                if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                    targetUrl = parsed;
+                }
+            } catch {
+                targetUrl = null;
+            }
+
+            if (!targetUrl) {
+                return new NextResponse('Invalid app URL', { status: 400 });
+            }
+
+            if (isTrustedReferer) {
             // Direct redirect from our own UI
-            return NextResponse.redirect(new URL(app.url));
+                return NextResponse.redirect(targetUrl);
         } else {
             // Use NEXTAUTH_URL as the safe base origin if available to avoid Resolving to 0.0.0.0 in Docker.
             // This is secure against Open Redirects because the destination path is hardcoded.

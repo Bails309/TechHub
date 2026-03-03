@@ -141,6 +141,32 @@ async function main() {
 
     await prisma.appLink.create({ data });
   }
+
+  // Seed Mock SSO Configuration for E2E/Fresh setup testing
+  // We only enable it if not already present to avoid overwriting production configs
+  const existingSso = await prisma.ssoConfig.findUnique({ where: { provider: 'keycloak' } });
+  if (!existingSso) {
+    const { encryptSecret } = await import('../src/lib/crypto');
+
+    // Ensure we have a master key for the encryption call
+    if (!process.env.SSO_MASTER_KEY) {
+      // 32-byte key: "TechHubDefaultMasterKeyForSeeding!" (exactly 32 chars)
+      process.env.SSO_MASTER_KEY = Buffer.from('TechHubDefaultMasterKeyForSeeding!').toString('base64');
+    }
+
+    await prisma.ssoConfig.create({
+      data: {
+        provider: 'keycloak',
+        enabled: true,
+        config: {
+          clientId: 'mock-client',
+          issuer: 'https://keycloak.example.com/realms/mock'
+        },
+        clientSecretEnc: encryptSecret('mock-secret')
+      }
+    });
+    console.log('SEED: Created mock Keycloak SSO configuration');
+  }
 }
 
 main()

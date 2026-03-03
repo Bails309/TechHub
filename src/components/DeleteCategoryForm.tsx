@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
-import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
+import { useCsrfToken } from './CsrfProvider';
 import { Trash2 } from 'lucide-react';
 
 export default function DeleteCategoryForm({
@@ -12,7 +12,7 @@ export default function DeleteCategoryForm({
 }: {
     id: string;
     name: string;
-    action: (id: string) => void | Promise<{ success: boolean; error?: string }>;
+    action: (formData: FormData) => void | Promise<{ success: boolean; error?: string }>;
 }) {
     const [isPending, startTransition] = useTransition();
     const [isOpen, setIsOpen] = useState(false);
@@ -20,6 +20,7 @@ export default function DeleteCategoryForm({
     const [statusTone, setStatusTone] = useState<'success' | 'error' | null>(null);
     const dialogRef = useRef<HTMLDivElement | null>(null);
     const [mounted, setMounted] = useState(false);
+    const csrfToken = useCsrfToken();
 
     useEffect(() => {
         setMounted(true);
@@ -48,7 +49,10 @@ export default function DeleteCategoryForm({
 
         startTransition(async () => {
             try {
-                const res = await action(id);
+                const payload = new FormData();
+                payload.set('id', id);
+                payload.set('csrfToken', csrfToken);
+                const res = await action(payload);
                 if (res && res.success) {
                     setStatusMessage('Category removed.');
                     setStatusTone('success');

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import { headers } from 'next/headers';
 import { prisma } from '../lib/prisma';
+import { getServerCsrfToken } from '../lib/csrf';
 import './globals.css';
 import SideNav from '../components/SideNav';
 import PageHeader from '../components/PageHeader';
@@ -54,13 +55,15 @@ export default async function RootLayout({
     console.warn('[Layout] Failed to fetch site config, falling back to defaults. This is expected during build.');
   }
 
+  const csrfToken = await getServerCsrfToken();
+
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
         <Script src="/theme-init.js" strategy="beforeInteractive" nonce={nonce} />
       </head>
       <body>
-        <Providers>
+        <Providers csrfToken={csrfToken}>
           <ScrollToTop />
           <div className="flex min-h-screen">
             <SideNav

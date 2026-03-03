@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
-import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
+import HiddenCsrfInput from './HiddenCsrfInput';
+import { useCsrfToken } from './CsrfProvider';
 
 export default function DeleteAppForm({
   id,
@@ -19,6 +20,7 @@ export default function DeleteAppForm({
   const [statusTone, setStatusTone] = useState<'success' | 'error' | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const [mounted, setMounted] = useState(false);
+  const csrfToken = useCsrfToken();
 
   useEffect(() => {
     setMounted(true);
@@ -85,7 +87,7 @@ export default function DeleteAppForm({
               </button>
               <form
                 action={(formData) => {
-                  formData.set('csrfToken', getCsrfTokenFromCookie());
+                  formData.set('csrfToken', csrfToken);
                   startTransition(() => {
                     void (async () => {
                       try {

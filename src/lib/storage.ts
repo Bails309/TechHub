@@ -427,7 +427,7 @@ function sanitizeSvg(svgContent: string): string {
   return sanitizeHtml(svgContent, {
     allowedTags: [
       'svg', 'g', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse',
-      'defs', 'style', 'clipPath', 'mask', 'use', 'image', 'text', 'tspan',
+      'defs', 'clipPath', 'mask', 'use', 'image', 'text', 'tspan',
       'symbol', 'title', 'desc', // Added missing common tags
       'linearGradient', 'radialGradient', 'stop', 'filter', 'feGaussianBlur',
       'feOffset', 'feMerge', 'feMergeNode', 'feColorMatrix', 'feComponentTransfer',
@@ -435,7 +435,7 @@ function sanitizeSvg(svgContent: string): string {
     ],
     allowedAttributes: {
       '*': [
-        'id', 'class', 'style', 'viewBox', 'width', 'height', 'fill', 'stroke',
+        'id', 'class', 'viewBox', 'width', 'height', 'fill', 'stroke',
         'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'd', 'cx', 'cy', 'r',
         'x', 'y', 'x1', 'y1', 'x2', 'y2', 'points', 'transform', 'opacity',
         'offset', 'stop-color', 'stop-opacity', 'stdDeviation', 'in', 'result',
@@ -449,7 +449,6 @@ function sanitizeSvg(svgContent: string): string {
       lowerCaseTags: false, // CRITICAL: preserve SVG tag casing (e.g. clipPath)
       lowerCaseAttributeNames: false,
     },
-    allowVulnerableTags: true, // Allow <style> tags without stripping contents
   });
 }
 
@@ -461,6 +460,10 @@ export async function cleanupOrphanedIcons(validIconPaths: string[]): Promise<nu
 }
 
 export async function saveIcon(file: File) {
+  const maxBytes = 2 * 1024 * 1024;
+  if (typeof file.size === 'number' && file.size > maxBytes) {
+    throw new Error('File too large (maximum 2MB)');
+  }
   let buffer = Buffer.from(await file.arrayBuffer());
 
   // Security: Check magic bytes to prevent dangerous payloads disguised as images.

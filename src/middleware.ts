@@ -235,7 +235,7 @@ export async function middleware(request: NextRequest) {
         response.cookies.set({
           name: 'XSRF-TOKEN',
           value: newToken,
-          httpOnly: false,
+          httpOnly: true,
           sameSite: 'lax',
           secure: secureFlag,
           path: '/',
@@ -251,7 +251,7 @@ export async function middleware(request: NextRequest) {
         response.cookies.set({
           name: 'XSRF-TOKEN-PUBLIC',
           value: newToken,
-          httpOnly: false,
+          httpOnly: true,
           sameSite: 'lax',
           secure: secureFlag,
           path: '/',
@@ -396,8 +396,11 @@ export async function middleware(request: NextRequest) {
 
   console.log('middleware: allowing request to %s', pathname);
 
-  // If authenticated and session is still valid, update activity cookie
-  if (token && !token.revoked) {
+  const fetchDest = request.headers.get('sec-fetch-dest') ?? '';
+  const isNavigationRequest = request.method === 'GET' && (fetchDest === 'document' || accept.includes('text/html'));
+
+  // If authenticated and session is still valid, update activity cookie on navigations only
+  if (token && !token.revoked && isNavigationRequest) {
     let secureFlag = process.env.NODE_ENV === 'production';
     try {
       if (process.env.NEXTAUTH_URL) {
@@ -422,5 +425,5 @@ export async function middleware(request: NextRequest) {
 export const config = {
   // Run middleware for API routes as well so server endpoints can be protected
   // when a user must change their password. Static/_next assets remain excluded.
-  matcher: ['/((?!_next/static|_next/image|_next/data|favicon.ico|theme-init.js|uploads/|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)']
+  matcher: ['/((?!_next/static|_next/image|_next/data|favicon.ico|theme-init.js|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)']
 };

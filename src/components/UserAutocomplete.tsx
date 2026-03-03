@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { searchUsers } from '../app/admin/actions';
+import { useCsrfToken } from './CsrfProvider';
 
 export type UserOption = {
     id: string;
@@ -21,6 +22,7 @@ export default function UserAutocomplete({ initialSelectedUsers = [] }: UserAuto
     const [isOpen, setIsOpen] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
     const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+    const csrfToken = useCsrfToken();
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -51,7 +53,11 @@ export default function UserAutocomplete({ initialSelectedUsers = [] }: UserAuto
 
         debounceTimer.current = setTimeout(() => {
             setIsSearching(true);
-            searchUsers(query, 10)
+            const payload = new FormData();
+            payload.set('query', query);
+            payload.set('limit', '10');
+            payload.set('csrfToken', csrfToken);
+            searchUsers(payload)
                 .then((users) => {
                     setResults(users);
                     setIsOpen(true);
@@ -63,7 +69,7 @@ export default function UserAutocomplete({ initialSelectedUsers = [] }: UserAuto
         return () => {
             if (debounceTimer.current) clearTimeout(debounceTimer.current);
         };
-    }, [query]);
+    }, [query, csrfToken]);
 
     const handleSelectUser = (user: UserOption) => {
         if (!selectedUsers.some((u) => u.id === user.id)) {

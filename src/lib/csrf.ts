@@ -20,6 +20,33 @@ function getSecret(): string {
   return process.env.NEXTAUTH_SECRET ?? '';
 }
 
+function getSecureFlag(): boolean {
+  if (process.env.NEXTAUTH_URL) {
+    try {
+      return new URL(process.env.NEXTAUTH_URL).protocol === 'https:';
+    } catch {
+      return process.env.NODE_ENV === 'production';
+    }
+  }
+  return process.env.NODE_ENV === 'production';
+}
+
+async function ensureVisitorIdCookie(): Promise<string> {
+  const jar = await cookies();
+  let visitorId = jar.get('visitor-id')?.value ?? '';
+  if (!visitorId) {
+    visitorId = randomBytes(16).toString('hex');
+    jar.set('visitor-id', visitorId, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: getSecureFlag(),
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365
+    });
+  }
+  return visitorId;
+}
+
 /**
  * Create an HMAC-signed CSRF token bound to the given session ID.
  * Returns `nonce.signature`.
@@ -143,6 +170,45 @@ async function getSessionIdFromCookie(): Promise<string> {
 
 async function getVisitorIdFromCookie(): Promise<string> {
   return (await readCookieValue('visitor-id')) ?? '';
+}
+
+/**
+ * Return a CSRF token for the current request, creating and setting
+ * a new httpOnly token cookie if needed.
+ */
+export async function getServerCsrfToken(): Promise<string> {
+  const jar = await cookies();
+  const sessionId = await getSessionIdFromCookie();
+  const maxAge = 60 * 60;
+
+  if (sessionId) {
+    let token = jar.get('XSRF-TOKEN')?.value ?? '';
+    if (!token || !validateCsrfToken(token, sessionId)) {
+      token = createCsrfToken(sessionId);
+      jar.set('XSRF-TOKEN', token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: getSecureFlag(),
+        path: '/',
+        maxAge
+      });
+    }
+    return token;
+  }
+
+  const visitorId = await ensureVisitorIdCookie();
+  let token = jar.get('XSRF-TOKEN-PUBLIC')?.value ?? '';
+  if (!token || !validatePublicCsrfToken(token, visitorId)) {
+    token = createPublicCsrfToken(visitorId);
+    jar.set('XSRF-TOKEN-PUBLIC', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: getSecureFlag(),
+      path: '/',
+      maxAge
+    });
+  }
+  return token;
 }
 
 /**

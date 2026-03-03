@@ -17,10 +17,24 @@ export default async function LaunchConfirmPage({
         notFound();
     }
 
+    let safeUrl: URL | null = null;
+    try {
+        const parsed = new URL(app.url);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+            safeUrl = parsed;
+        }
+    } catch {
+        safeUrl = null;
+    }
+
+    if (!safeUrl) {
+        notFound();
+    }
+
     // Extract just the domain for a cleaner specific warning
     let domain = app.url;
     try {
-        domain = new URL(app.url).hostname;
+        domain = safeUrl.hostname;
     } catch (e) {
         // leave as full url if parsing fails
     }
@@ -57,7 +71,7 @@ export default async function LaunchConfirmPage({
                         Cancel
                     </Link>
                     <a
-                        href={app.url}
+                        href={safeUrl.toString()}
                         className="btn-primary flex-1 justify-center"
                         rel="noopener noreferrer"
                     >
