@@ -287,39 +287,33 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
         if (token.sub && !token.revoked && shouldCheck) {
           try {
-            const meta = (process.env.NODE_ENV === 'test' || process.env.DEBUG_AUTH === 'true') ? null : await getUserMeta(String(token.sub));
-            if (!meta) {
-              const userRecord = await prisma.user.findUnique({
-                where: { id: String(token.sub) },
-                select: {
-                  roles: { include: { role: true } },
-                  mustChangePassword: true,
-                  updatedAt: true,
-                  // @ts-ignore
-                  securityStamp: true
-                }
-              });
-              if (!userRecord) {
-                console.warn('[AUTH] Revoking session for sub=%s (user_deleted)', token.sub);
-                token.revoked = true;
-                await writeAuditLog({ category: 'auth', action: 'session_terminated', targetId: String(token.sub), details: { reason: 'user_deleted' } });
-              } else {
-                const dbStamp = (userRecord as any).securityStamp ? new Date((userRecord as any).securityStamp).getTime() : 0;
-                const tokenStamp = Number(token.securityStamp ?? 0);
-                if (trigger !== 'update' && tokenStamp > 0 && dbStamp > tokenStamp) {
-                  console.warn('[AUTH] Revoking session for sub=%s (security_stamp_mismatch: db=%d, token=%d)', token.sub, dbStamp, tokenStamp);
-                  token.revoked = true;
-                }
-                token.roles = (userRecord as any).roles?.map((r: any) => r.role.name) ?? [];
-                token.mustChangePassword = (userRecord as any).mustChangePassword;
-                token.securityStamp = dbStamp || undefined;
-                token.userUpdatedAt = new Date((userRecord as any).updatedAt).getTime();
-                token.lastCheckedAt = now;
+            // ALWAYS query the DB for the consistency check to prevent race conditions 
+            // where a failed Redis invalidation during privilege revocation leaves the cache stale.
+            const userRecord = await prisma.user.findUnique({
+              where: { id: String(token.sub) },
+              select: {
+                roles: { include: { role: true } },
+                mustChangePassword: true,
+                updatedAt: true,
+                // @ts-ignore
+                securityStamp: true
               }
+            });
+            if (!userRecord) {
+              console.warn('[AUTH] Revoking session for sub=%s (user_deleted)', token.sub);
+              token.revoked = true;
+              await writeAuditLog({ category: 'auth', action: 'session_terminated', targetId: String(token.sub), details: { reason: 'user_deleted' } });
             } else {
-              token.roles = meta.roles;
-              token.mustChangePassword = meta.mustChangePassword;
-              token.securityStamp = meta.securityStamp;
+              const dbStamp = (userRecord as any).securityStamp ? new Date((userRecord as any).securityStamp).getTime() : 0;
+              const tokenStamp = Number(token.securityStamp ?? 0);
+              if (trigger !== 'update' && tokenStamp > 0 && dbStamp > tokenStamp) {
+                console.warn('[AUTH] Revoking session for sub=%s (security_stamp_mismatch: db=%d, token=%d)', token.sub, dbStamp, tokenStamp);
+                token.revoked = true;
+              }
+              token.roles = (userRecord as any).roles?.map((r: any) => r.role.name) ?? [];
+              token.mustChangePassword = (userRecord as any).mustChangePassword;
+              token.securityStamp = dbStamp || undefined;
+              token.userUpdatedAt = new Date((userRecord as any).updatedAt).getTime();
               token.lastCheckedAt = now;
             }
           } catch (err) {

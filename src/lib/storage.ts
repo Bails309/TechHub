@@ -51,7 +51,8 @@ async function saveLocal(file: File) {
   const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
   const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
   const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  const isSvg = buffer.toString('utf8', 0, 100).toLowerCase().includes('<svg');
+  const contentStart = buffer.slice(0, 250).toString('utf-8').trim().toLowerCase();
+  const isSvg = /^(?:<\?xml[^>]*\?>\s*)?(?:<!doctype\s+svg[^>]*>\s*)?<svg/i.test(contentStart);
   const extension = isPng ? '.png' : (isJpeg ? '.jpg' : (isSvg ? '.svg' : '.bin'));
   const filename = `${randomUUID()}${extension}`;
   const uploadDir = path.join(process.cwd(), 'uploads');
@@ -172,7 +173,8 @@ async function saveS3(file: File) {
   const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
   const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
   const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  const isSvg = buffer.toString('utf8', 0, 100).toLowerCase().includes('<svg');
+  const contentStart = buffer.slice(0, 250).toString('utf-8').trim().toLowerCase();
+  const isSvg = /^(?:<\?xml[^>]*\?>\s*)?(?:<!doctype\s+svg[^>]*>\s*)?<svg/i.test(contentStart);
   const extension = isPng ? '.png' : (isJpeg ? '.jpg' : (isSvg ? '.svg' : '.bin'));
   const key = `uploads/${randomUUID()}${extension}`;
   const s3 = await getS3Client(config ?? undefined);
@@ -342,7 +344,8 @@ async function saveAzure(file: File) {
   const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
   const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
   const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  const isSvg = buffer.toString('utf8', 0, 100).toLowerCase().includes('<svg');
+  const contentStart = buffer.slice(0, 250).toString('utf-8').trim().toLowerCase();
+  const isSvg = /^(?:<\?xml[^>]*\?>\s*)?(?:<!doctype\s+svg[^>]*>\s*)?<svg/i.test(contentStart);
   const extension = isPng ? '.png' : (isJpeg ? '.jpg' : (isSvg ? '.svg' : '.bin'));
   const key = `uploads/${randomUUID()}${extension}`;
   const config = await resolveAzureConfig();
@@ -469,9 +472,9 @@ export async function saveIcon(file: File) {
   const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
   const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
 
-  // Check for SVG (basic check for <svg or <?xml)
-  const contentStart = buffer.slice(0, 100).toString().trim().toLowerCase();
-  const isSvg = contentStart.startsWith('<svg') || contentStart.startsWith('<?xml');
+  // Check for SVG
+  const contentStart = buffer.slice(0, 250).toString('utf-8').trim().toLowerCase();
+  const isSvg = /^(?:<\?xml[^>]*\?>\s*)?(?:<!doctype\s+svg[^>]*>\s*)?<svg/i.test(contentStart);
 
   if (!isTest && !isPng && !isJpeg && !isSvg) {
     throw new Error('SECURITY: Invalid image content. The file does not appear to be a valid PNG, JPEG, or SVG.');
