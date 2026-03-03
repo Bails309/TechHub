@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { useFormState } from 'react-dom';
-import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
+import HiddenCsrfInput from './HiddenCsrfInput';
 import { updateStorageConfig } from '@/app/admin/actions';
 import SelectField from './SelectField';
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import AppCard from './AppCard';
 import CommandPalette from './CommandPalette';
+import { useCsrfToken } from './CsrfProvider';
 
 interface PortalApp {
   id: string;
@@ -63,6 +64,7 @@ export default function PortalView({ apps, isAuthenticated, initialOrder, pinned
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [pinnedAppIds, setPinnedAppIds] = useState<string[]>(pinnedApps ?? []);
+  const csrfToken = useCsrfToken();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -90,27 +92,13 @@ export default function PortalView({ apps, isAuthenticated, initialOrder, pinned
   useEffect(() => {
     if (!isAuthenticated) {
       try {
-        const stored = window.localStorage.getItem('techhub-portal-order');
-        if (stored) {
-          const parsed = JSON.parse(stored) as string[];
-          setOrder(normaliseOrder(parsed, apps));
-        }
-      } catch {
-        setOrder((current) => normaliseOrder(current, apps));
-      }
-    }
-  }, [apps, isAuthenticated]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      try {
         const storedOrder = window.localStorage.getItem('techhub-portal-order');
         if (storedOrder) {
           const parsedOrder = JSON.parse(storedOrder) as string[];
           setOrder((current) => normaliseOrder(parsedOrder, apps));
         }
       } catch {
-        // use default
+        setOrder((current) => normaliseOrder(current, apps));
       }
 
       try {
@@ -197,7 +185,10 @@ export default function PortalView({ apps, isAuthenticated, initialOrder, pinned
 
     if (isAuthenticated) {
       const { toggleFavoriteApp } = await import('../app/actions/favoriteApps');
-      await toggleFavoriteApp(appId);
+      const payload = new FormData();
+      payload.set('appId', appId);
+      payload.set('csrfToken', csrfToken);
+      await toggleFavoriteApp(payload);
     } else {
       window.localStorage.setItem('techhub-portal-pins', JSON.stringify(nextPins));
     }
@@ -210,7 +201,10 @@ export default function PortalView({ apps, isAuthenticated, initialOrder, pinned
     }
     await fetch('/api/app-order', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-csrf-token': csrfToken
+      },
       body: JSON.stringify({ order: nextOrder })
     });
   };

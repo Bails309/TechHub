@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { Upload, X, User as UserIcon } from 'lucide-react';
-import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
+import HiddenCsrfInput from './HiddenCsrfInput';
 import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 import { useSession } from 'next-auth/react';
+import { useCsrfToken } from './CsrfProvider';
 
 interface ProfileImageUploaderProps {
     currentImage?: string | null;
@@ -18,6 +19,7 @@ export default function ProfileImageUploader({ currentImage: propImage, onUpdate
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [fileName, setFileName] = useState<string | null>(null);
     const { data: session, update } = useSession();
+    const csrfToken = useCsrfToken();
 
     // Prioritize session image so it updates reactively without page refresh
     const currentImage = session?.user?.image || propImage;
@@ -43,7 +45,7 @@ export default function ProfileImageUploader({ currentImage: propImage, onUpdate
             return;
         }
 
-        formData.set('csrfToken', getCsrfTokenFromCookie());
+        formData.set('csrfToken', csrfToken);
         setStatusMessage(null);
         setStatusTone(null);
 

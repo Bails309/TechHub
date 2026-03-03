@@ -5,6 +5,7 @@ import { prisma } from '../../../lib/prisma';
 import { getServerAuthSession } from '../../../lib/auth';
 import { writeAuditLog } from '../../../lib/audit';
 import { revalidatePath } from 'next/cache';
+import { validateCsrf } from '../../../lib/csrf';
 
 const categorySchema = z.object({
     name: z.string().min(1, 'Name is required'),
@@ -14,9 +15,15 @@ const categorySchema = z.object({
 });
 
 export async function createCategory(formData: FormData) {
+    if (!(await validateCsrf(formData))) {
+        return { success: false, error: 'Invalid CSRF token' };
+    }
     const session = await getServerAuthSession();
     if (!session?.user?.roles?.includes('admin')) {
         return { success: false, error: 'Unauthorized' };
+    }
+    if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
+        return { success: false, error: 'Unauthorized: must_change_password' };
     }
 
     const payload = {
@@ -54,9 +61,15 @@ export async function createCategory(formData: FormData) {
 }
 
 export async function updateCategory(id: string, formData: FormData) {
+    if (!(await validateCsrf(formData))) {
+        return { success: false, error: 'Invalid CSRF token' };
+    }
     const session = await getServerAuthSession();
     if (!session?.user?.roles?.includes('admin')) {
         return { success: false, error: 'Unauthorized' };
+    }
+    if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
+        return { success: false, error: 'Unauthorized: must_change_password' };
     }
 
     const payload = {
@@ -94,10 +107,21 @@ export async function updateCategory(id: string, formData: FormData) {
     }
 }
 
-export async function deleteCategory(id: string) {
+export async function deleteCategory(formData: FormData) {
+    if (!(await validateCsrf(formData))) {
+        return { success: false, error: 'Invalid CSRF token' };
+    }
     const session = await getServerAuthSession();
     if (!session?.user?.roles?.includes('admin')) {
         return { success: false, error: 'Unauthorized' };
+    }
+    if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
+        return { success: false, error: 'Unauthorized: must_change_password' };
+    }
+
+    const id = String(formData.get('id') ?? '');
+    if (!id) {
+        return { success: false, error: 'Missing id' };
     }
 
     try {

@@ -1,8 +1,9 @@
 'use client';
 
 import { useTransition, useState } from 'react';
-import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
+import HiddenCsrfInput from './HiddenCsrfInput';
 import { AdminActionState } from '../app/admin/actions';
+import { useCsrfToken } from './CsrfProvider';
 
 interface StorageCleanupFormProps {
     action: (formData: FormData) => Promise<AdminActionState>;
@@ -13,6 +14,7 @@ export default function StorageCleanupForm({ action }: StorageCleanupFormProps) 
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
     const [statusTone, setStatusTone] = useState<'success' | 'error' | null>(null);
     const [isConfirming, setIsConfirming] = useState(false);
+    const csrfToken = useCsrfToken();
 
     if (isConfirming) {
         return (
@@ -31,7 +33,7 @@ export default function StorageCleanupForm({ action }: StorageCleanupFormProps) 
                     </button>
                     <form
                         action={(formData) => {
-                            formData.set('csrfToken', getCsrfTokenFromCookie());
+                            formData.set('csrfToken', csrfToken);
                             setStatusMessage(null);
                             setStatusTone(null);
                             setIsConfirming(false);

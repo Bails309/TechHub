@@ -54,10 +54,10 @@ function hex2buf(hex: string) {
 }
 
 function timingSafeEqual(a: string, b: string) {
-  if (a.length !== b.length || a.length === 0) return false;
   const encoder = new TextEncoder();
   const aBytes = encoder.encode(a);
   const bBytes = encoder.encode(b);
+  if (aBytes.length !== bBytes.length || aBytes.length === 0) return false;
   let result = 0;
   for (let i = 0; i < aBytes.length; i++) {
     result |= aBytes[i] ^ bBytes[i];
@@ -235,7 +235,7 @@ export async function middleware(request: NextRequest) {
         response.cookies.set({
           name: 'XSRF-TOKEN',
           value: newToken,
-          httpOnly: false,
+          httpOnly: true,
           sameSite: 'lax',
           secure: secureFlag,
           path: '/',
@@ -251,7 +251,7 @@ export async function middleware(request: NextRequest) {
         response.cookies.set({
           name: 'XSRF-TOKEN-PUBLIC',
           value: newToken,
-          httpOnly: false,
+          httpOnly: true,
           sameSite: 'lax',
           secure: secureFlag,
           path: '/',
@@ -262,6 +262,40 @@ export async function middleware(request: NextRequest) {
   }
 
   const pathname = request.nextUrl.pathname;
+
+  // 1. CSRF Enforcement for Mutations (POST, PUT, DELETE)
+  if (['POST', 'PUT', 'DELETE'].includes(request.method)) {
+    const isApiAuth = pathname.startsWith('/api/auth');
+    const isLaunch = pathname.startsWith('/api/launch/');
+    const isServerAction = request.headers.has('next-action');
+
+    // Skip CSRF for auth callbacks, shared launch redirects, and Server Actions.
+    // Server Actions in this app manually call validateCsrf(formData) which 
+    // satisfies the security requirement.
+    if (!isApiAuth && !isLaunch && !isServerAction) {
+      const csrfHeader = request.headers.get('x-csrf-token');
+      const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+      const sessionId = tokenObj?.sub ?? '';
+
+      if (sessionId) {
+        const cookieToken = request.cookies.get('XSRF-TOKEN')?.value;
+        const isValid = (csrfHeader && cookieToken && csrfHeader === cookieToken) ? await validateCsrfToken(cookieToken, sessionId) : false;
+        if (!isValid) {
+          console.warn('middleware: CSRF validation failed for sub=%s, path=%s', sessionId, pathname);
+          return NextResponse.json({ error: 'invalid_csrf_token' }, { status: 403 });
+        }
+      } else {
+        // Public/Unauthenticated CSRF (visitor-id based)
+        const visitorId = request.cookies.get('visitor-id')?.value;
+        const cookieToken = request.cookies.get('XSRF-TOKEN-PUBLIC')?.value;
+        const isValid = (csrfHeader && cookieToken && visitorId && csrfHeader === cookieToken) ? await validatePublicCsrfToken(cookieToken, visitorId) : false;
+        if (!isValid) {
+          console.warn('middleware: Public CSRF validation failed, path=%s', pathname);
+          return NextResponse.json({ error: 'invalid_csrf_token' }, { status: 403 });
+        }
+      }
+    }
+  }
   const exactPaths = [
     '/',
     '/auth/signin',
@@ -283,7 +317,7 @@ export async function middleware(request: NextRequest) {
   const isAllowed = isExactAllowed || isApiAllowed;
   const finalAllowed = isAllowed || isLaunchConfirm;
 
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  let token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   const idleTimeoutMs = getSessionIdleTimeoutMs();
   const now = Date.now();
 
@@ -295,19 +329,30 @@ export async function middleware(request: NextRequest) {
     if (resolvedTimestamp > 0 && (now - resolvedTimestamp) > idleTimeoutMs) {
       console.warn('middleware: idle timeout for sub=%s, path=%s', token.sub, pathname);
 
-      let timeoutResponse;
-      if (pathname.startsWith('/api/')) {
-        timeoutResponse = NextResponse.json({ error: 'idle_timeout' }, { status: 401 });
+      if (finalAllowed) {
+        // SILENT CLEAR: If path is allowed publically, just clear the stale session 
+        // without interrupting the request flow. This prevents 401s on auth APIs.
+        response.cookies.delete('next-auth.session-token');
+        response.cookies.delete('__Secure-next-auth.session-token');
+        response.cookies.delete('techhub-activity');
+        // Nullify token so downstream checks (revocation/mustChange) don't fire
+        token = null;
       } else {
-        const signInUrl = request.nextUrl.clone();
-        signInUrl.pathname = '/auth/signin';
-        timeoutResponse = NextResponse.redirect(signInUrl);
-      }
+        // ENFORCED CLEAR: Path is protected, so redirect or 401
+        let timeoutResponse;
+        if (pathname.startsWith('/api/')) {
+          timeoutResponse = NextResponse.json({ error: 'idle_timeout' }, { status: 401 });
+        } else {
+          const signInUrl = request.nextUrl.clone();
+          signInUrl.pathname = '/auth/signin';
+          timeoutResponse = NextResponse.redirect(signInUrl);
+        }
 
-      timeoutResponse.cookies.delete('next-auth.session-token');
-      timeoutResponse.cookies.delete('__Secure-next-auth.session-token');
-      timeoutResponse.cookies.delete('techhub-activity');
-      return timeoutResponse;
+        timeoutResponse.cookies.delete('next-auth.session-token');
+        timeoutResponse.cookies.delete('__Secure-next-auth.session-token');
+        timeoutResponse.cookies.delete('techhub-activity');
+        return timeoutResponse;
+      }
     }
   }
 
@@ -351,8 +396,11 @@ export async function middleware(request: NextRequest) {
 
   console.log('middleware: allowing request to %s', pathname);
 
-  // If authenticated and session is still valid, update activity cookie
-  if (token && !token.revoked) {
+  const fetchDest = request.headers.get('sec-fetch-dest') ?? '';
+  const isNavigationRequest = request.method === 'GET' && (fetchDest === 'document' || accept.includes('text/html'));
+
+  // If authenticated and session is still valid, update activity cookie on navigations only
+  if (token && !token.revoked && isNavigationRequest) {
     let secureFlag = process.env.NODE_ENV === 'production';
     try {
       if (process.env.NEXTAUTH_URL) {
@@ -377,5 +425,5 @@ export async function middleware(request: NextRequest) {
 export const config = {
   // Run middleware for API routes as well so server endpoints can be protected
   // when a user must change their password. Static/_next assets remain excluded.
-  matcher: ['/((?!_next/static|_next/image|_next/data|favicon.ico|theme-init.js|uploads/|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)']
+  matcher: ['/((?!_next/static|_next/image|_next/data|favicon.ico|theme-init.js|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)']
 };

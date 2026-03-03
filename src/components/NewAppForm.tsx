@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState, useTransition, useRef } from 'react';
 import { Upload, X } from 'lucide-react';
 import SelectField, { SelectOption } from './SelectField';
-import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
+import HiddenCsrfInput from './HiddenCsrfInput';
 import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 import UserAutocomplete from './UserAutocomplete';
 import RoleMultiSelect from './RoleMultiSelect';
+import { useCsrfToken } from './CsrfProvider';
 
 interface NewAppFormProps {
   categoryOptions: SelectOption[];
@@ -29,6 +30,7 @@ export default function NewAppForm({
   const [audience, setAudience] = useState('AUTHENTICATED');
   const formRef = useRef<HTMLFormElement>(null);
   const safePreviewUrl = useMemo(() => sanitizeIconUrl(previewUrl), [previewUrl]);
+  const csrfToken = useCsrfToken();
 
   const handleAudienceChange = (value: string) => {
     if (value === 'PUBLIC' || value === 'AUTHENTICATED' || value === 'ROLE' || value === 'USER') {
@@ -60,7 +62,7 @@ export default function NewAppForm({
           return;
         }
 
-        formData.set('csrfToken', getCsrfTokenFromCookie());
+        formData.set('csrfToken', csrfToken);
         setStatusMessage(null);
         setStatusTone(null);
         startTransition(async () => {

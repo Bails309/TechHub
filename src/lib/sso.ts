@@ -12,18 +12,14 @@ export interface SsoConfigEntry {
   clientSecret: string | null;
 }
 
-const loadSsoConfigs = unstable_cache(
-  () => prisma.ssoConfig.findMany(),
-  ['sso-config'],
-  { tags: ['sso-config'] }
-);
-
 export async function getSsoConfigMap() {
-  return getSsoConfigMapWithDeps(loadSsoConfigs, decryptSecret);
+  console.log('[SSO] Fetching fresh SSO configs from DB (cache bypassed)...');
+  const loadFn = () => prisma.ssoConfig.findMany();
+  return getSsoConfigMapWithDeps(loadFn, decryptSecret);
 }
 
 export async function getSsoConfigMapWithDeps(
-  loadFn: () => Promise<Array<{ provider: string; enabled: boolean; config: unknown; clientSecretEnc: string | null }>> = loadSsoConfigs,
+  loadFn: () => Promise<Array<{ provider: string; enabled: boolean; config: unknown; clientSecretEnc: string | null }>>,
   decryptFn: (enc: string) => string | null = decryptSecret
 ) {
   if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD) {
@@ -32,7 +28,9 @@ export async function getSsoConfigMapWithDeps(
   let rows: Array<{ provider: string; enabled: boolean; config: unknown; clientSecretEnc: string | null }> = [];
   try {
     rows = await loadFn();
-  } catch {
+    console.log('[SSO] Found %d rows in DB', rows.length);
+  } catch (err) {
+    console.error('[SSO] Failed to load configs:', err);
     return new Map();
   }
   const map = new Map<SsoProviderId, SsoConfigEntry>();

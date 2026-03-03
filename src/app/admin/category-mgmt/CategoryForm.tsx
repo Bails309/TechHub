@@ -1,7 +1,8 @@
-'use client';
+"use client";
 
 import { useState } from 'react';
 import { createCategory, updateCategory } from './actions';
+import { useCsrfToken } from '@/components/CsrfProvider';
 
 export default function CategoryForm({
     category,
@@ -12,10 +13,12 @@ export default function CategoryForm({
 }) {
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const csrfToken = useCsrfToken();
 
     async function handleSubmit(formData: FormData) {
         setLoading(true);
         setError(null);
+        formData.set('csrfToken', csrfToken);
         const res = category
             ? await updateCategory(category.id, formData)
             : await createCategory(formData);

@@ -20,6 +20,33 @@ function getSecret(): string {
   return process.env.NEXTAUTH_SECRET ?? '';
 }
 
+function getSecureFlag(): boolean {
+  if (process.env.NEXTAUTH_URL) {
+    try {
+      return new URL(process.env.NEXTAUTH_URL).protocol === 'https:';
+    } catch {
+      return process.env.NODE_ENV === 'production';
+    }
+  }
+  return process.env.NODE_ENV === 'production';
+}
+
+async function ensureVisitorIdCookie(): Promise<string> {
+  const jar = await cookies();
+  let visitorId = jar.get('visitor-id')?.value ?? '';
+  if (!visitorId) {
+    visitorId = randomBytes(16).toString('hex');
+    jar.set('visitor-id', visitorId, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: getSecureFlag(),
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365
+    });
+  }
+  return visitorId;
+}
+
 /**
  * Create an HMAC-signed CSRF token bound to the given session ID.
  * Returns `nonce.signature`.
@@ -118,7 +145,7 @@ async function readCookieValue(name: string): Promise<string | null> {
  * Extract the session ID (JWT `sub`) from the next-auth session token
  * cookie. Works in server-action / RSC context.
  */
-async function getSessionIdFromCookie(): Promise<string> {
+export async function getSessionIdFromCookie(): Promise<string> {
   // next-auth stores the JWT as __Secure-next-auth.session-token (HTTPS)
   // or next-auth.session-token (HTTP). We decode just the `sub` claim.
   try {
@@ -141,8 +168,47 @@ async function getSessionIdFromCookie(): Promise<string> {
   }
 }
 
-async function getVisitorIdFromCookie(): Promise<string> {
+export async function getVisitorIdFromCookie(): Promise<string> {
   return (await readCookieValue('visitor-id')) ?? '';
+}
+
+/**
+ * Return a CSRF token for the current request, creating and setting
+ * a new httpOnly token cookie if needed.
+ */
+export async function getServerCsrfToken(): Promise<string> {
+  const jar = await cookies();
+  const sessionId = await getSessionIdFromCookie();
+  const maxAge = 60 * 60;
+
+  if (sessionId) {
+    let token = jar.get('XSRF-TOKEN')?.value ?? '';
+    if (!token || !validateCsrfToken(token, sessionId)) {
+      token = createCsrfToken(sessionId);
+      jar.set('XSRF-TOKEN', token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: getSecureFlag(),
+        path: '/',
+        maxAge
+      });
+    }
+    return token;
+  }
+
+  const visitorId = await ensureVisitorIdCookie();
+  let token = jar.get('XSRF-TOKEN-PUBLIC')?.value ?? '';
+  if (!token || !validatePublicCsrfToken(token, visitorId)) {
+    token = createPublicCsrfToken(visitorId);
+    jar.set('XSRF-TOKEN-PUBLIC', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: getSecureFlag(),
+      path: '/',
+      maxAge
+    });
+  }
+  return token;
 }
 
 /**
@@ -182,21 +248,18 @@ export async function validatePublicCsrf(formData: FormData): Promise<boolean> {
 }
 
 /**
- * Validate CSRF for standard API requests. Reads the `x-xsrf-token` header
+ * Validate CSRF for standard API requests. Reads the `x-csrf-token` header
  * and compares it to the `XSRF-TOKEN` cookie and the session-bound HMAC.
  */
 export async function validateApiCsrf(request: NextRequest): Promise<boolean> {
   try {
-    const token = String(request.headers.get('x-xsrf-token') ?? '');
+    const token = String(request.headers.get('x-csrf-token') ?? '');
     if (!token) return false;
 
     const cookieVal = request.cookies.get('XSRF-TOKEN')?.value ?? null;
     if (!cookieVal || cookieVal !== token) return false;
 
     const { getToken } = await import('next-auth/jwt');
-    // Next-auth's getToken helper needs a request object. We create a NextRequest
-    // that preserves all headers (including cookies and proxy headers like X-Forwarded-Host)
-    // so that session validation succeeds even behind reverse proxies.
     const req = new NextRequest(request.url, {
       headers: request.headers,
     });
@@ -209,4 +272,40 @@ export async function validateApiCsrf(request: NextRequest): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Flexible CSRF validation for Server Actions.
+ * Checks for token in headers (x-csrf-token) or formData (csrfToken).
+ */
+export async function validateActionCsrf(formData?: FormData): Promise<boolean> {
+  const { headers: getHeaders } = await import('next/headers');
+  const hdrs = await getHeaders();
+
+  // 1. Try header first (most robust for non-form calls)
+  let token = hdrs.get('x-csrf-token');
+
+  // 2. Fallback to formData if provided
+  if (!token && formData) {
+    token = String(formData.get('csrfToken') ?? '');
+  }
+
+  if (!token) return false;
+
+  const sessionId = await getSessionIdFromCookie();
+  if (sessionId) {
+    const cookie = await readCookieValue('XSRF-TOKEN');
+    if (!cookie || cookie !== token) return false;
+    return validateCsrfToken(token, sessionId);
+  }
+
+  // Support public CSRF as well
+  const visitorId = await getVisitorIdFromCookie();
+  if (visitorId) {
+    const cookie = await readCookieValue('XSRF-TOKEN-PUBLIC');
+    if (!cookie || cookie !== token) return false;
+    return validatePublicCsrfToken(token, visitorId);
+  }
+
+  return false;
 }

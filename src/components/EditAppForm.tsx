@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { Upload, X } from 'lucide-react';
 import SelectField, { SelectOption } from './SelectField';
-import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
+import HiddenCsrfInput from './HiddenCsrfInput';
 import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 import UserAutocomplete, { UserOption } from './UserAutocomplete';
 import RoleMultiSelect from './RoleMultiSelect';
+import { useCsrfToken } from './CsrfProvider';
 
 interface EditAppFormProps {
   app: {
@@ -40,6 +41,7 @@ export default function EditAppForm({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [audience, setAudience] = useState(app.audience);
+  const csrfToken = useCsrfToken();
 
   const handleAudienceChange = (value: string) => {
     if (value === 'PUBLIC' || value === 'AUTHENTICATED' || value === 'ROLE' || value === 'USER') {
@@ -75,7 +77,7 @@ export default function EditAppForm({
           return;
         }
 
-        formData.set('csrfToken', getCsrfTokenFromCookie());
+        formData.set('csrfToken', csrfToken);
         setStatusMessage(null);
         setStatusTone(null);
         startTransition(() => {

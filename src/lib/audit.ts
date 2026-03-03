@@ -14,6 +14,9 @@ export interface AuditEntry {
     details?: any;
 }
 
+let lastCleanupAt = 0;
+let cleanupInFlight: Promise<void> | null = null;
+
 /**
  * Write an entry to the audit log.
  *
@@ -44,9 +47,14 @@ export async function writeAuditLog(entry: AuditEntry) {
             },
         });
 
-        // Probabilistic cleanup: 5% chance to delete logs older than 90 days.
-        if (Math.random() < 0.05) {
-            void cleanupAuditLogs();
+        const now = Date.now();
+        const cleanupIntervalMs = 60 * 60 * 1000; // 1 hour
+        if (now - lastCleanupAt > cleanupIntervalMs && !cleanupInFlight) {
+            lastCleanupAt = now;
+            cleanupInFlight = cleanupAuditLogs().finally(() => {
+                cleanupInFlight = null;
+            });
+            void cleanupInFlight;
         }
 
         return result;

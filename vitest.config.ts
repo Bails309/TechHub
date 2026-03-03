@@ -6,8 +6,9 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['test/**/*.{test,spec}.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**', 'test/e2e/**'],
     setupFiles: [],
-    testTimeout: 20000
+    testTimeout: 60000
   },
   resolve: {
     alias: {

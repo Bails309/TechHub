@@ -61,8 +61,8 @@ export function sanitizeIconUrl(
             url.protocol === 'https:' &&
             url.pathname.startsWith('/uploads/')
         ) {
-            // Security: Prevent attacker-controlled S3 bucket injection
-            if (allowedS3Hostname && url.hostname !== allowedS3Hostname) {
+            // Security: only allow the explicitly configured S3 hostname
+            if (!allowedS3Hostname || url.hostname !== allowedS3Hostname) {
                 return null;
             }
             // Convert to same-origin proxied URL so the server can fetch private

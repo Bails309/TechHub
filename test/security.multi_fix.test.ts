@@ -18,6 +18,15 @@ vi.mock('@/lib/storage', () => ({
     readIcon: vi.fn()
 }));
 
+// Mock getServerAuthSession to avoid SSO decryption failures in unit tests
+vi.mock('@/lib/auth', async (importOriginal) => {
+    const actual = await importOriginal<any>();
+    return {
+        ...actual,
+        getServerAuthSession: vi.fn(async () => ({ user: { id: 'test-user' } }))
+    };
+});
+
 describe('Multi-Security Fixes', () => {
 
     describe('IP Spoofing (getClientIp)', () => {

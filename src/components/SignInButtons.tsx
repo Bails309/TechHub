@@ -12,6 +12,7 @@ export default function SignInButtons({
   focusCredentials?: boolean;
   callbackUrl?: string;
 }) {
+  console.log('[SIGNIN_BUTTONS] Providers received:', JSON.stringify(providers));
   const azureProvider = providers?.['azure-ad'];
   const keycloakProvider = providers?.keycloak;
   const credentialsProvider = providers?.credentials;
@@ -31,6 +32,7 @@ export default function SignInButtons({
 
   return (
     <div className="flex flex-wrap gap-3">
+      {/* Target specific known providers first for specialized labeling if needed */}
       {azureProvider ? (
         <button
           type="button"
@@ -40,6 +42,7 @@ export default function SignInButtons({
           Sign in with Microsoft
         </button>
       ) : null}
+
       {keycloakProvider ? (
         <button
           type="button"
@@ -49,6 +52,22 @@ export default function SignInButtons({
           Sign in with Keycloak
         </button>
       ) : null}
+
+      {/* Fallback for any other SSO providers that aren't azure-ad, keycloak, or credentials */}
+      {providers && Object.values(providers).map(provider => {
+        if (['azure-ad', 'keycloak', 'credentials'].includes(provider.id)) return null;
+        return (
+          <button
+            key={provider.id}
+            type="button"
+            onClick={() => signIn(provider.id, { callbackUrl })}
+            className="btn-secondary"
+          >
+            Sign in with {provider.name}
+          </button>
+        );
+      })}
+
       {credentialsProvider || showCredentialsFallback ? (
         <button
           type="button"

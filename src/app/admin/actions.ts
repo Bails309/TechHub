@@ -35,6 +35,7 @@ import { cookies } from 'next/headers';
 import { Prisma } from '@prisma/client';
 import { getServerAuthSession } from '../../lib/auth';
 import { invalidateUserMeta } from '../../lib/userCache';
+import { assertRateLimit } from '../../lib/rateLimit';
 import { decryptSecret, encryptSecret, hasSecretKey } from '../../lib/crypto';
 // SSO rotation removed: previously used rotateSsoSecrets utilities
 import { hashPassword, validatePasswordComplexity } from '../../lib/password';
@@ -278,7 +279,6 @@ async function testS3StorageConnection(args: {
 }
 
 export async function createApp(formData: FormData) {
-  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as const;
   let session;
   try {
     // Attempt to get a real server session. In test environments the
@@ -385,9 +385,7 @@ export async function createApp(formData: FormData) {
 }
 
 export async function deleteApp(formData: FormData) {
-  if (!(await validateCsrf(formData))) {
-    return { status: 'error', message: 'Invalid CSRF token' } as const;
-  }
+  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as const;
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' } as const;
@@ -435,7 +433,6 @@ export async function deleteApp(formData: FormData) {
 }
 
 export async function updateSiteLogos(formData: FormData) {
-  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as const;
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) return { status: 'error', message: 'Unauthorized' } as const;
 
@@ -610,7 +607,6 @@ export async function updateStorageConfig(
   _prevState: AdminActionState,
   formData: FormData
 ): Promise<AdminActionState> {
-  if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
@@ -789,7 +785,6 @@ export async function updateStorageConfig(
 
 export async function updateApp(formData: FormData) {
   try {
-    if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as const;
     const session = await getServerAuthSession();
     if (!session?.user?.roles?.includes('admin')) {
       return { status: 'error', message: 'Unauthorized' } as const;
@@ -1170,24 +1165,43 @@ export async function deleteUser(formData: FormData): Promise<AdminActionState> 
   return { status: 'success', message: 'User deleted' };
 }
 
-export async function searchUsers(query: string, limit: number = 10) {
+const searchUsersSchema = z.object({
+  query: z.string().trim().min(1).max(100),
+  limit: z.coerce.number().int().min(1).max(50).default(10)
+});
+
+export async function searchUsers(formData: FormData) {
+  if (!(await validateCsrf(formData))) {
+    throw new Error('Invalid CSRF token');
+  }
+
   const session = await getServerAuthSession();
   if (!session?.user?.roles?.includes('admin')) {
     throw new Error('Unauthorized');
   }
 
-  const trimmedQuery = query.trim();
-  if (!trimmedQuery) return [];
+  if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
+    throw new Error('Unauthorized: must_change_password');
+  }
+
+  const parsed = searchUsersSchema.safeParse({
+    query: formData.get('query'),
+    limit: formData.get('limit')
+  });
+
+  if (!parsed.success) return [];
+
+  await assertRateLimit(`search-users:${session.user.id}`);
 
   const users = await prisma.user.findMany({
     select: { id: true, name: true, email: true },
     where: {
       OR: [
-        { email: { contains: trimmedQuery, mode: 'insensitive' } },
-        { name: { contains: trimmedQuery, mode: 'insensitive' } }
+        { email: { contains: parsed.data.query, mode: 'insensitive' } },
+        { name: { contains: parsed.data.query, mode: 'insensitive' } }
       ]
     },
-    take: limit,
+    take: parsed.data.limit,
     orderBy: { email: 'asc' }
   });
 
@@ -1713,7 +1727,7 @@ async function fetchWithPinnedIp(url: string, hostname: string, address: string,
   const resolvedAddress = parsed.toNormalizedString();
   const target = new URL(url);
 
-  return await new Promise<{ ok: boolean; status: number }>((resolve, reject) => {
+  return await new Promise<{ ok: boolean; status: number; body: string }>((resolve, reject) => {
     // Connect directly to the resolved IP address and use the original hostname for SNI
     // and the Host header. This avoids relying on a custom lookup callback which
     // can surface ERR_INVALID_IP_ADDRESS in some environments.
@@ -1759,8 +1773,11 @@ async function fetchWithPinnedIp(url: string, hostname: string, address: string,
         return;
       }
 
-      response.resume();
-      resolve({ ok: status >= 200 && status < 300, status });
+      let data = '';
+      response.on('data', (chunk) => { data += chunk; });
+      response.on('end', () => {
+        resolve({ ok: status >= 200 && status < 300, status, body: data });
+      });
     });
 
     request.on('error', (err) => {
@@ -1810,6 +1827,15 @@ async function testOpenIdConfiguration(issuer: string) {
       const response = await fetchWithPinnedIp(endpoint, resolved.hostname, record.address);
       if (!response.ok) {
         throw new Error(`OpenID discovery failed (${response.status})`);
+      }
+
+      try {
+        const raw = JSON.parse(response.body);
+        if (!raw || typeof raw !== 'object' || !raw.authorization_endpoint || !raw.issuer) {
+          throw new Error('Invalid OpenID Configuration: missing required fields');
+        }
+      } catch (e) {
+        throw new Error(`Invalid OpenID Configuration: ${e instanceof Error ? e.message : 'failed to parse JSON'}`);
       }
       return;
     } catch (error) {

@@ -3,7 +3,8 @@
 import type { ReactNode } from 'react';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import HiddenCsrfInput, { getCsrfTokenFromCookie } from './HiddenCsrfInput';
+import HiddenCsrfInput from './HiddenCsrfInput';
+import { useCsrfToken } from './CsrfProvider';
 
 type AdminActionFormProps = {
   action: (formData: FormData) => void | Promise<void | { status: 'idle' | 'success' | 'error'; message: string }>;
@@ -24,6 +25,7 @@ export default function AdminActionForm({
   const [message, setMessage] = useState<string | null>(null);
   const [tone, setTone] = useState<'success' | 'error' | null>(null);
   const router = useRouter();
+  const csrfToken = useCsrfToken();
 
   return (
     <form
@@ -41,7 +43,7 @@ export default function AdminActionForm({
           return;
         }
 
-        formData.set('csrfToken', getCsrfTokenFromCookie());
+        formData.set('csrfToken', csrfToken);
         setMessage(null);
         setTone(null);
         startTransition(() => {

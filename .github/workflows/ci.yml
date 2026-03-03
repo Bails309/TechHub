@@ -4,11 +4,7 @@ permissions:
   contents: read
   packages: read
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+on: [push, pull_request]
 
 jobs:
   build-and-test:
@@ -73,10 +69,23 @@ jobs:
       - name: Prisma push (ensure DB schema)
         run: npm run prisma:push
 
-      - name: Lint
-        run: npm run lint --if-present
+      - name: Prisma seed
+        run: npm run prisma:seed
+        env:
+          SSO_MASTER_KEY: Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
+          ADMIN_PASSWORD: test-admin-password-123
+          ADMIN_MUST_CHANGE: false
 
-      - name: Run tests (builder image)
+      - name: Audit dependencies
+        run: npm audit --audit-level=high --omit=dev
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Run unit tests (builder image)
         run: |
           # Build the Dockerfile 'builder' stage and run the test suite inside
           # the resulting image. Use host networking so the container can reach
@@ -87,6 +96,7 @@ jobs:
             -e DATABASE_URL="postgres://techhub:techhub@localhost:5432/techhub" \
             -e REDIS_URL="redis://localhost:6379" \
             -e RATE_LIMIT_STORE=redis \
+            -e SSO_MASTER_KEY=Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E= \
             techhub-tests sh -lc "CI=true npm test -- --run"
 
       - name: Build Next.js
@@ -119,7 +129,12 @@ jobs:
           done
       - name: Run container from built image and smoke-check health endpoint
         run: |
-          docker run -d --name techhub-ci --link ci-postgres:postgres --link ci-redis:redis -e DATABASE_URL=postgres://techhub:techhub@postgres:5432/techhub -e REDIS_URL=redis://redis:6379 -e RATE_LIMIT_STORE=redis -p 3000:3000 techhub:ci
+          docker run -d --name techhub-ci --link ci-postgres:postgres --link ci-redis:redis \
+            -e DATABASE_URL=postgres://techhub:techhub@postgres:5432/techhub \
+            -e REDIS_URL=redis://redis:6379 \
+            -e RATE_LIMIT_STORE=redis \
+            -e SSO_MASTER_KEY=Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E= \
+            -p 3000:3000 techhub:ci
           for i in {1..60}; do
             if curl -sSf http://localhost:3000/api/health >/dev/null 2>&1; then
               echo "health ok"; break
@@ -131,3 +146,69 @@ jobs:
         run: |
           docker rm -f techhub-ci || true
           docker rm -f ci-postgres || true
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    env:
+      DATABASE_URL: postgres://techhub:techhub@localhost:5432/techhub
+      REDIS_URL: redis://localhost:6379
+      SSO_MASTER_KEY: Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
+      NEXTAUTH_SECRET: placeholder-secret-for-ci-testing-purpose-only
+      NEXTAUTH_URL: http://localhost:3000
+      ADMIN_PASSWORD: test-admin-password-123
+      ADMIN_MUST_CHANGE: "false"
+      ALLOW_MISSING_REMOTE_IP: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Start Postgres for E2E
+        run: |
+          docker run -d --name e2e-postgres -e POSTGRES_USER=techhub -e POSTGRES_PASSWORD=techhub -e POSTGRES_DB=techhub -p 5432:5432 postgres:16
+          for i in {1..30}; do
+            docker exec e2e-postgres pg_isready -U techhub && break || sleep 1
+          done
+
+      - name: Start Redis for E2E
+        run: |
+          docker run -d --name e2e-redis -p 6379:6379 redis:7
+          for i in {1..30}; do
+            docker exec e2e-redis redis-cli ping >/dev/null 2>&1 && break || sleep 1
+          done
+
+      - name: Prepare Database and Seed
+        run: |
+          npm run prisma:push
+          npm run prisma:seed
+
+      - name: Build and Run app for E2E
+        run: |
+          npm run build
+          npm run start &
+          # Wait for app to be ready
+          for i in {1..60}; do
+            if curl -s http://localhost:3000 >/dev/null; then echo "App ready"; break; fi
+            sleep 1
+          done
+
+      - name: Run Playwright tests
+        run: |
+          export PLAYWRIGHT_BASE_URL=http://localhost:3000
+          npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30

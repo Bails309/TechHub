@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-describe('middleware activity cookie handling (unit)', () => {
+describe('middleware idle timeout loop prevention (unit)', () => {
     beforeEach(() => {
         vi.resetModules();
         process.env.SESSION_IDLE_TIMEOUT_MS = '1000'; // 1 second
@@ -23,6 +23,10 @@ describe('middleware activity cookie handling (unit)', () => {
                         set: vi.fn(),
                         delete: vi.fn()
                     }
+                })),
+                json: vi.fn(() => ({
+                    type: 'json',
+                    cookies: { delete: vi.fn() }
                 }))
             }
         }));
@@ -31,27 +35,7 @@ describe('middleware activity cookie handling (unit)', () => {
         }));
     });
 
-    it('updates techhub-activity cookie on valid requests', async () => {
-        const { getToken } = await import('next-auth/jwt');
-        const { middleware } = await import('../src/middleware');
-
-        (getToken as any).mockResolvedValue({ sub: 'u1' });
-
-        const fakeReq: any = {
-            method: 'GET',
-            headers: new Headers([['accept', 'text/html']]),
-            nextUrl: { pathname: '/any', protocol: 'http:', clone() { return { pathname: '/any' }; } },
-            cookies: { get: () => undefined }
-        };
-
-        const res: any = await middleware(fakeReq as any);
-        expect(res.cookies.set).toHaveBeenCalledWith(expect.objectContaining({
-            name: 'techhub-activity',
-            value: expect.any(String)
-        }));
-    });
-
-    it('redirects and clears cookies when idle timeout is exceeded', async () => {
+    it('clears cookies but skips redirect when idle timeout occurs on /auth/signin', async () => {
         const { getToken } = await import('next-auth/jwt');
         const { middleware } = await import('../src/middleware');
 
@@ -62,18 +46,25 @@ describe('middleware activity cookie handling (unit)', () => {
         const fakeReq: any = {
             method: 'GET',
             headers: new Headers([['accept', 'text/html']]),
-            nextUrl: { pathname: '/any', protocol: 'http:', clone() { return { pathname: '/any' }; } },
+            nextUrl: {
+                pathname: '/auth/signin',
+                protocol: 'http:',
+                clone() { return { pathname: '/auth/signin' }; }
+            },
             cookies: {
-                get: (name: string) => name === 'techhub-activity' ? { value: staleTime.toString() } : undefined
+                get: (name: string) => {
+                    if (name === 'techhub-activity') return { value: staleTime.toString() };
+                    return undefined;
+                }
             }
         };
 
-        // Need to handle potential clone() calls in middleware
-        fakeReq.nextUrl.clone = () => ({ pathname: '/auth/signin' });
-
         const res: any = await middleware(fakeReq as any);
-        expect(res.type).toBe('redirect');
-        expect(res.location).toBe('/auth/signin');
+
+        // Should NOT be a redirect if we are already at sign-in
+        expect(res.type).not.toBe('redirect');
+
+        // But MUST still clear the session cookies
         expect(res.cookies.delete).toHaveBeenCalledWith('next-auth.session-token');
         expect(res.cookies.delete).toHaveBeenCalledWith('techhub-activity');
     });

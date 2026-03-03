@@ -23,7 +23,7 @@ let passwordHistory: Array<{ id: string; userId: string; hash: string; createdAt
 // Simple mutex for serializing $transaction
 let lock = Promise.resolve();
 function acquireLock() {
-  let release: () => void = () => {};
+  let release: () => void = () => { };
   const p = new Promise<void>((res) => (release = res));
   const prev = lock;
   lock = p;
@@ -35,7 +35,7 @@ const mockPrisma = {
     const release = await acquireLock();
     try {
       const tx = {
-        $queryRaw: async () => {},
+        $queryRaw: async () => { },
         user: {
           findUnique: async ({ where }: any) => ({ passwordHash: users[where.id].passwordHash }),
           update: async ({ where, data }: any) => {
@@ -78,7 +78,7 @@ describe('changePassword concurrency', () => {
   it('serializes concurrent password changes and rejects reuse', async () => {
     const { changePassword } = await import('../src/app/auth/change-password/actions');
 
-    const makeForm = (current: string, next: string) => ({ get: (k: string) => (k === 'currentPassword' ? current : k === 'newPassword' || k === 'confirmPassword' ? next : '') });
+    const makeForm = (current: string, next: string) => ({ get: (k: string) => (k === 'currentPassword' ? current : k === 'newPassword' || k === 'confirmPassword' ? next : '') }) as unknown as FormData;
 
     // Run two concurrent attempts with same new password
     const p1 = changePassword({ status: 'idle', message: '' }, makeForm('old', 'newpass'));
