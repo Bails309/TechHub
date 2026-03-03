@@ -44,17 +44,28 @@ describe('getClientIp and getRateLimitKey', () => {
     expect(key).toBe('ip:203.0.113.5|user:user@example.com');
   }, 30000);
 
-  it('accepts x-client-ip from trusted proxy when TRUST_PROXY=true', async () => {
+  it('accepts x-azure-clientip from trusted proxy when TRUST_PROXY=true', async () => {
+    process.env.TRUST_PROXY = 'true';
+    process.env.TRUSTED_PROXIES = '10.0.0.0/8';
+    const auth = await loadAuthModule();
+
+    const headers = { 'x-azure-clientip': '198.51.100.9' } as Record<string, string>;
+    const ip = auth.getClientIp(headers, '10.1.2.3');
+    expect(ip).toBe('198.51.100.9');
+
+    const key = auth.getRateLimitKey(headers, 'Admin@Example.COM', '10.1.2.3');
+    expect(key).toBe('ip:198.51.100.9|user:admin@example.com');
+  }, 30000);
+
+  it('ignores spoofed x-client-ip even if from trusted proxy', async () => {
     process.env.TRUST_PROXY = 'true';
     process.env.TRUSTED_PROXIES = '10.0.0.0/8';
     const auth = await loadAuthModule();
 
     const headers = { 'x-client-ip': '198.51.100.9' } as Record<string, string>;
     const ip = auth.getClientIp(headers, '10.1.2.3');
-    expect(ip).toBe('198.51.100.9');
-
-    const key = auth.getRateLimitKey(headers, 'Admin@Example.COM', '10.1.2.3');
-    expect(key).toBe('ip:198.51.100.9|user:admin@example.com');
+    // Should NOT trust x-client-ip, so falls back to immediate remote
+    expect(ip).toBe('10.1.2.3');
   }, 30000);
 
   it('falls back to x-forwarded-for when x-client-ip missing', async () => {
@@ -74,7 +85,7 @@ describe('getClientIp and getRateLimitKey', () => {
     process.env.TRUSTED_PROXIES = '10.0.0.0/8';
     const auth = await loadAuthModule();
 
-    const headers = { 'x-client-ip': '198.51.100.9' } as Record<string, string>;
+    const headers = { 'x-azure-clientip': '198.51.100.9' } as Record<string, string>;
     // remoteAddr is outside the trusted CIDR
     const ip = auth.getClientIp(headers, '203.0.113.7');
     expect(ip).toBe('203.0.113.7');
@@ -86,8 +97,8 @@ describe('getClientIp and getRateLimitKey', () => {
     const ip1 = auth.getClientIp({}, '[2001:db8::1]:1234');
     expect(ip1).toBe('2001:db8::1');
 
-    const ip2 = auth.getClientIp({ 'x-real-ip': '198.51.100.55:54321' } as Record<string, string>, undefined);
-    // With TRUST_PROXY=false we must NOT trust proxy-supplied headers like `x-real-ip`.
+    const ip2 = auth.getClientIp({ 'x-azure-clientip': '198.51.100.55:54321' } as Record<string, string>, undefined);
+    // With TRUST_PROXY=false we must NOT trust proxy-supplied headers like `x-azure-clientip`.
     // The function should therefore return undefined when the immediate remote is not provided.
     expect(ip2).toBeUndefined();
   }, 30000);

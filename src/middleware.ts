@@ -279,8 +279,8 @@ export async function middleware(request: NextRequest) {
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
 
   // 1. Handle Revocation (Security Kill-switch)
-  if (token?.revoked) {
-    console.warn('middleware: revoking access for sub=%s (token revoked)', token.sub);
+  if (token?.revoked && !finalAllowed) {
+    console.warn('middleware: revoking access for sub=%s (token revoked), path=%s', token.sub, pathname);
     const signInUrl = request.nextUrl.clone();
     signInUrl.pathname = '/auth/signin';
     return NextResponse.redirect(signInUrl);

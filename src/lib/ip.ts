@@ -122,16 +122,13 @@ export function getClientIp(headers: HeaderSource, remoteAddr?: string): string 
     );
 
     if (isRemoteTrusted) {
-        // 1. Prioritize x-azure-clientip (Azure)
-        // 2. Check x-client-ip (Legacy/Tests)
-        // 3. Check x-real-ip
-        const singleHeaders = ['x-azure-clientip', 'x-client-ip', 'x-real-ip'];
-        for (const name of singleHeaders) {
-            const val = readHeader(headers, name);
-            if (val) {
-                const normalized = normalizeIp(val);
-                if (normalized) return normalized;
-            }
+        // 1. Prioritize x-azure-clientip (Azure - trusted if from a trusted proxy)
+        // We REMOVE 'x-client-ip' and 'x-real-ip' here because they are often
+        // passed through unsanitized by intermediate proxies/ALBs, allowing trivial spoofing.
+        const azureIp = readHeader(headers, 'x-azure-clientip');
+        if (azureIp) {
+            const normalized = normalizeIp(azureIp);
+            if (normalized) return normalized;
         }
 
         // 4. Fall back to x-forwarded-for (multi-hop)
