@@ -1,9 +1,22 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('App Interaction Flow', () => {
-    test.beforeEach(async () => {
+    test.beforeEach(async ({ context }: { context: any }) => {
         // Higher default timeout for E2E interactions in CI
         test.setTimeout(60000);
+
+        // Mock external domains to prevent DNS errors in CI
+        await context.route('**/*.example.com/**', (route: any) => route.fulfill({
+            status: 200,
+            contentType: 'text/html',
+            body: '<html><body><h1>Mock External Page</h1></body></html>'
+        }));
+
+        await context.route('**/github.com/**', (route: any) => route.fulfill({
+            status: 200,
+            contentType: 'text/html',
+            body: '<html><body><h1>Mock GitHub Page</h1></body></html>'
+        }));
     });
 
     test('should allow launching a public app without login', async ({ page, context }: { page: any; context: any }) => {
@@ -34,7 +47,9 @@ test.describe('App Interaction Flow', () => {
         }
 
         // Verify the final page URL pattern
+        // Note: With mocking, it might land on the mock page quickly
         await expect(newPage).toHaveURL(/status\.example\.com/, { timeout: 20000 });
+        await expect(newPage.locator('h1')).toHaveText('Mock External Page', { timeout: 10000 });
     });
 
     test('should allow launching an authenticated app after login', async ({ page, context }: { page: any; context: any }) => {
@@ -44,8 +59,9 @@ test.describe('App Interaction Flow', () => {
         await page.fill('input[name="password"]', process.env.ADMIN_PASSWORD || 'test-admin-password-123');
         await page.click('button[type="submit"]');
 
-        // Wait for login to complete
+        // Wait for login to complete and stable state
         await page.waitForURL((url: URL) => !url.pathname.includes('/auth/signin'), { timeout: 30000 });
+        await expect(page.getByRole('link', { name: /Admin/i })).toBeVisible({ timeout: 15000 });
 
         // Navigate to root/portal
         await page.goto('/', { waitUntil: 'networkidle' });
@@ -73,5 +89,6 @@ test.describe('App Interaction Flow', () => {
 
         // Verify final redirection
         await expect(newPage).toHaveURL(/github\.com/, { timeout: 20000 });
+        await expect(newPage.locator('h1')).toHaveText('Mock GitHub Page', { timeout: 10000 });
     });
 });
