@@ -1,4 +1,5 @@
 import type { NextAuthOptions, Session, User, Account } from 'next-auth';
+import { headers } from 'next/headers';
 import type { JWT } from 'next-auth/jwt';
 import AzureAD from 'next-auth/providers/azure-ad';
 import Credentials from 'next-auth/providers/credentials';
@@ -23,6 +24,7 @@ import {
   trustProxy,
   trustedProxiesEnv
 } from './ip';
+import { getSessionMaxAgeSeconds, getSessionIdleTimeoutMs } from './auth-config';
 
 // Re-export for backward compatibility and consume from other modules
 export {
@@ -55,18 +57,8 @@ const allowEmailLinking = false;
 const rateLimitFallbackAllowProxy = process.env.RATE_LIMIT_FALLBACK_ALLOW_PROXY === 'true';
 const allowMissingRemoteIp = process.env.ALLOW_MISSING_REMOTE_IP === 'true';
 
-// Session lifetime (OWASP baseline: 8-hour absolute, 20-minute idle)
-function getSessionMaxAgeSeconds(): number {
-  const env = process.env.SESSION_MAX_AGE_SECONDS;
-  const val = env ? Number(env) : 28800; // 8 hours default
-  return val > 0 ? val : 28800;
-}
-
-function getSessionIdleTimeoutMs(): number {
-  const env = process.env.SESSION_IDLE_TIMEOUT_MS;
-  const val = env ? Number(env) : 1200000; // 20 minutes default
-  return val > 0 ? val : 1200000;
-}
+// Session lifetimes are now defined in auth-config.ts to be Edge-compatible
+export { getSessionMaxAgeSeconds, getSessionIdleTimeoutMs };
 
 // Startup-time warning
 if (!trustProxy && !trustedProxiesEnv && process.env.NODE_ENV === 'production') {
@@ -126,26 +118,15 @@ function buildCredentialsProvider() {
       const parsed = credentialsSchema.safeParse(credentials);
       if (!parsed.success) return null;
 
-      function extractRemoteAddr(r: unknown): string | undefined {
-        if (!r || typeof r !== 'object') return undefined;
-        const rec = r as Record<string, unknown>;
-        const socket = rec.socket as Record<string, unknown> | undefined;
-        if (socket && typeof socket.remoteAddress === 'string') return socket.remoteAddress;
-        const connection = rec.connection as Record<string, unknown> | undefined;
-        if (connection && typeof connection.remoteAddress === 'string') return connection.remoteAddress;
-        if (typeof rec.ip === 'string') return rec.ip;
-        return undefined;
-      }
-
-      const remoteAddr = extractRemoteAddr(req);
-      const clientIp = getClientIp(req?.headers, remoteAddr);
+      const hdrs = await headers();
+      const clientIp = getClientIp(hdrs);
       const emailKey = parsed.data.email.toLowerCase();
 
       if (!clientIp) {
-        if (isPrivateOrLocal(remoteAddr) && rateLimitFallbackAllowProxy) {
-          console.warn('auth: detected private remoteAddr %s while TRUST_PROXY=false; falling back to email-only rate limiting', remoteAddr);
+        if (rateLimitFallbackAllowProxy) {
+          console.warn('auth: missing client IP; falling back to email-only rate limiting');
         } else {
-          console.error('auth: login rejected - missing client IP; remoteAddr=%s', remoteAddr ?? 'undefined');
+          console.error('auth: login rejected - missing client IP');
           writeAuditLog({
             category: 'auth',
             action: 'login_failure',
@@ -157,8 +138,8 @@ function buildCredentialsProvider() {
       }
 
       try {
-        const ipKey = getRateLimitKey(req?.headers, undefined, remoteAddr);
-        const userKey = getRateLimitKey(undefined, emailKey, undefined);
+        const ipKey = getRateLimitKey(hdrs, undefined);
+        const userKey = getRateLimitKey(undefined, emailKey);
         if (clientIp) await assertRateLimit(ipKey);
         await assertRateLimit(userKey);
       } catch {
@@ -348,7 +329,6 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
         // --- 2. Session Lifetime Enforcement ---
         const issuedAt = Number(token.iat ?? 0);
-        const lastActivity = Number(token.lastActivity ?? 0);
 
         // Absolute session timeout (e.g. 8 hours)
         const isAbsoluteTimeout = !token.revoked && issuedAt > 0 && (now - issuedAt * 1000) > getSessionMaxAgeSeconds() * 1000;
@@ -356,20 +336,6 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           console.warn('[AUTH] Revoking session for sub=%s (absolute_timeout: iat=%d, now=%d, limit=%d)', token.sub, issuedAt, Math.floor(now / 1000), getSessionMaxAgeSeconds());
           token.revoked = true;
           await logSessionTerminationOnce(String(token.sub), 'absolute_timeout', issuedAt);
-        }
-
-        // Idle session timeout (e.g. 20 minutes)
-        // Only enforce if we have a previous activity record (prevents kicking users on code deploy if field was missing)
-        const isIdleTimeout = !token.revoked && lastActivity > 0 && (now - lastActivity) > getSessionIdleTimeoutMs();
-        if (isIdleTimeout) {
-          console.warn('[AUTH] Revoking session for sub=%s (idle_timeout: lastActivity=%d, now=%d, limit=%d)', token.sub, lastActivity, now, getSessionIdleTimeoutMs());
-          token.revoked = true;
-          await logSessionTerminationOnce(String(token.sub), 'idle_timeout', issuedAt);
-        }
-
-        // Update activity on every request if still valid
-        if (!token.revoked) {
-          token.lastActivity = now;
         }
 
         return token;

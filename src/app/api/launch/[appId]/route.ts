@@ -58,8 +58,11 @@ export async function GET(
             return NextResponse.redirect(new URL(app.url));
         } else {
             // Untrusted referer or direct link -- enforce confirmation interstitial
-            const proto = request.headers.get('x-forwarded-proto') ?? (request.nextUrl.protocol.replace(':', '') || 'http');
-            const hostHeader = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? request.nextUrl.host;
+            // Use the standard Host header (set by browser/proxy, safe) — NOT x-forwarded-host (spoofable).
+            // Derive protocol from NEXTAUTH_URL (admin-configured, not user-spoofable).
+            const hostHeader = request.headers.get('host') ?? request.nextUrl.host;
+            let proto = 'http';
+            try { proto = new URL(process.env.NEXTAUTH_URL ?? '').protocol.replace(':', ''); } catch { };
             const confirmUrl = new URL(`/launch-confirm/${app.id}`, `${proto}://${hostHeader}`);
             return NextResponse.redirect(confirmUrl);
         }

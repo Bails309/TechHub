@@ -12,6 +12,7 @@ Only the following variables are strictly required to get TechHub running secure
 | `REDIS_URL` | **Yes** | `rediss://<name>.redis.azure.net:10000` (Use **rediss** for TLS). |
 | `REDIS_PASSWORD` | **Yes** | Primary Access Key for Azure Cache for Redis. |
 | `REDIS_TLS` | **Yes** | Set to `true` (Mandatory for Azure Redis). |
+| `REDIS_CLUSTER` | **Yes** | Set to `true` if your Redis Tier has clustering enabled. |
 | `NEXTAUTH_SECRET` | **Yes** | 32-character random string for session signing. |
 | `NEXTAUTH_URL` | **Yes** | Your public HTTPS domain (e.g., `https://hub.company.com`). |
 | `SSO_MASTER_KEY` | **Yes** | 32-byte base64 string for database-side encryption. |

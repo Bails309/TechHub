@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { getSessionIdleTimeoutMs } from './lib/auth-config';
 
 function buildCsp(nonce: string) {
   return [
@@ -201,9 +202,12 @@ export async function middleware(request: NextRequest) {
   if (request.method === 'GET') {
     const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
     const sessionId = tokenObj?.sub ?? '';
-    const forwardedProto = request.headers.get('x-forwarded-proto');
-    const isSecure = forwardedProto === 'https' || request.nextUrl.protocol === 'https:';
-    const secureFlag = process.env.NODE_ENV === 'production' ? true : isSecure;
+    let secureFlag = process.env.NODE_ENV === 'production';
+    try {
+      if (process.env.NEXTAUTH_URL) {
+        secureFlag = new URL(process.env.NEXTAUTH_URL).protocol === 'https:';
+      }
+    } catch { }
     const maxAge = 60 * 60; // 1 hour
 
     let visitorId = request.cookies.get('visitor-id')?.value;
@@ -277,16 +281,37 @@ export async function middleware(request: NextRequest) {
   const finalAllowed = isAllowed || isLaunchConfirm;
 
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  const idleTimeoutMs = getSessionIdleTimeoutMs();
+  const now = Date.now();
 
-  // 1. Handle Revocation (Security Kill-switch)
+  // 1. Handle Activity Timeout (Coherent Idle Timeout)
+  if (token) {
+    const lastActivity = request.cookies.get('techhub-activity')?.value;
+    if (lastActivity && (now - Number(lastActivity)) > idleTimeoutMs) {
+      console.warn('middleware: idle timeout for sub=%s, path=%s', token.sub, pathname);
+      const signInUrl = request.nextUrl.clone();
+      signInUrl.pathname = '/auth/signin';
+      const timeoutResponse = NextResponse.redirect(signInUrl);
+      timeoutResponse.cookies.delete('next-auth.session-token');
+      timeoutResponse.cookies.delete('__Secure-next-auth.session-token');
+      timeoutResponse.cookies.delete('techhub-activity');
+      return timeoutResponse;
+    }
+  }
+
+  // 2. Handle Revocation (Security Kill-switch)
   if (token?.revoked && !finalAllowed) {
     console.warn('middleware: revoking access for sub=%s (token revoked), path=%s', token.sub, pathname);
     const signInUrl = request.nextUrl.clone();
     signInUrl.pathname = '/auth/signin';
-    return NextResponse.redirect(signInUrl);
+    const revokeResponse = NextResponse.redirect(signInUrl);
+    revokeResponse.cookies.delete('next-auth.session-token');
+    revokeResponse.cookies.delete('__Secure-next-auth.session-token');
+    revokeResponse.cookies.delete('techhub-activity');
+    return revokeResponse;
   }
 
-  // 2. Force Password Change (except on the change-password page itself and auth APIs)
+  // 3. Force Password Change (except on the change-password page itself and auth APIs)
   if (token?.mustChangePassword &&
     token?.authProvider === 'credentials' &&
     pathname !== '/auth/change-password' &&
@@ -313,6 +338,27 @@ export async function middleware(request: NextRequest) {
   }
 
   console.log('middleware: allowing request to %s', pathname);
+
+  // If authenticated and session is still valid, update activity cookie
+  if (token && !token.revoked) {
+    let secureFlag = process.env.NODE_ENV === 'production';
+    try {
+      if (process.env.NEXTAUTH_URL) {
+        secureFlag = new URL(process.env.NEXTAUTH_URL).protocol === 'https:';
+      }
+    } catch { }
+
+    response.cookies.set({
+      name: 'techhub-activity',
+      value: now.toString(),
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: secureFlag,
+      path: '/',
+      maxAge: 60 * 60 * 8 // 8 hours absolute
+    });
+  }
+
   return response;
 }
 
