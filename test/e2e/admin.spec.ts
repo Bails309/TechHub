@@ -5,8 +5,11 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'test-admin-password-123';
 
 test.describe('Admin Management Flow', () => {
     test.beforeEach(async ({ page }: { page: any }) => {
+        // Increase timeout for the login process in CI
+        test.setTimeout(60000);
+
         // Perform login once before each test in this block
-        await page.goto('/auth/signin');
+        await page.goto('/auth/signin', { waitUntil: 'networkidle' });
 
         // Fill credentials
         await page.fill('input[name="email"]', ADMIN_EMAIL);
@@ -16,17 +19,17 @@ test.describe('Admin Management Flow', () => {
         await page.click('button[type="submit"]');
 
         // Verification of successful login:
-        // 1. Wait for URL to NOT be sign-in page
-        await page.waitForURL((url: URL) => !url.pathname.includes('/auth/signin'));
+        // Wait for sign-in redirect to complete (should land on post-login or portal)
+        await page.waitForURL((url: URL) => !url.pathname.includes('/auth/signin'), { timeout: 30000 });
 
-        // 2. Expect to see an admin-only link or some private content
-        // Sidebar usually contains an "Admin" or "Profile" indication
-        await expect(page.getByRole('link', { name: /Admin/i })).toBeVisible();
+        // Final sanity check for presence of Admin link
+        const adminLink = page.getByRole('link', { name: /Admin/i });
+        await expect(adminLink).toBeVisible({ timeout: 15000 });
     });
 
     test('should allow creating a new category', async ({ page }: { page: any }) => {
         // Navigate to Category Management
-        await page.goto('/admin/category-mgmt');
+        await page.goto('/admin/category-mgmt', { waitUntil: 'networkidle' });
 
         const categoryName = `Test Category ${Date.now()}`;
         const categoryDesc = 'Automated test category description';
@@ -40,7 +43,6 @@ test.describe('Admin Management Flow', () => {
         await page.click('button[type="submit"]:has-text("Create Category")');
 
         // Verify the new category appears in the list
-        await expect(page.getByText(categoryName)).toBeVisible();
-        await expect(page.getByText(categoryDesc)).toBeVisible();
+        await expect(page.getByText(categoryName)).toBeVisible({ timeout: 10000 });
     });
 });

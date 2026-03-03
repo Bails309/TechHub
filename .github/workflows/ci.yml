@@ -150,6 +150,15 @@ jobs:
   e2e-tests:
     runs-on: ubuntu-latest
     needs: build-and-test
+    env:
+      DATABASE_URL: postgres://techhub:techhub@localhost:5432/techhub
+      REDIS_URL: redis://localhost:6379
+      SSO_MASTER_KEY: Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
+      NEXTAUTH_SECRET: placeholder-secret-for-ci-testing-purpose-only
+      NEXTAUTH_URL: http://localhost:3000
+      ADMIN_PASSWORD: test-admin-password-123
+      ADMIN_MUST_CHANGE: "false"
+      ALLOW_MISSING_REMOTE_IP: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -179,21 +188,11 @@ jobs:
 
       - name: Prepare Database and Seed
         run: |
-          export DATABASE_URL=postgres://techhub:techhub@localhost:5432/techhub
-          export SSO_MASTER_KEY=Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
           npm run prisma:push
           npm run prisma:seed
 
       - name: Build and Run app for E2E
         run: |
-          export DATABASE_URL=postgres://techhub:techhub@localhost:5432/techhub
-          export REDIS_URL=redis://localhost:6379
-          export SSO_MASTER_KEY=Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
-          export NEXTAUTH_SECRET=placeholder-secret
-          export NEXTAUTH_URL=http://localhost:3000
-          export ADMIN_PASSWORD=test-admin-password-123
-          export ADMIN_MUST_CHANGE=false
-          export ALLOW_MISSING_REMOTE_IP=true
           npm run build
           npm run start &
           # Wait for app to be ready
