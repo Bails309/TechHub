@@ -4,6 +4,7 @@ describe('middleware idle timeout loop prevention (unit)', () => {
     beforeEach(() => {
         vi.resetModules();
         process.env.SESSION_IDLE_TIMEOUT_MS = '1000'; // 1 second
+        process.env.NEXTAUTH_SECRET = 'test-secret';
         vi.doMock('next-auth/jwt', () => ({ getToken: vi.fn() }));
         vi.doMock('next/server', () => ({
             NextResponse: {

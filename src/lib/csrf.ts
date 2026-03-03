@@ -145,7 +145,7 @@ async function readCookieValue(name: string): Promise<string | null> {
  * Extract the session ID (JWT `sub`) from the next-auth session token
  * cookie. Works in server-action / RSC context.
  */
-async function getSessionIdFromCookie(): Promise<string> {
+export async function getSessionIdFromCookie(): Promise<string> {
   // next-auth stores the JWT as __Secure-next-auth.session-token (HTTPS)
   // or next-auth.session-token (HTTP). We decode just the `sub` claim.
   try {
@@ -168,7 +168,7 @@ async function getSessionIdFromCookie(): Promise<string> {
   }
 }
 
-async function getVisitorIdFromCookie(): Promise<string> {
+export async function getVisitorIdFromCookie(): Promise<string> {
   return (await readCookieValue('visitor-id')) ?? '';
 }
 

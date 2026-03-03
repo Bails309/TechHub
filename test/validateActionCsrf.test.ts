@@ -5,8 +5,8 @@ vi.stubEnv('NEXTAUTH_SECRET', 'test-secret-for-action-csrf-tests');
 
 // Mock next/headers
 vi.mock('next/headers', () => ({
-    headers: async () => new Headers(),
-    cookies: async () => ({ get: (name: string) => ({ value: 'mock-cookie-value' }) })
+    headers: vi.fn(async () => new Headers()),
+    cookies: vi.fn(async () => ({ get: (name: string) => ({ value: 'mock-cookie-value' }) }))
 }));
 
 // Mock getSessionIdFromCookie and others

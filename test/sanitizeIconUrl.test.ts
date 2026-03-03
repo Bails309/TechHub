@@ -43,7 +43,8 @@ describe('sanitizeIconUrl', () => {
 
     it('allows S3 URLs with /uploads/ path', () => {
         const s3Url = 'https://mybucket.s3.us-east-1.amazonaws.com/uploads/uuid.png';
-        expect(sanitizeIconUrl(s3Url, origin)).toBe(`${origin}/uploads/uuid.png`);
+        const hostname = 'mybucket.s3.us-east-1.amazonaws.com';
+        expect(sanitizeIconUrl(s3Url, origin, hostname)).toBe(`${origin}/uploads/uuid.png`);
     });
 
     it('blocks S3 URLs missing /uploads/ path', () => {

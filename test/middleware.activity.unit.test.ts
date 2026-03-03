@@ -4,6 +4,7 @@ describe('middleware activity cookie handling (unit)', () => {
     beforeEach(() => {
         vi.resetModules();
         process.env.SESSION_IDLE_TIMEOUT_MS = '1000'; // 1 second
+        process.env.NEXTAUTH_SECRET = 'test-secret';
         vi.doMock('next-auth/jwt', () => ({ getToken: vi.fn() }));
         vi.doMock('next/server', () => ({
             NextResponse: {
@@ -37,6 +38,7 @@ describe('middleware activity cookie handling (unit)', () => {
         (getToken as any).mockResolvedValue({ sub: 'u1' });
 
         const fakeReq: any = {
+            method: 'GET',
             headers: new Headers([['accept', 'text/html']]),
             nextUrl: { pathname: '/any', protocol: 'http:', clone() { return { pathname: '/any' }; } },
             cookies: { get: () => undefined }
@@ -58,6 +60,7 @@ describe('middleware activity cookie handling (unit)', () => {
         // Last activity 2 seconds ago, timeout is 1 second
         const staleTime = Date.now() - 2000;
         const fakeReq: any = {
+            method: 'GET',
             headers: new Headers([['accept', 'text/html']]),
             nextUrl: { pathname: '/any', protocol: 'http:', clone() { return { pathname: '/any' }; } },
             cookies: {
