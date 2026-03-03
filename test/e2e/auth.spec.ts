@@ -15,7 +15,7 @@ test.describe('Authentication Smoke Test', () => {
 
         // We expect it to be visible if the database has it enabled
         // For a smoke test, we verify that the UI components render correctly
-        await expect(page.getByText(/Sign in to your account/i)).toBeVisible();
+        await expect(page.getByText(/Sign in to TechHub/i)).toBeVisible();
 
         // Verify Credentials option
         const credentialsBtn = page.getByRole('button', { name: /Use credentials/i });
