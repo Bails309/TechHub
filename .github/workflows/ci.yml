@@ -193,6 +193,7 @@ jobs:
           export NEXTAUTH_URL=http://localhost:3000
           export ADMIN_PASSWORD=test-admin-password-123
           export ADMIN_MUST_CHANGE=false
+          export ALLOW_MISSING_REMOTE_IP=true
           npm run build
           npm run start &
           # Wait for app to be ready

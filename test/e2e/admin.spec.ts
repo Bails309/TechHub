@@ -15,8 +15,13 @@ test.describe('Admin Management Flow', () => {
         // Submit
         await page.click('button[type="submit"]');
 
-        // Wait for redirect to portal or dashboard
-        await expect(page).toHaveURL(/\//);
+        // Verification of successful login:
+        // 1. Wait for URL to NOT be sign-in page
+        await page.waitForURL((url: URL) => !url.pathname.includes('/auth/signin'));
+
+        // 2. Expect to see an admin-only link or some private content
+        // Sidebar usually contains an "Admin" or "Profile" indication
+        await expect(page.getByRole('link', { name: /Admin/i })).toBeVisible();
     });
 
     test('should allow creating a new category', async ({ page }: { page: any }) => {
@@ -35,7 +40,6 @@ test.describe('Admin Management Flow', () => {
         await page.click('button[type="submit"]:has-text("Create Category")');
 
         // Verify the new category appears in the list
-        // CategoryList component renders categories in a list/table
         await expect(page.getByText(categoryName)).toBeVisible();
         await expect(page.getByText(categoryDesc)).toBeVisible();
     });
