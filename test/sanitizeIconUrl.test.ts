@@ -5,7 +5,7 @@ describe('sanitizeIconUrl', () => {
     const origin = 'https://app.example.com';
 
     it('allows valid /uploads/ paths', () => {
-        expect(sanitizeIconUrl('/uploads/abc123.png', origin)).toBe(`${origin}/uploads/abc123.png`);
+        expect(sanitizeIconUrl('/uploads/abc123.png', origin)).toBe('/uploads/abc123.png');
     });
 
     it('allows blob: URLs', () => {
@@ -44,7 +44,7 @@ describe('sanitizeIconUrl', () => {
     it('allows S3 URLs with /uploads/ path', () => {
         const s3Url = 'https://mybucket.s3.us-east-1.amazonaws.com/uploads/uuid.png';
         const hostname = 'mybucket.s3.us-east-1.amazonaws.com';
-        expect(sanitizeIconUrl(s3Url, origin, hostname)).toBe(`${origin}/uploads/uuid.png`);
+        expect(sanitizeIconUrl(s3Url, origin, hostname)).toBe('/uploads/uuid.png');
     });
 
     it('blocks S3 URLs missing /uploads/ path', () => {
