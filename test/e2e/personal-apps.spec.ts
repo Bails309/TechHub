@@ -72,8 +72,8 @@ test.describe('Personal Apps Management', () => {
         await expect(confirmBar).toBeVisible({ timeout: 5000 });
         await confirmBar.getByRole('button', { name: 'Delete' }).click();
 
-        // Verify the app is removed
-        await expect(page.getByText(appName)).not.toBeVisible({ timeout: 15000 });
+        // Verify the app is removed from the list
+        await expect(page.locator('.card-panel.group', { hasText: appName })).not.toBeVisible({ timeout: 15000 });
     });
 
     test('should enforce URL scheme validation', async ({ page }: { page: any }) => {
@@ -133,6 +133,6 @@ test.describe('Personal Apps Management', () => {
         await updatedRow.getByTitle('Delete').click();
         const confirmBar = page.locator('.bg-rose-500\\/10', { hasText: updatedName });
         await confirmBar.getByRole('button', { name: 'Delete' }).click();
-        await expect(page.getByText(updatedName)).not.toBeVisible({ timeout: 15000 });
+        await expect(page.locator('.card-panel.group', { hasText: updatedName })).not.toBeVisible({ timeout: 15000 });
     });
 });
