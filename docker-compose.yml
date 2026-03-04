@@ -33,6 +33,7 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - NEXTAUTH_URL=${NEXTAUTH_URL}
       - NODE_ENV=${NODE_ENV:-production}
+      - PLAYWRIGHT_TESTING=${PLAYWRIGHT_TESTING:-false}
     volumes:
       - uploads:/app/uploads
     depends_on:

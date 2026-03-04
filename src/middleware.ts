@@ -199,6 +199,11 @@ export async function middleware(request: NextRequest) {
   const accept = request.headers.get('accept') ?? '';
   if (accept.includes('text/html')) {
     response.headers.set('Content-Security-Policy', buildCsp(nonce));
+
+    // Dynamic HSTS for production only. Skip in local development or Playwright E2E tests.
+    if (process.env.NODE_ENV === 'production' && process.env.PLAYWRIGHT_TESTING !== 'true') {
+      response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+    }
   }
 
   // Generate an HMAC-signed CSRF cookie on every GET request.

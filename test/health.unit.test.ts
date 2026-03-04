@@ -56,9 +56,15 @@ describe('Health Checks', () => {
         });
 
         it('should return error when connection fails', async () => {
-            (getSharedRedisClient as any).mockResolvedValue(null);
-            const result = await checkRedisHealth();
-            expect(result.status).toBe('error');
+            const originalUrl = process.env.REDIS_URL;
+            process.env.REDIS_URL = 'redis://localhost';
+            try {
+                (getSharedRedisClient as any).mockResolvedValue(null);
+                const result = await checkRedisHealth();
+                expect(result.status).toBe('error');
+            } finally {
+                process.env.REDIS_URL = originalUrl;
+            }
         });
     });
 
