@@ -6,6 +6,10 @@
  *  - blob: URLs (client-side file previews, always same-origin)
  *  - Same-origin absolute paths starting with /uploads/
  *  - S3 URLs matching https://<bucket>.s3.<region>.amazonaws.com/uploads/...
+ *  - Azure Blob URLs matching https://*.blob.core.windows.net/<container>/uploads/...
+ *
+ * Returns relative paths (/uploads/...) so the browser resolves them against
+ * the actual page URL, avoiding issues with Docker-internal hostnames.
  *
  * Rejects javascript:, data:, vbscript:, and any other scheme.
  */
@@ -49,10 +53,11 @@ export function sanitizeIconUrl(
             return null;
         }
 
-        // Same-origin local uploads
+        // Same-origin local uploads — return relative path so the browser
+        // resolves against the actual page URL (avoids Docker hostname issues)
         if (url.origin === new URL(base).origin) {
             if (!url.pathname.startsWith('/uploads/')) return null;
-            return url.toString(); // return absolute URL for consistency across SSR/CSR
+            return url.pathname;
         }
 
         // S3 URLs: must match the EXACT configured hostname (if provided) and path must start with /uploads/
@@ -65,9 +70,7 @@ export function sanitizeIconUrl(
             if (!allowedS3Hostname || url.hostname !== allowedS3Hostname) {
                 return null;
             }
-            // Convert to same-origin proxied URL so the server can fetch private
-            // S3 objects and stream them to the client.
-            if (base) return new URL(url.pathname, base).toString();
+            // Convert to relative proxied path
             return url.pathname;
         }
 
@@ -81,10 +84,8 @@ export function sanitizeIconUrl(
         ) {
             const idx = url.pathname.indexOf('/uploads/');
             if (idx !== -1) {
-                if (base) return new URL(url.pathname.substring(idx), base).toString();
-                return url.pathname.substring(idx); // Convert to proxy route
+                return url.pathname.substring(idx);
             }
-            if (base) return new URL(url.pathname, base).toString();
             return url.pathname;
         }
 

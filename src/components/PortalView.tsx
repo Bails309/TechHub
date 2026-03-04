@@ -12,6 +12,7 @@ interface PortalApp {
   description?: string | null;
   category?: string | null;
   icon?: string | null;
+  isPersonal?: boolean;
 }
 
 interface PortalViewProps {

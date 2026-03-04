@@ -62,7 +62,7 @@ export default async function Home() {
       }
     }
 
-    const [apps, appOrder, averageLatencyValue, favoriteAppIds] = await Promise.all([
+    const [apps, appOrder, averageLatencyValue, favoriteAppIds, personalApps] = await Promise.all([
       prisma.appLink.findMany({
         where: { OR: audienceFilters },
         orderBy: [{ categoryRef: { name: 'asc' } }, { name: 'asc' }],
@@ -72,29 +72,48 @@ export default async function Home() {
         where: { userId: session.user.id }
       }) : null,
       getAverageLatency(),
-      session?.user?.id ? getFavoriteApps() : Promise.resolve([])
+      session?.user?.id ? getFavoriteApps() : Promise.resolve([]),
+      session?.user?.id ? prisma.personalApp.findMany({
+        where: { userId: session.user.id },
+        orderBy: { createdAt: 'desc' },
+      }) : Promise.resolve([])
     ]);
 
-    const categories = Array.from(new Set(apps.map((app: any) => app.categoryRef?.name ?? 'General')));
+    // Merge admin apps and personal apps for the portal view
+    const adminAppsMapped = apps.map((app: any) => ({
+      id: app.id,
+      name: app.name,
+      url: app.url,
+      description: app.description,
+      category: app.categoryRef?.name ?? 'General',
+      icon: sanitizeIconUrl(app.icon, process.env.NEXTAUTH_URL || 'http://localhost:3000', allowedS3Hostname),
+      isPersonal: false,
+    }));
+
+    const personalAppsMapped = personalApps.map((app: any) => ({
+      id: `personal-${app.id}`,
+      name: app.name,
+      url: app.url,
+      description: app.description,
+      category: 'My Apps',
+      icon: sanitizeIconUrl(app.icon, process.env.NEXTAUTH_URL || 'http://localhost:3000', allowedS3Hostname),
+      isPersonal: true,
+    }));
+
+    const allApps = [...personalAppsMapped, ...adminAppsMapped];
+    const categories = Array.from(new Set(allApps.map((app: any) => app.category ?? 'General')));
     const displayLatency = averageLatencyValue ?? '< 1s';
 
     return (
       <div className="px-6 md:px-12 py-12 space-y-12">
         <StatsStrip
-          appCount={apps.length}
+          appCount={allApps.length}
           categories={categories.length}
           averageLatency={displayLatency}
         />
 
         <PortalView
-          apps={apps.map((app: any) => ({
-            id: app.id,
-            name: app.name,
-            url: app.url,
-            description: app.description,
-            category: app.categoryRef?.name ?? 'General',
-            icon: sanitizeIconUrl(app.icon, process.env.NEXTAUTH_URL || 'http://localhost:3000', allowedS3Hostname)
-          }))}
+          apps={allApps}
           isAuthenticated={Boolean(session)}
           initialOrder={Array.isArray(appOrder?.order) ? (appOrder?.order as string[]) : []}
           pinnedApps={favoriteAppIds}

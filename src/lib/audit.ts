@@ -1,7 +1,7 @@
 import { prisma } from './prisma';
 import { getServerActionIp } from './ip';
 
-export type AuditCategory = 'auth' | 'admin' | 'config';
+export type AuditCategory = 'auth' | 'admin' | 'config' | 'user';
 
 export interface AuditEntry {
     category: AuditCategory;
