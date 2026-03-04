@@ -21,25 +21,29 @@ const nextConfig = {
     bodySizeLimit: '20mb',
   },
   async headers() {
-    // Security headers are consolidated here for consistency across environments.
-    // HSTS is included; browsers will ignore it on local HTTP but respect it when relayed via an HTTPS Ingress or Reverse Proxy.
+    const securityHeaders = [
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "no-referrer" },
+      {
+        key: "Permissions-Policy",
+        value: "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+      }
+    ];
+
+    // Restore Strict-Transport-Security (HSTS) for defense-in-depth behind Azure Ingress.
+    // We only omit it during local development to avoid HTTP->HTTPS upgrade loops on custom local domains.
+    if (process.env.NODE_ENV === 'production') {
+      securityHeaders.push({
+        key: "Strict-Transport-Security",
+        value: "max-age=63072000; includeSubDomains; preload"
+      });
+    }
+
     return [
       {
         source: "/(.*)",
-        headers: [
-          { key: "X-Frame-Options", value: "DENY" },
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "no-referrer" },
-          {
-            key: "Permissions-Policy",
-            value:
-              "camera=(), microphone=(), geolocation=(), interest-cohort=()"
-          },
-          {
-            key: "Strict-Transport-Security",
-            value: "max-age=63072000; includeSubDomains; preload"
-          }
-        ]
+        headers: securityHeaders
       }
     ];
   }

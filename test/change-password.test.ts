@@ -78,7 +78,13 @@ describe('changePassword concurrency', () => {
   it('serializes concurrent password changes and rejects reuse', async () => {
     const { changePassword } = await import('../src/app/auth/change-password/actions');
 
-    const makeForm = (current: string, next: string) => ({ get: (k: string) => (k === 'currentPassword' ? current : k === 'newPassword' || k === 'confirmPassword' ? next : '') }) as unknown as FormData;
+    const makeForm = (current: string, next: string) => {
+      const fd = new Map();
+      fd.set('currentPassword', current);
+      fd.set('newPassword', next);
+      fd.set('confirmPassword', next);
+      return fd as unknown as FormData;
+    };
 
     // Run two concurrent attempts with same new password
     const p1 = changePassword({ status: 'idle', message: '' }, makeForm('old', 'newpass'));
