@@ -4,6 +4,7 @@ import { vi, describe, it, expect } from 'vitest';
 vi.mock('@/lib/auth', () => ({ getServerAuthSession: async () => ({ user: { id: 'user1' } }) }));
 vi.mock('@/lib/csrf', () => ({ validateCsrf: async () => true }));
 vi.mock('../src/lib/csrf', () => ({ validateCsrf: async () => true }));
+vi.mock('@/lib/rateLimit', () => ({ assertRateLimit: vi.fn() }));
 vi.mock('@/lib/password', () => ({
   hashPassword: async (p: string) => `hashed:${p}`,
   verifyPassword: async (p: string, h: string) => h === `hashed:${p}`,
@@ -96,6 +97,9 @@ describe('changePassword concurrency', () => {
 
     // One should succeed, the other should fail due to reuse detection
     expect(fulfilled.length + rejected.length).toBe(2);
+
+    const { assertRateLimit } = await import('@/lib/rateLimit');
+    expect(assertRateLimit).toHaveBeenCalledWith(expect.stringContaining('change-password:'));
 
     // After operations, ensure passwordHistory size does not exceed policy (3)
     expect(passwordHistory.filter((p) => p.userId === 'user1').length).toBeLessThanOrEqual(3);

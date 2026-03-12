@@ -13,18 +13,41 @@ export async function GET(
     try {
         const session = await getServerAuthSession();
 
-        // Find the app with a conditional filter:
-        // If unauthenticated, we only allow fetching apps with a PUBLIC audience.
-        // This prevents unauthenticated probing of private app IDs (Information Leakage Fix).
-        const app = await prisma.appLink.findFirst({
-            where: {
-                id: appId,
-                ...(session ? {} : { audience: 'PUBLIC' })
-            },
+        // Find the app and its access requirements
+        const app = await prisma.appLink.findUnique({
+            where: { id: appId },
+            include: {
+                roles: { select: { name: true } },
+                userAccesses: {
+                    where: session?.user?.id ? { userId: session.user.id } : { userId: 'none' },
+                    select: { userId: true }
+                }
+            }
         });
 
         if (!app) {
-            // If not found or restricted, return 404 to avoid leaking ID existence
+            return new NextResponse('App not found', { status: 404 });
+        }
+
+        // --- Permission Check ---
+        let hasAccess = false;
+
+        if (app.audience === 'PUBLIC') {
+            hasAccess = true;
+        } else if (session) {
+            if (app.audience === 'AUTHENTICATED') {
+                hasAccess = true;
+            } else if (app.audience === 'ROLE') {
+                const userRoles = session.user.roles || [];
+                const allowedRoles = app.roles.map(r => r.name);
+                hasAccess = userRoles.some(r => allowedRoles.includes(r)) || userRoles.includes('admin');
+            } else if (app.audience === 'USER') {
+                hasAccess = app.userAccesses.length > 0 || (session.user.roles || []).includes('admin');
+            }
+        }
+
+        if (!hasAccess) {
+            // Return 404 to avoid leaking existence of private apps
             return new NextResponse('App not found', { status: 404 });
         }
 
@@ -59,23 +82,23 @@ export async function GET(
             details: { name: app.name, url: app.url }
         });
 
-            let targetUrl: URL | null = null;
-            try {
-                const parsed = new URL(app.url);
-                if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-                    targetUrl = parsed;
-                }
-            } catch {
-                targetUrl = null;
+        let targetUrl: URL | null = null;
+        try {
+            const parsed = new URL(app.url);
+            if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                targetUrl = parsed;
             }
+        } catch {
+            targetUrl = null;
+        }
 
-            if (!targetUrl) {
-                return new NextResponse('Invalid app URL', { status: 400 });
-            }
+        if (!targetUrl) {
+            return new NextResponse('Invalid app URL', { status: 400 });
+        }
 
-            if (isTrustedReferer) {
+        if (isTrustedReferer) {
             // Direct redirect from our own UI
-                return NextResponse.redirect(targetUrl);
+            return NextResponse.redirect(targetUrl);
         } else {
             // Use NEXTAUTH_URL as the safe base origin if available to avoid Resolving to 0.0.0.0 in Docker.
             // This is secure against Open Redirects because the destination path is hardcoded.

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../../lib/prisma';
 import { getServerAuthSession } from '../../../lib/auth';
 import { validateApiCsrf } from '../../../lib/csrf';
+import { assertRateLimit } from '../../../lib/rateLimit';
 
 const payloadSchema = z.object({
   order: z.array(z.string().min(1))
@@ -25,6 +26,8 @@ export async function POST(request: Request) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
   }
+
+  await assertRateLimit(`app-order:${session.user.id}`);
 
   let body: unknown;
   try {
