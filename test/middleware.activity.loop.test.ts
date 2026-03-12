@@ -10,23 +10,16 @@ describe('middleware idle timeout loop prevention (unit)', () => {
             NextResponse: {
                 next: vi.fn((opts: any) => ({
                     type: 'next',
-                    headers: opts?.request?.headers,
-                    cookies: {
-                        set: vi.fn(),
-                        delete: vi.fn()
-                    }
+                    headers: { append: vi.fn(), set: vi.fn(), get: vi.fn() }
                 })),
                 redirect: vi.fn((url: any) => ({
                     type: 'redirect',
                     location: url?.pathname ?? String(url),
-                    cookies: {
-                        set: vi.fn(),
-                        delete: vi.fn()
-                    }
+                    headers: { append: vi.fn(), set: vi.fn(), get: vi.fn() }
                 })),
                 json: vi.fn(() => ({
                     type: 'json',
-                    cookies: { delete: vi.fn() }
+                    headers: { append: vi.fn(), set: vi.fn(), get: vi.fn() }
                 }))
             }
         }));
@@ -65,7 +58,7 @@ describe('middleware idle timeout loop prevention (unit)', () => {
         expect(res.type).not.toBe('redirect');
 
         // But MUST still clear the session cookies
-        expect(res.cookies.delete).toHaveBeenCalledWith('next-auth.session-token');
-        expect(res.cookies.delete).toHaveBeenCalledWith('techhub-activity');
+        expect(res.headers.append).toHaveBeenCalledWith('Set-Cookie', expect.stringContaining('next-auth.session-token='));
+        expect(res.headers.append).toHaveBeenCalledWith('Set-Cookie', expect.stringContaining('techhub-activity='));
     });
 });

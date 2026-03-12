@@ -10,19 +10,12 @@ describe('middleware activity cookie handling (unit)', () => {
             NextResponse: {
                 next: vi.fn((opts: any) => ({
                     type: 'next',
-                    headers: opts?.request?.headers,
-                    cookies: {
-                        set: vi.fn(),
-                        delete: vi.fn()
-                    }
+                    headers: { append: vi.fn(), set: vi.fn(), get: vi.fn() }
                 })),
                 redirect: vi.fn((url: any) => ({
                     type: 'redirect',
                     location: url?.pathname ?? String(url),
-                    cookies: {
-                        set: vi.fn(),
-                        delete: vi.fn()
-                    }
+                    headers: { append: vi.fn(), set: vi.fn(), get: vi.fn() }
                 }))
             }
         }));
@@ -45,10 +38,7 @@ describe('middleware activity cookie handling (unit)', () => {
         };
 
         const res: any = await middleware(fakeReq as any);
-        expect(res.cookies.set).toHaveBeenCalledWith(expect.objectContaining({
-            name: 'techhub-activity',
-            value: expect.any(String)
-        }));
+        expect(res.headers.append).toHaveBeenCalledWith('Set-Cookie', expect.stringContaining('techhub-activity='));
     });
 
     it('redirects and clears cookies when idle timeout is exceeded', async () => {
@@ -74,7 +64,7 @@ describe('middleware activity cookie handling (unit)', () => {
         const res: any = await middleware(fakeReq as any);
         expect(res.type).toBe('redirect');
         expect(res.location).toBe('/auth/signin');
-        expect(res.cookies.delete).toHaveBeenCalledWith('next-auth.session-token');
-        expect(res.cookies.delete).toHaveBeenCalledWith('techhub-activity');
+        expect(res.headers.append).toHaveBeenCalledWith('Set-Cookie', expect.stringContaining('next-auth.session-token='));
+        expect(res.headers.append).toHaveBeenCalledWith('Set-Cookie', expect.stringContaining('techhub-activity='));
     });
 });

@@ -55,7 +55,9 @@ export default async function RootLayout({
     console.warn('[Layout] Failed to fetch site config, falling back to defaults. This is expected during build.');
   }
 
-  const csrfToken = await getServerCsrfToken();
+  // Do not attempt to set cookies while rendering the layout; middleware
+  // is responsible for ensuring CSRF cookies on GET requests.
+  const csrfToken = await getServerCsrfToken({ setIfMissing: false });
 
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
