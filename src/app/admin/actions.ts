@@ -12,7 +12,6 @@ async function safeRevalidatePath(p: string) {
   try {
     // Dynamically import to avoid initializing Next runtime during tests
     // when `next/cache` may call `headers()` outside a request scope.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = await import('next/cache');
     if (mod?.revalidatePath) await mod.revalidatePath(p);
   } catch {
@@ -169,7 +168,6 @@ async function safeDeleteIcon(iconPath?: string) {
       await storageDeleteIcon(iconPath);
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.warn('Failed to delete old icon', iconPath, err);
   }
 }
@@ -322,7 +320,6 @@ export async function createApp(formData: FormData) {
     // the "Empty file" validation error.
     if (isNonEmptyFile(iconFile)) {
       // validate & save (the local `saveIcon` helper performs validation)
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore - narrowing above isn't always recognized in some TS targets
       iconPath = await saveIcon(iconFile as File);
     }
@@ -838,7 +835,6 @@ export async function updateApp(formData: FormData) {
     // the "Empty file" validation error when the client submits an empty
     // file field (typical when only the remove checkbox is used).
     if (isNonEmptyFile(iconFile)) {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore - narrowing above isn't always recognized in some TS targets
       iconPath = await saveIcon(iconFile as File);
     }
@@ -906,7 +902,6 @@ export async function updateApp(formData: FormData) {
       await safeRevalidatePath('/admin/apps');
       await safeRevalidatePath('/');
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.warn('Non-fatal post-update task failed for app update', err);
     }
 
@@ -914,7 +909,6 @@ export async function updateApp(formData: FormData) {
   } catch (err) {
     // Catch any unexpected error and return a structured message so the client
     // shows a useful error instead of the generic catch-all. Also log it.
-    // eslint-disable-next-line no-console
     console.error('Unexpected error in updateApp action:', err);
     return { status: 'error', message: err instanceof Error ? err.message : 'Failed to update app' } as const;
   }

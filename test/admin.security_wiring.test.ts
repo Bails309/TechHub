@@ -1,23 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createApp } from '../src/app/admin/actions';
-import { validateCsrf } from '../src/lib/csrf';
-import { getServerAuthSession } from '../src/lib/auth';
-import { assertRateLimit } from '../src/lib/rateLimit';
-
-// Mocks
-vi.mock('../src/lib/csrf', () => ({
-    validateCsrf: vi.fn()
-}));
-
-vi.mock('../src/lib/auth', () => ({
-    getServerAuthSession: vi.fn()
-}));
 
 vi.mock('../src/lib/rateLimit', () => ({
-    assertRateLimit: vi.fn()
+    __esModule: true,
+    assertRateLimit: vi.fn(),
+    ensureLimiter: vi.fn()
 }));
 
 vi.mock('../src/lib/prisma', () => ({
+    __esModule: true,
     prisma: {
         appLink: {
             create: vi.fn().mockResolvedValue({ id: 'new-app-1' })
@@ -34,16 +24,36 @@ vi.mock('../src/lib/prisma', () => ({
 }));
 
 vi.mock('../src/lib/audit', () => ({
+    __esModule: true,
     writeAuditLog: vi.fn()
 }));
 
 vi.mock('../src/lib/revalidate', () => ({
+    __esModule: true,
     safeRevalidatePath: vi.fn()
 }));
 
 vi.mock('next/cache', () => ({
-    revalidatePath: vi.fn()
+    __esModule: true,
+    revalidatePath: vi.fn(),
+    unstable_cache: vi.fn((fn) => fn) // returns the function itself to be used as a wrapper or just call it
 }));
+
+vi.mock('../src/lib/csrf', () => ({
+    __esModule: true,
+    validateCsrf: vi.fn()
+}));
+
+vi.mock('../src/lib/auth', () => ({
+    __esModule: true,
+    getServerAuthSession: vi.fn()
+}));
+
+// NOW import the code under test
+import { createApp } from '../src/app/admin/actions';
+import { validateCsrf } from '../src/lib/csrf';
+import { getServerAuthSession } from '../src/lib/auth';
+import { assertRateLimit } from '../src/lib/rateLimit';
 
 describe('Admin Action Security Wiring', () => {
     beforeEach(() => {

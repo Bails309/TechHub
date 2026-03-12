@@ -16,7 +16,6 @@ export async function POST(request: Request) {
     // `request` in app routes is typically a NextRequest-compatible object
     // so cast to any to call the helper which uses NextRequest APIs.
     // If validation fails, reject the request.
-    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
     const ok = await validateApiCsrf(request as any);
     if (!ok) return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 });
   } catch {
