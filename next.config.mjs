@@ -31,14 +31,7 @@ const nextConfig = {
       }
     ];
 
-    // Restore Strict-Transport-Security (HSTS) for defense-in-depth behind Azure Ingress.
-    // We only omit it during local development to avoid HTTP->HTTPS upgrade loops on custom local domains.
-    if (process.env.NODE_ENV === 'production') {
-      securityHeaders.push({
-        key: "Strict-Transport-Security",
-        value: "max-age=63072000; includeSubDomains; preload"
-      });
-    }
+
 
     return [
       {

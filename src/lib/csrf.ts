@@ -31,10 +31,10 @@ function getSecureFlag(): boolean {
   return process.env.NODE_ENV === 'production';
 }
 
-async function ensureVisitorIdCookie(): Promise<string> {
+async function ensureVisitorIdCookie(setIfMissing = true): Promise<string> {
   const jar = await cookies();
   let visitorId = jar.get('visitor-id')?.value ?? '';
-  if (!visitorId) {
+  if (!visitorId && setIfMissing) {
     visitorId = randomBytes(16).toString('hex');
     jar.set('visitor-id', visitorId, {
       httpOnly: true,
@@ -177,14 +177,15 @@ export async function getVisitorIdFromCookie(): Promise<string> {
  * Return a CSRF token for the current request, creating and setting
  * a new httpOnly token cookie if needed.
  */
-export async function getServerCsrfToken(): Promise<string> {
+export async function getServerCsrfToken(opts?: { setIfMissing?: boolean }): Promise<string> {
+  const setIfMissing = opts?.setIfMissing ?? true;
   const jar = await cookies();
   const sessionId = await getSessionIdFromCookie();
   const maxAge = 60 * 60;
 
   if (sessionId) {
     let token = jar.get('XSRF-TOKEN')?.value ?? '';
-    if (!token || !validateCsrfToken(token, sessionId)) {
+    if ((!token || !validateCsrfToken(token, sessionId)) && setIfMissing) {
       token = createCsrfToken(sessionId);
       jar.set('XSRF-TOKEN', token, {
         httpOnly: true,
@@ -197,9 +198,12 @@ export async function getServerCsrfToken(): Promise<string> {
     return token;
   }
 
-  const visitorId = await ensureVisitorIdCookie();
+  const visitorId = await ensureVisitorIdCookie(setIfMissing);
+  if (!visitorId) {
+    return '';
+  }
   let token = jar.get('XSRF-TOKEN-PUBLIC')?.value ?? '';
-  if (!token || !validatePublicCsrfToken(token, visitorId)) {
+  if ((!token || !validatePublicCsrfToken(token, visitorId)) && setIfMissing) {
     token = createPublicCsrfToken(visitorId);
     jar.set('XSRF-TOKEN-PUBLIC', token, {
       httpOnly: true,

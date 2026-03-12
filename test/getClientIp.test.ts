@@ -33,6 +33,10 @@ describe('getClientIp and getRateLimitKey', () => {
     // Clear envs used by the module so each test controls them explicitly
     delete process.env.TRUST_PROXY;
     delete process.env.TRUSTED_PROXIES;
+    // Ensure module runs in test-mode so functions that branch on NODE_ENV behave
+    // consistently when tests run inside containers. Use `as any` to avoid
+    // TypeScript's read-only `process.env` typing in test files.
+    (process.env as any).NODE_ENV = 'test';
   });
 
   it('prefers immediate remote address when not trusting proxies', async () => {

@@ -186,6 +186,25 @@ async function createPublicCsrfToken(visitorId: string): Promise<string> {
 }
 
 export async function middleware(request: NextRequest) {
+  // Helper to serialize and append Set-Cookie headers without using
+  // the next/headers cookies() API (which is restricted in some runtimes).
+  function appendSetCookie(headers: Headers, name: string, value: string, opts: { httpOnly?: boolean; sameSite?: 'lax'|'strict'|'none'; secure?: boolean; path?: string; maxAge?: number } = {}) {
+    const parts: string[] = [];
+    parts.push(`${name}=${value}`);
+    if (opts.path) parts.push(`Path=${opts.path}`);
+    if (typeof opts.maxAge === 'number') parts.push(`Max-Age=${Math.floor(opts.maxAge)}`);
+    if (opts.httpOnly) parts.push('HttpOnly');
+    if (opts.secure) parts.push('Secure');
+    if (opts.sameSite) parts.push(`SameSite=${opts.sameSite}`);
+    // Append so we can set multiple cookies in one response
+    headers.append('Set-Cookie', parts.join('; '));
+  }
+
+  function appendDeleteCookie(headers: Headers, name: string) {
+    const expires = new Date(0).toUTCString();
+    headers.append('Set-Cookie', `${name}=; Path=/; Expires=${expires}; Max-Age=0; HttpOnly`);
+  }
+
   const nonce = getSecureNonce();
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
@@ -199,6 +218,11 @@ export async function middleware(request: NextRequest) {
   const accept = request.headers.get('accept') ?? '';
   if (accept.includes('text/html')) {
     response.headers.set('Content-Security-Policy', buildCsp(nonce));
+
+    // Dynamic HSTS for production only. Skip in local development or Playwright E2E tests.
+    if (process.env.NODE_ENV === 'production' && process.env.PLAYWRIGHT_TESTING !== 'true') {
+      response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+    }
   }
 
   // Generate an HMAC-signed CSRF cookie on every GET request.
@@ -216,9 +240,7 @@ export async function middleware(request: NextRequest) {
     let visitorId = request.cookies.get('visitor-id')?.value;
     if (!visitorId) {
       visitorId = getSecureNonce(); // reuse nonce generator for random ID
-      response.cookies.set({
-        name: 'visitor-id',
-        value: visitorId,
+      appendSetCookie(response.headers, 'visitor-id', visitorId, {
         httpOnly: true,
         sameSite: 'lax',
         secure: secureFlag,
@@ -232,9 +254,7 @@ export async function middleware(request: NextRequest) {
       const isValid = existing ? await validateCsrfToken(existing, sessionId) : false;
       if (!isValid) {
         const newToken = await createCsrfToken(sessionId);
-        response.cookies.set({
-          name: 'XSRF-TOKEN',
-          value: newToken,
+        appendSetCookie(response.headers, 'XSRF-TOKEN', newToken, {
           httpOnly: true,
           sameSite: 'lax',
           secure: secureFlag,
@@ -248,9 +268,7 @@ export async function middleware(request: NextRequest) {
       const isValid = existing ? await validatePublicCsrfToken(existing, visitorId) : false;
       if (!isValid) {
         const newToken = await createPublicCsrfToken(visitorId);
-        response.cookies.set({
-          name: 'XSRF-TOKEN-PUBLIC',
-          value: newToken,
+        appendSetCookie(response.headers, 'XSRF-TOKEN-PUBLIC', newToken, {
           httpOnly: true,
           sameSite: 'lax',
           secure: secureFlag,
@@ -345,9 +363,9 @@ export async function middleware(request: NextRequest) {
       if (finalAllowed) {
         // SILENT CLEAR: If path is allowed publically, just clear the stale session 
         // without interrupting the request flow. This prevents 401s on auth APIs.
-        response.cookies.delete('next-auth.session-token');
-        response.cookies.delete('__Secure-next-auth.session-token');
-        response.cookies.delete('techhub-activity');
+        appendDeleteCookie(response.headers, 'next-auth.session-token');
+        appendDeleteCookie(response.headers, '__Secure-next-auth.session-token');
+        appendDeleteCookie(response.headers, 'techhub-activity');
         // Nullify token so downstream checks (revocation/mustChange) don't fire
         token = null;
       } else {
@@ -361,9 +379,9 @@ export async function middleware(request: NextRequest) {
           timeoutResponse = NextResponse.redirect(signInUrl);
         }
 
-        timeoutResponse.cookies.delete('next-auth.session-token');
-        timeoutResponse.cookies.delete('__Secure-next-auth.session-token');
-        timeoutResponse.cookies.delete('techhub-activity');
+        appendDeleteCookie(timeoutResponse.headers, 'next-auth.session-token');
+        appendDeleteCookie(timeoutResponse.headers, '__Secure-next-auth.session-token');
+        appendDeleteCookie(timeoutResponse.headers, 'techhub-activity');
         return timeoutResponse;
       }
     }
@@ -375,9 +393,9 @@ export async function middleware(request: NextRequest) {
     const signInUrl = request.nextUrl.clone();
     signInUrl.pathname = '/auth/signin';
     const revokeResponse = NextResponse.redirect(signInUrl);
-    revokeResponse.cookies.delete('next-auth.session-token');
-    revokeResponse.cookies.delete('__Secure-next-auth.session-token');
-    revokeResponse.cookies.delete('techhub-activity');
+    appendDeleteCookie(revokeResponse.headers, 'next-auth.session-token');
+    appendDeleteCookie(revokeResponse.headers, '__Secure-next-auth.session-token');
+    appendDeleteCookie(revokeResponse.headers, 'techhub-activity');
     return revokeResponse;
   }
 
@@ -421,9 +439,7 @@ export async function middleware(request: NextRequest) {
       }
     } catch { }
 
-    response.cookies.set({
-      name: 'techhub-activity',
-      value: now.toString(),
+    appendSetCookie(response.headers, 'techhub-activity', now.toString(), {
       httpOnly: true,
       sameSite: 'lax',
       secure: secureFlag,
