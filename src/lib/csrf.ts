@@ -31,10 +31,10 @@ function getSecureFlag(): boolean {
   return process.env.NODE_ENV === 'production';
 }
 
-async function ensureVisitorIdCookie(): Promise<string> {
+async function ensureVisitorIdCookie(setIfMissing = true): Promise<string> {
   const jar = await cookies();
   let visitorId = jar.get('visitor-id')?.value ?? '';
-  if (!visitorId) {
+  if (!visitorId && setIfMissing) {
     visitorId = randomBytes(16).toString('hex');
     jar.set('visitor-id', visitorId, {
       httpOnly: true,
@@ -198,7 +198,10 @@ export async function getServerCsrfToken(opts?: { setIfMissing?: boolean }): Pro
     return token;
   }
 
-  const visitorId = await ensureVisitorIdCookie();
+  const visitorId = await ensureVisitorIdCookie(setIfMissing);
+  if (!visitorId) {
+    return '';
+  }
   let token = jar.get('XSRF-TOKEN-PUBLIC')?.value ?? '';
   if ((!token || !validatePublicCsrfToken(token, visitorId)) && setIfMissing) {
     token = createPublicCsrfToken(visitorId);
