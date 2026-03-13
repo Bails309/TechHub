@@ -61,7 +61,9 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
                 let current = '';
                 let stack = 0;
                 let start = 0;
-                const cleanCss = fullCss.replace(/\/\*[\s\S]*?\*\//g, '');
+                // Pre-sanitize the CSS to remove !important before it hits the declarations
+                const cleanCss = fullCss.replace(/\/\*[\s\S]*?\*\//g, '').replace(/!important/gi, '');
+
                 for (let i = 0; i < cleanCss.length; i++) {
                     if (cleanCss[i] === '{') {
                         if (stack === 0) start = i;
@@ -102,6 +104,10 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
             // 2. Pre-Parser Sanitization
             const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
             let currentContent = rawContent;
+
+            // Neutralize "svg { color: ... }" hardcoded defaults in the raw string
+            currentContent = currentContent.replace(/svg\s*{[^}]*color\s*:[^}]*}/gi, '');
+
             let match;
             while ((match = styleRegex.exec(rawContent)) !== null) {
                 parseCssBlocks(match[1]);
@@ -110,10 +116,12 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
 
             const inlineMap = new Map<string, string>();
             let inlineCounter = 0;
+            // Also neutralize !important in inline styles
             const inlineRegex = /\sstyle\s*=\s*(['"])([\s\S]*?)\1/gi;
             currentContent = currentContent.replace(inlineRegex, (m, q, s) => {
+                const neutralized = s.replace(/!important/gi, '');
                 const markerId = `v11-${++inlineCounter}`;
-                inlineMap.set(markerId, s);
+                inlineMap.set(markerId, neutralized);
                 return ` data-v11-style="${markerId}"`;
             });
 
@@ -127,11 +135,15 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
             }
             if (!svg) throw new Error('V11-FAIL');
 
-            // 4. Palette-Aware Brand Check (V11.3): The Color Sense
+            // 4. Palette-Aware Brand Check (V11.4): The Authority
             let isBrandIcon = false;
 
             function getRGB(color: string): [number, number, number] | null {
                 const low = color.toLowerCase().trim();
+                // If it's currentColor or inherit, we can't determine brand/monochrome easily here, 
+                // but usually these are used in monochrome icons.
+                if (['currentcolor', 'inherit', 'initial', 'none', 'unset', 'transparent'].includes(low)) return null;
+
                 if (low.startsWith('#')) {
                     const hex = low.replace(/[^0-9a-f]/gi, '');
                     if (hex.length === 3) return [parseInt(hex[0] + hex[0], 16), parseInt(hex[1] + hex[1], 16), parseInt(hex[2] + hex[2], 16)];
@@ -151,6 +163,7 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
             function isVibrant(color: string) {
                 if (!color || ['none', 'currentColor', 'inherit', 'transparent', 'initial', 'unset'].includes(color.toLowerCase().trim())) return false;
                 const rgb = getRGB(color);
+                // If we can't parse it as monochrome, assume it's potentially brand
                 if (!rgb) return !['black', 'white', 'gray', 'grey', 'silver', 'whitesmoke', 'gainsboro', 'lightgray', 'darkgray', 'dimgray'].includes(color.toLowerCase().trim());
                 const [r, g, b] = rgb;
                 // If any color channel is significantly different, it's "colorful/brand"
@@ -158,15 +171,17 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
             }
 
             function isNearBlack(color: string) {
+                const low = color.toLowerCase().trim();
+                if (low === 'black' || low === '#000' || low === '#000000') return true;
                 const rgb = getRGB(color);
-                if (!rgb) return color.toLowerCase().trim() === 'black';
+                if (!rgb) return false;
                 const [r, g, b] = rgb;
                 // Perceptual luminance check (weighted for human eye)
                 const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
                 return lum < 0.22; // Catch anything reasonably dark
             }
 
-            // [NEW] Scan the inlineMap (crucial for detecting colors in style= attributes)
+            // Scan the inlineMap (crucial for detecting colors in style= attributes)
             inlineMap.forEach((styleStr) => {
                 styleStr.split(';').forEach(pair => {
                     const val = pair.split(':')[1]?.trim();
@@ -200,7 +215,10 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
                 'color': 'fill'
             };
 
-            // 5. Apply Inlines
+            // Force SVG root to allow inheritance (neutralize hardcoded black roots)
+            svg.removeAttribute('color');
+
+            // 5. Apply Inlines (Neutralized)
             svg.querySelectorAll('[data-v11-style]').forEach(el => {
                 const sval = inlineMap.get(el.getAttribute('data-v11-style') || '');
                 if (sval) {
@@ -215,7 +233,7 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
                 el.removeAttribute('data-v11-style');
             });
 
-            // 6. Apply Rules
+            // 6. Apply Rules (Neutralized)
             ['all', currentTheme].forEach(mode => {
                 extractedRules.filter(r => r.themeMode === mode).forEach(rule => {
                     const selector = rule.selector.replace(/^svg\s+/i, '') || 'svg';
@@ -247,18 +265,21 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
                     const fill = el.getAttribute('fill');
                     const stroke = el.getAttribute('stroke');
 
-                    // a. Dynamic Inversion for Monochrome icons ONLY
-                    // a. Dynamic Inversion for Monochrome icons ONLY (V11.3: Sensing Dark Colors)
+                    // a. Dynamic Inversion for Monochrome icons ONLY (V11.4: Neutralizing !important legacy)
                     if (isDark && !isBrandIcon) {
                         const isDarkFill = fill && isNearBlack(fill);
                         const isDarkStroke = stroke && isNearBlack(stroke);
-                        if ((isDarkFill || isDarkStroke) && !touchedElements.has(el)) {
-                            if (isDarkFill) el.setAttribute('fill', 'currentColor');
-                            if (isDarkStroke) el.setAttribute('stroke', 'currentColor');
+                        const isCurrentColor = fill === 'currentColor' || stroke === 'currentColor';
+                        const isInherit = fill === 'inherit' || stroke === 'inherit';
+
+                        if ((isDarkFill || isDarkStroke || isCurrentColor || isInherit) && !touchedElements.has(el)) {
+                            // Neutralize and force white for dark mode if it was flagged as "monochrome/sensing"
+                            if (isDarkFill || isCurrentColor || isInherit || !fill) el.setAttribute('fill', 'currentColor');
+                            if (isDarkStroke || isCurrentColor || isInherit) el.setAttribute('stroke', 'currentColor');
                         }
                     }
 
-                    // b. Universal Fallback - Zero color elements (If brand icon, inherit OR default to identity)
+                    // b. Universal Fallback - Zero color elements
                     if (!el.hasAttribute('fill') && !el.hasAttribute('stroke') && !touchedElements.has(el)) {
                         let inherited = false;
                         let p = el.parentElement;
@@ -270,7 +291,6 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
                             if (!isBrandIcon) {
                                 el.setAttribute('fill', 'currentColor');
                             }
-                            // Brand icons: Do NOT set fill or inherit. Leave it to the SVG's internal defaults/colors.
                         }
                     }
                 }
@@ -293,16 +313,17 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
             });
 
             if (isBrandIcon) svg.setAttribute('data-brand-detected', 'true');
-            svg.setAttribute('data-provenance', `v11.3-${Date.now()}`);
+            svg.setAttribute('data-provenance', `v11.5-${Date.now()}`);
             const output = new XMLSerializer().serializeToString(svg);
-            if (isBrandIcon) console.warn(`[InlinedSvg V11.3] 🌈 ${src} - BRAND PROTECTED (Vibrant Detected)`);
-            else console.info(`[InlinedSvg V11.3] 👤 ${src} - MONOCHROME (Sensing Enabled)`);
+            if (isBrandIcon) console.warn(`[InlinedSvg V11.5] 🌈 ${src} - BRAND PROTECTED (Vibrant Detected)`);
+            else console.info(`[InlinedSvg V11.5] 👤 ${src} - MONOCHROME (Sensing Enabled)`);
             setSvgContent(output);
         } catch (err) {
-            console.error('[InlinedSvg V11.3] Fault:', err);
+            console.error('[InlinedSvg V11.5] Fault:', err);
             setSvgContent(rawContent.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/\sstyle\s*=\s*(['"])(?:(?!\1)[\s\S]*?)\1/gi, ''));
         }
     }, [rawContent, theme, prefix, src]);
+
 
     if (error && fallback) return <>{fallback}</>;
     if (!svgContent) return <div className={className} />;
