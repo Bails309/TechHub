@@ -227,7 +227,8 @@ export async function middleware(request: NextRequest) {
 
   // Generate an HMAC-signed CSRF cookie on every GET request.
   if (request.method === 'GET') {
-    const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    const isSecure = process.env.NODE_ENV === 'production' || !!process.env.NEXTAUTH_URL?.startsWith('https:');
+    const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET, secureCookie: isSecure });
     const sessionId = tokenObj?.sub ?? '';
     let secureFlag = process.env.NODE_ENV === 'production';
     try {
@@ -255,7 +256,7 @@ export async function middleware(request: NextRequest) {
       if (!isValid) {
         const newToken = await createCsrfToken(sessionId);
         appendSetCookie(response.headers, 'XSRF-TOKEN', newToken, {
-          httpOnly: true,
+          httpOnly: false,
           sameSite: 'lax',
           secure: secureFlag,
           path: '/',
@@ -269,7 +270,7 @@ export async function middleware(request: NextRequest) {
       if (!isValid) {
         const newToken = await createPublicCsrfToken(visitorId);
         appendSetCookie(response.headers, 'XSRF-TOKEN-PUBLIC', newToken, {
-          httpOnly: true,
+          httpOnly: false,
           sameSite: 'lax',
           secure: secureFlag,
           path: '/',
@@ -292,7 +293,8 @@ export async function middleware(request: NextRequest) {
     // satisfies the security requirement.
     if (!isApiAuth && !isLaunch && !isServerAction) {
       const csrfHeader = request.headers.get('x-csrf-token');
-      const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+      const isSecure = process.env.NODE_ENV === 'production' || !!process.env.NEXTAUTH_URL?.startsWith('https:');
+      const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET, secureCookie: isSecure });
       const sessionId = tokenObj?.sub ?? '';
 
       // Support traditional HTML form submissions that can't set custom headers

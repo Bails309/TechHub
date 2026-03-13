@@ -3,13 +3,16 @@
 import { SessionProvider } from 'next-auth/react';
 import { ThemeProvider } from './ThemeProvider';
 import { CsrfProvider } from './CsrfProvider';
+import { NonceProvider } from './NonceProvider';
 
 export default function Providers({
   children,
-  csrfToken
+  csrfToken,
+  nonce
 }: {
   children: React.ReactNode;
   csrfToken: string;
+  nonce?: string;
 }) {
   return (
     <SessionProvider
@@ -17,7 +20,9 @@ export default function Providers({
       refetchOnWindowFocus={false}
     >
       <CsrfProvider token={csrfToken}>
-        <ThemeProvider>{children}</ThemeProvider>
+        <NonceProvider nonce={nonce}>
+          <ThemeProvider>{children}</ThemeProvider>
+        </NonceProvider>
       </CsrfProvider>
     </SessionProvider>
   );

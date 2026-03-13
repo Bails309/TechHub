@@ -99,8 +99,15 @@ export function validateCsrfToken(token: string, sessionId: string): boolean {
   const sigBuf = Buffer.from(sig, 'utf-8');
   const expectedBuf = Buffer.from(expected, 'utf-8');
 
-  if (sigBuf.length !== expectedBuf.length) return false;
-  return timingSafeEqual(sigBuf, expectedBuf);
+  if (sigBuf.length !== expectedBuf.length) {
+    console.warn('CSRF: validateCsrfToken: Length mismatch');
+    return false;
+  }
+  const result = timingSafeEqual(sigBuf, expectedBuf);
+  if (!result) {
+    console.warn('CSRF: validateCsrfToken: Signature mismatch. sessionId=%s', sessionId);
+  }
+  return result;
 }
 
 /**
@@ -124,8 +131,15 @@ export function validatePublicCsrfToken(token: string, visitorId: string): boole
   const sigBuf = Buffer.from(sig, 'utf-8');
   const expectedBuf = Buffer.from(expected, 'utf-8');
 
-  if (sigBuf.length !== expectedBuf.length) return false;
-  return timingSafeEqual(sigBuf, expectedBuf);
+  if (sigBuf.length !== expectedBuf.length) {
+    console.warn('CSRF: validatePublicCsrfToken: Length mismatch');
+    return false;
+  }
+  const result = timingSafeEqual(sigBuf, expectedBuf);
+  if (!result) {
+    console.warn('CSRF: validatePublicCsrfToken: Signature mismatch. visitorId=%s', visitorId);
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,25 +160,33 @@ async function readCookieValue(name: string): Promise<string | null> {
  * cookie. Works in server-action / RSC context.
  */
 export async function getSessionIdFromCookie(): Promise<string> {
-  // next-auth stores the JWT as __Secure-next-auth.session-token (HTTPS)
-  // or next-auth.session-token (HTTP). We decode just the `sub` claim.
   try {
-    // Use dynamic import to avoid bundling jwt in the client
     const { getToken } = await import('next-auth/jwt');
     const { headers: getHeaders } = await import('next/headers');
     const hdrs = await getHeaders();
-    // Build a real NextRequest object using the actual headers from the context.
-    // This satisfies getToken's requirement for a request object while ensuring
-    // that standard Headers methods like .has() and .get() are available, even
-    // when next-auth performs extra checks behind a reverse proxy.
-    const req = new NextRequest('http://localhost', {
-      headers: hdrs,
-    });
 
-    const isSecure = process.env.NODE_ENV === 'production' || process.env.NEXTAUTH_URL?.startsWith('https:');
-    const token = await getToken({ req: req as any, secret: getSecret(), secureCookie: isSecure });
+    // In a Server Action, we can construct a "request-like" object for getToken.
+    const hdrsObj: Record<string, string> = {};
+    hdrs.forEach((v, k) => { hdrsObj[k] = v; });
+
+    const isSecure = process.env.NODE_ENV === 'production' || !!process.env.NEXTAUTH_URL?.startsWith('https:');
+
+    // Use a minimal dummy request object that getToken understands
+    const dummyReq = {
+      headers: hdrsObj,
+      cookies: Object.fromEntries(
+        hdrs.get('cookie')?.split(';').map(c => c.trim().split('=')) || []
+      )
+    };
+
+    const token = await getToken({
+      req: dummyReq as any,
+      secret: getSecret(),
+      secureCookie: isSecure
+    });
     return token?.sub ?? '';
-  } catch {
+  } catch (err) {
+    console.error('CSRF: getSessionIdFromCookie failed', err);
     return '';
   }
 }
@@ -188,7 +210,7 @@ export async function getServerCsrfToken(opts?: { setIfMissing?: boolean }): Pro
     if ((!token || !validateCsrfToken(token, sessionId)) && setIfMissing) {
       token = createCsrfToken(sessionId);
       jar.set('XSRF-TOKEN', token, {
-        httpOnly: true,
+        httpOnly: false, // Allow client-side fallback if RSC misses the value on first visit
         sameSite: 'lax',
         secure: getSecureFlag(),
         path: '/',
@@ -206,7 +228,7 @@ export async function getServerCsrfToken(opts?: { setIfMissing?: boolean }): Pro
   if ((!token || !validatePublicCsrfToken(token, visitorId)) && setIfMissing) {
     token = createPublicCsrfToken(visitorId);
     jar.set('XSRF-TOKEN-PUBLIC', token, {
-      httpOnly: true,
+      httpOnly: false, // Allow client-side fallback
       sameSite: 'lax',
       secure: getSecureFlag(),
       path: '/',

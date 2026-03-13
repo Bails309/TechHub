@@ -10,5 +10,18 @@ export function CsrfProvider({ token, children }: { token: string; children: Rea
 }
 
 export function useCsrfToken(): string {
-  return useContext(CsrfContext);
+  const contextToken = useContext(CsrfContext);
+  if (contextToken) return contextToken;
+
+  // Fallback for first-visit race condition
+  if (typeof document !== 'undefined') {
+    const cookies = document.cookie.split('; ');
+    const xsrfCookie = cookies.find(c => c.startsWith('XSRF-TOKEN='));
+    if (xsrfCookie) return decodeURIComponent(xsrfCookie.split('=')[1]);
+
+    const publicXsrfCookie = cookies.find(c => c.startsWith('XSRF-TOKEN-PUBLIC='));
+    if (publicXsrfCookie) return decodeURIComponent(publicXsrfCookie.split('=')[1]);
+  }
+
+  return '';
 }

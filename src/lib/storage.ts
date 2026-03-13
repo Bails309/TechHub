@@ -427,8 +427,8 @@ function sanitizeSvg(svgContent: string): string {
   return sanitizeHtml(svgContent, {
     allowedTags: [
       'svg', 'g', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse',
-      'defs', 'clipPath', 'mask', 'use', 'image', 'text', 'tspan',
-      'symbol', 'title', 'desc', // Added missing common tags
+      'defs', 'clipPath', 'clip-path', 'mask', 'use', 'image', 'text', 'tspan',
+      'symbol', 'title', 'desc', 'style', 'pattern', 'marker', 'metadata',
       'linearGradient', 'radialGradient', 'stop', 'filter', 'feGaussianBlur',
       'feOffset', 'feMerge', 'feMergeNode', 'feColorMatrix', 'feComponentTransfer',
       'feFuncR', 'feFuncG', 'feFuncB', 'feFuncA', 'feComposite', 'feFlood'
@@ -441,7 +441,12 @@ function sanitizeSvg(svgContent: string): string {
         'offset', 'stop-color', 'stop-opacity', 'stdDeviation', 'in', 'result',
         'mode', 'values', 'type', 'operator', 'k1', 'k2', 'k3', 'k4', 'clip-path',
         'mask', 'href', 'xlink:href',
-        'font-family', 'font-size', 'font-weight', 'text-anchor', 'dominant-baseline'
+        'font-family', 'font-size', 'font-weight', 'text-anchor', 'dominant-baseline', 'color',
+        'style', 'fill-rule', 'clip-rule', 'stroke-opacity', 'fill-opacity',
+        'filterUnits', 'gradientUnits', 'gradientTransform', 'spreadMethod',
+        'patternUnits', 'patternContentUnits', 'patternTransform', 'preserveAspectRatio',
+        'markerWidth', 'markerHeight', 'refX', 'refY', 'orient', 'markerUnits',
+        'rx', 'ry', 'stroke-dasharray', 'stroke-dashoffset', 'vector-effect'
       ],
       'svg': ['xmlns', 'xmlns:xlink', 'version'],
     },
@@ -449,6 +454,27 @@ function sanitizeSvg(svgContent: string): string {
       lowerCaseTags: false, // CRITICAL: preserve SVG tag casing (e.g. clipPath)
       lowerCaseAttributeNames: false,
     },
+    allowVulnerableTags: true, // Allow <style> tag which is needed for many SVGs
+    allowedSchemes: ['http', 'https', 'data'],
+    allowedSchemesByTag: {
+      image: ['http', 'https', 'data'],
+      use: ['http', 'https', 'data'],
+      '*': ['http', 'https', 'data']
+    },
+    transformTags: {
+      '*': (tagName: string, attribs: any) => {
+        // Explicitly block dangerous schemes in href/xlink:href that sanitize-html might miss in SVG context
+        ['href', 'xlink:href'].forEach(attr => {
+          if (attribs[attr]) {
+            const val = attribs[attr].trim().toLowerCase();
+            if (val.startsWith('javascript:') || val.startsWith('vbscript:') || val.startsWith('data:text/html')) {
+              delete attribs[attr];
+            }
+          }
+        });
+        return { tagName, attribs };
+      }
+    }
   });
 }
 
@@ -521,7 +547,7 @@ async function saveS3WithBuffer(buffer: Buffer, keySuffix: string, contentType: 
     Key: key,
     Body: buffer,
     ContentType: contentType,
-    ContentDisposition: contentType === 'image/svg+xml' ? 'attachment' : undefined
+    ContentDisposition: contentType === 'image/svg+xml' ? 'inline' : undefined
   }));
   const region = config?.region || process.env.S3_REGION;
   const endpoint = config?.endpoint || process.env.S3_ENDPOINT;
@@ -543,7 +569,7 @@ async function saveAzureWithBuffer(buffer: Buffer, keySuffix: string, contentTyp
     await blobClient.uploadData(buffer, {
       blobHTTPHeaders: {
         blobContentType: contentType || 'application/octet-stream',
-        blobContentDisposition: contentType === 'image/svg+xml' ? 'attachment' : undefined
+        blobContentDisposition: contentType === 'image/svg+xml' ? 'inline' : undefined
       },
     });
   } catch (err: any) {

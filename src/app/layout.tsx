@@ -65,7 +65,7 @@ export default async function RootLayout({
         <Script src="/theme-init.js" strategy="beforeInteractive" nonce={nonce} />
       </head>
       <body>
-        <Providers csrfToken={csrfToken}>
+        <Providers csrfToken={csrfToken} nonce={nonce}>
           <ScrollToTop />
           <div className="flex min-h-screen">
             <SideNav
