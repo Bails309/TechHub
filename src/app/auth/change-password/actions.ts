@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword, validatePasswordComplexity } from '../../
 import { getPasswordPolicy } from '../../../lib/passwordPolicy';
 import { invalidateUserMeta } from '../../../lib/userCache';
 import { writeAuditLog } from '../../../lib/audit';
+import { assertRateLimit } from '../../../lib/rateLimit';
 
 export type ChangePasswordState = {
   status: 'idle' | 'success' | 'error';
@@ -32,6 +33,8 @@ export async function changePassword(
   if (!session?.user?.id) {
     return { status: 'error', message: 'Not signed in' };
   }
+
+  await assertRateLimit(`change-password:${session.user.id}`);
 
   const parsed = changeSchema.safeParse({
     currentPassword: String(formData.get('currentPassword') ?? ''),

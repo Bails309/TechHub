@@ -12,7 +12,6 @@ async function safeRevalidatePath(p: string) {
   try {
     // Dynamically import to avoid initializing Next runtime during tests
     // when `next/cache` may call `headers()` outside a request scope.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = await import('next/cache');
     if (mod?.revalidatePath) await mod.revalidatePath(p);
   } catch {
@@ -169,7 +168,6 @@ async function safeDeleteIcon(iconPath?: string) {
       await storageDeleteIcon(iconPath);
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.warn('Failed to delete old icon', iconPath, err);
   }
 }
@@ -279,30 +277,21 @@ async function testS3StorageConnection(args: {
 }
 
 export async function createApp(formData: FormData) {
-  let session;
-  try {
-    // Attempt to get a real server session. In test environments the
-    // Next.js headers API may not be available and some test runners
-    // surface `headers`-scope errors; fall back to a harmless admin
-    // session in that specific case so unit tests can exercise logic
-    // that depends on an authenticated admin.
-    session = await getServerAuthSession();
-  } catch (err) {
-    if (process.env.NODE_ENV === 'test' && String(err).includes('headers')) {
-      // Minimal admin session used only for tests.
-      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-      session = { user: { id: 'admin', roles: ['admin'], authProvider: 'credentials', mustChangePassword: false } } as any;
-    } else {
-      throw err;
-    }
+  if (!(await validateCsrf(formData))) {
+    return { status: 'error', message: 'Invalid CSRF token' } as const;
   }
-
+  const session = await getServerAuthSession();
+  if (!session?.user?.id) {
+    return { status: 'error', message: 'Unauthorized' } as const;
+  }
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' } as const;
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
     return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
   }
+
+  await assertRateLimit(`create-app:${session.user.id}`);
 
 
   try {
@@ -331,7 +320,6 @@ export async function createApp(formData: FormData) {
     // the "Empty file" validation error.
     if (isNonEmptyFile(iconFile)) {
       // validate & save (the local `saveIcon` helper performs validation)
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore - narrowing above isn't always recognized in some TS targets
       iconPath = await saveIcon(iconFile as File);
     }
@@ -400,6 +388,8 @@ export async function deleteApp(formData: FormData) {
     return { status: 'error', message: 'Missing id' } as const;
   }
 
+  await assertRateLimit(`delete-app:${session.user.id}`);
+
   // fetch existing record so we can remove uploaded icon file afterwards
   const app = await prisma.appLink.findUnique({ where: { id } });
 
@@ -433,8 +423,16 @@ export async function deleteApp(formData: FormData) {
 }
 
 export async function updateSiteLogos(formData: FormData) {
+  if (!(await validateCsrf(formData))) {
+    return { status: 'error', message: 'Invalid CSRF token' } as const;
+  }
   const session = await getServerAuthSession();
+  if (!session?.user?.id) {
+    return { status: 'error', message: 'Unauthorized' } as const;
+  }
   if (!session?.user?.roles?.includes('admin')) return { status: 'error', message: 'Unauthorized' } as const;
+
+  await assertRateLimit(`update-logos:${session.user.id}`);
 
   try {
     const logoLightFile = formData.get('logoLight');
@@ -607,10 +605,18 @@ export async function updateStorageConfig(
   _prevState: AdminActionState,
   formData: FormData
 ): Promise<AdminActionState> {
+  if (!(await validateCsrf(formData))) {
+    return { status: 'error', message: 'Invalid CSRF token' };
+  }
   const session = await getServerAuthSession();
+  if (!session?.user?.id) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
   }
+
+  await assertRateLimit(`update-storage:${session.user.id}`);
 
   const provider = storageProviderSchema.safeParse(String(formData.get('provider') ?? ''));
   if (!provider.success) return { status: 'error', message: 'Unknown provider' };
@@ -785,13 +791,21 @@ export async function updateStorageConfig(
 
 export async function updateApp(formData: FormData) {
   try {
+    if (!(await validateCsrf(formData))) {
+      return { status: 'error', message: 'Invalid CSRF token' } as const;
+    }
     const session = await getServerAuthSession();
+    if (!session?.user?.id) {
+      return { status: 'error', message: 'Unauthorized' } as const;
+    }
     if (!session?.user?.roles?.includes('admin')) {
       return { status: 'error', message: 'Unauthorized' } as const;
     }
     if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
       return { status: 'error', message: 'Unauthorized: must_change_password' } as const;
     }
+
+    await assertRateLimit(`update-app:${session.user.id}`);
 
     const parsed = updateSchema.safeParse({
       id: formData.get('id'),
@@ -821,7 +835,6 @@ export async function updateApp(formData: FormData) {
     // the "Empty file" validation error when the client submits an empty
     // file field (typical when only the remove checkbox is used).
     if (isNonEmptyFile(iconFile)) {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore - narrowing above isn't always recognized in some TS targets
       iconPath = await saveIcon(iconFile as File);
     }
@@ -889,7 +902,6 @@ export async function updateApp(formData: FormData) {
       await safeRevalidatePath('/admin/apps');
       await safeRevalidatePath('/');
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.warn('Non-fatal post-update task failed for app update', err);
     }
 
@@ -897,7 +909,6 @@ export async function updateApp(formData: FormData) {
   } catch (err) {
     // Catch any unexpected error and return a structured message so the client
     // shows a useful error instead of the generic catch-all. Also log it.
-    // eslint-disable-next-line no-console
     console.error('Unexpected error in updateApp action:', err);
     return { status: 'error', message: err instanceof Error ? err.message : 'Failed to update app' } as const;
   }
@@ -906,12 +917,17 @@ export async function updateApp(formData: FormData) {
 export async function triggerStorageCleanup(formData: FormData): Promise<AdminActionState> {
   if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
+  if (!session?.user?.id) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
     return { status: 'error', message: 'Unauthorized: must_change_password' };
   }
+
+  await assertRateLimit(`storage-cleanup:${session.user.id}`);
 
   try {
     const [appsWithIcons, siteConfig] = await Promise.all([
@@ -1082,6 +1098,8 @@ export async function updateUserRoles(formData: FormData): Promise<AdminActionSt
     }
   }
 
+  await assertRateLimit(`update-user-roles:${session.user.id}`);
+
   await safeRevalidatePath('/admin');
   return { status: 'success', message: 'User roles updated' };
 }
@@ -1108,6 +1126,8 @@ export async function deleteUser(formData: FormData): Promise<AdminActionState> 
   if (!confirmEmail || confirmEmail !== targetEmail) {
     return { status: 'error', message: 'confirm-delete' };
   }
+
+  await assertRateLimit(`delete-user:${sessionCheck.user.id}`);
 
   // Prevent deleting your own account from the admin dashboard
   if (userId === sessionCheck.user.id) {
@@ -1247,6 +1267,7 @@ export async function createRole(formData: FormData): Promise<AdminActionState> 
     details: { name: payload.data.name },
   });
 
+
   await safeRevalidatePath('/admin');
   return { status: 'success', message: 'Role created' };
 }
@@ -1296,6 +1317,7 @@ export async function deleteRole(formData: FormData): Promise<AdminActionState> 
     details: { name: role.name },
   });
 
+
   await safeRevalidatePath('/admin');
   return { status: 'success', message: 'Role deleted' };
 }
@@ -1323,12 +1345,17 @@ export async function createLocalUser(
 ): Promise<CreateLocalUserState> {
   if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
+  if (!session?.user?.id) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
     return { status: 'error', message: 'Unauthorized: must_change_password' };
   }
+
+  await assertRateLimit(`create-local-user:${session.user.id}`);
 
   const rawName = String(formData.get('name') ?? '').trim();
   const rawEmail = String(formData.get('email') ?? '').trim().toLowerCase();
@@ -1437,12 +1464,17 @@ export async function forcePasswordReset(
 ): Promise<ForcePasswordResetState> {
   if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
+  if (!session?.user?.id) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
     return { status: 'error', message: 'Unauthorized: must_change_password' };
   }
+
+  await assertRateLimit(`force-password-reset:${session.user.id}`);
 
   const userId = String(formData.get('userId') ?? '').trim();
   if (!userId) {
@@ -1509,12 +1541,17 @@ export async function linkSsoAccount(
 ): Promise<LinkSsoAccountState> {
   if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
+  if (!session?.user?.id) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
-    throw new Error('Unauthorized: must_change_password');
+    return { status: 'error', message: 'Unauthorized: must_change_password' };
   }
+
+  await assertRateLimit(`link-sso:${session.user.id}`);
 
   const payload = linkSsoAccountSchema.safeParse({
     email: String(formData.get('email') ?? '').trim().toLowerCase(),
@@ -1620,12 +1657,17 @@ const passwordPolicySchema = z.object({
 export async function updatePasswordPolicy(formData: FormData): Promise<AdminActionState> {
   if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' } as AdminActionState;
   const session = await getServerAuthSession();
+  if (!session?.user?.id) {
+    return { status: 'error', message: 'Unauthorized' } as AdminActionState;
+  }
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' } as AdminActionState;
   }
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
     return { status: 'error', message: 'Unauthorized: must_change_password' } as AdminActionState;
   }
+
+  await assertRateLimit(`update-password-policy:${session.user.id}`);
 
   const payload = passwordPolicySchema.safeParse({
     minLength: Number(formData.get('minLength') ?? 0),
@@ -1859,9 +1901,14 @@ export async function updateSsoConfig(
 ): Promise<SsoActionState> {
   if (!(await validateCsrf(formData))) return { status: 'error', message: 'Invalid CSRF token' };
   const session = await getServerAuthSession();
+  if (!session?.user?.id) {
+    return { status: 'error', message: 'Unauthorized' };
+  }
   if (!session?.user?.roles?.includes('admin')) {
     return { status: 'error', message: 'Unauthorized' };
   }
+
+  await assertRateLimit(`update-sso:${session.user.id}`);
 
   if (session?.user?.mustChangePassword && session.user.authProvider === 'credentials') {
     return { status: 'error', message: 'Unauthorized: must_change_password' };

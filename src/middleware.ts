@@ -188,7 +188,7 @@ async function createPublicCsrfToken(visitorId: string): Promise<string> {
 export async function middleware(request: NextRequest) {
   // Helper to serialize and append Set-Cookie headers without using
   // the next/headers cookies() API (which is restricted in some runtimes).
-  function appendSetCookie(headers: Headers, name: string, value: string, opts: { httpOnly?: boolean; sameSite?: 'lax'|'strict'|'none'; secure?: boolean; path?: string; maxAge?: number } = {}) {
+  function appendSetCookie(headers: Headers, name: string, value: string, opts: { httpOnly?: boolean; sameSite?: 'lax' | 'strict' | 'none'; secure?: boolean; path?: string; maxAge?: number } = {}) {
     const parts: string[] = [];
     parts.push(`${name}=${value}`);
     if (opts.path) parts.push(`Path=${opts.path}`);
@@ -218,16 +218,17 @@ export async function middleware(request: NextRequest) {
   const accept = request.headers.get('accept') ?? '';
   if (accept.includes('text/html')) {
     response.headers.set('Content-Security-Policy', buildCsp(nonce));
+  }
 
-    // Dynamic HSTS for production only. Skip in local development or Playwright E2E tests.
-    if (process.env.NODE_ENV === 'production' && process.env.PLAYWRIGHT_TESTING !== 'true') {
-      response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
-    }
+  // Dynamic HSTS for production only. Skip in local development or Playwright E2E tests.
+  if (process.env.NODE_ENV === 'production' && process.env.PLAYWRIGHT_TESTING !== 'true') {
+    response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   }
 
   // Generate an HMAC-signed CSRF cookie on every GET request.
   if (request.method === 'GET') {
-    const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    const isSecure = process.env.NODE_ENV === 'production' || !!process.env.NEXTAUTH_URL?.startsWith('https:');
+    const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET, secureCookie: isSecure });
     const sessionId = tokenObj?.sub ?? '';
     let secureFlag = process.env.NODE_ENV === 'production';
     try {
@@ -255,7 +256,7 @@ export async function middleware(request: NextRequest) {
       if (!isValid) {
         const newToken = await createCsrfToken(sessionId);
         appendSetCookie(response.headers, 'XSRF-TOKEN', newToken, {
-          httpOnly: true,
+          httpOnly: false,
           sameSite: 'lax',
           secure: secureFlag,
           path: '/',
@@ -269,7 +270,7 @@ export async function middleware(request: NextRequest) {
       if (!isValid) {
         const newToken = await createPublicCsrfToken(visitorId);
         appendSetCookie(response.headers, 'XSRF-TOKEN-PUBLIC', newToken, {
-          httpOnly: true,
+          httpOnly: false,
           sameSite: 'lax',
           secure: secureFlag,
           path: '/',
@@ -292,7 +293,8 @@ export async function middleware(request: NextRequest) {
     // satisfies the security requirement.
     if (!isApiAuth && !isLaunch && !isServerAction) {
       const csrfHeader = request.headers.get('x-csrf-token');
-      const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+      const isSecure = process.env.NODE_ENV === 'production' || !!process.env.NEXTAUTH_URL?.startsWith('https:');
+      const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET, secureCookie: isSecure });
       const sessionId = tokenObj?.sub ?? '';
 
       // Support traditional HTML form submissions that can't set custom headers
@@ -429,9 +431,11 @@ export async function middleware(request: NextRequest) {
 
   const fetchDest = request.headers.get('sec-fetch-dest') ?? '';
   const isNavigationRequest = request.method === 'GET' && (fetchDest === 'document' || accept.includes('text/html'));
+  const isSessionUpdate = pathname === '/api/auth/session' || request.headers.has('next-action');
 
-  // If authenticated and session is still valid, update activity cookie on navigations only
-  if (token && !token.revoked && isNavigationRequest) {
+  // If authenticated and session is still valid, update activity cookie on navigations
+  // or explicit activity signals (session updates / server actions).
+  if (token && !token.revoked && (isNavigationRequest || isSessionUpdate)) {
     let secureFlag = process.env.NODE_ENV === 'production';
     try {
       if (process.env.NEXTAUTH_URL) {

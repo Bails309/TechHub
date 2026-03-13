@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { LayoutGrid, Star } from 'lucide-react';
 import { useState } from 'react';
+import InlinedSvg from './InlinedSvg';
 
 export interface AppCardProps {
   app: {
@@ -84,15 +85,23 @@ export default function AppCard({ app, onReorder, contextIds, isPinned = false, 
         </button>
       )}
 
-      <div className="h-20 w-20 md:h-24 md:w-24 rounded-2xl bg-white/5 flex items-center justify-center transition-transform group-hover:scale-110">
+      <div className="h-20 w-20 md:h-24 md:w-24 rounded-2xl bg-white/5 flex items-center justify-center transition-transform group-hover:scale-110 overflow-hidden [&_svg]:h-14 [&_svg]:w-14 md:[&_svg]:h-16 md:[&_svg]:w-16 [&_svg]:object-contain">
         {app.icon && !iconError ? (
-          <img
-            src={app.icon}
-            alt=""
-            className="h-14 w-14 md:h-16 md:w-16 object-contain"
-            onError={() => setIconError(true)}
-            draggable={false}
-          />
+          app.icon.toLowerCase().endsWith('.svg') ? (
+            <InlinedSvg
+              src={app.icon}
+              className="flex items-center justify-center text-ink-900 dark:text-ink-50"
+              fallback={<LayoutGrid className="h-8 w-8 md:h-10 md:w-10 text-ink-300" />}
+            />
+          ) : (
+            <img
+              src={app.icon}
+              alt=""
+              className="h-14 w-14 md:h-16 md:w-16 object-contain"
+              onError={() => setIconError(true)}
+              draggable={false}
+            />
+          )
         ) : (
           <LayoutGrid className="h-8 w-8 md:h-10 md:w-10 text-ink-300" />
         )}
