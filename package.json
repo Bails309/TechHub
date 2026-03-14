@@ -41,7 +41,7 @@
     "react-dom": "^19.0.0",
     "sanitize-html": "^2.13.0",
     "tailwind-merge": "^2.6.1",
-    "undici": "^6.23.0",
+    "undici": "^6.24.0",
     "zod": "^3.24.4"
   },
   "devDependencies": {
