@@ -53,6 +53,8 @@ const keycloakConfiguredEnv =
   Boolean(process.env.KEYCLOAK_ISSUER);
 
 const credentialsEnabledEnv = process.env.ENABLE_CREDENTIALS !== 'false';
+// Disabled by default to prevent account takeover via email matching.
+// See: https://next-auth.js.org/configuration/providers/oauth#allowdangerousemailaccountlinking
 const allowEmailLinking = false;
 const rateLimitFallbackAllowProxy = process.env.RATE_LIMIT_FALLBACK_ALLOW_PROXY === 'true';
 const allowMissingRemoteIp = process.env.ALLOW_MISSING_REMOTE_IP === 'true';
@@ -67,9 +69,18 @@ if (!trustProxy && !trustedProxiesEnv && process.env.NODE_ENV === 'production') 
 
 const requirePreprovisionedUsers = process.env.REQUIRE_PREPROVISIONED_USERS === 'true';
 const terminationLogCache = new Map<string, number>();
+const TERMINATION_CACHE_MAX = 1000;
 
 // Serverless environments shouldn't use setInterval for memory caches as they don't fire reliably
 // and prevent the event loop from closing. The Redis layer handles the deduplication primarily anyway.
+
+function pruneTerminationCache() {
+  if (terminationLogCache.size <= TERMINATION_CACHE_MAX) return;
+  const now = Date.now();
+  for (const [k, expiry] of terminationLogCache) {
+    if (expiry < now) terminationLogCache.delete(k);
+  }
+}
 
 async function logSessionTerminationOnce(userId: string, reason: string, issuedAt: number) {
   const key = `audit:termination:${userId}:${reason}:${issuedAt}`;
@@ -83,6 +94,7 @@ async function logSessionTerminationOnce(userId: string, reason: string, issuedA
     }
   }
   if (terminationLogCache.has(key)) return;
+  pruneTerminationCache();
   terminationLogCache.set(key, Date.now() + 60_000);
 
   await writeAuditLog({
@@ -94,6 +106,8 @@ async function logSessionTerminationOnce(userId: string, reason: string, issuedA
 }
 
 let BASE_PRISMA_ADAPTER: Adapter | null = null;
+let cachedAuthOptions: { value: NextAuthOptions; expiresAt: number } | null = null;
+const AUTH_OPTIONS_CACHE_TTL_MS = 60_000;
 
 export function getRateLimitKey(headers: HeaderSource, fallbackKey?: string, remoteAddr?: string) {
   const ip = getClientIp(headers, remoteAddr);
@@ -192,6 +206,8 @@ function buildCredentialsProvider() {
 }
 
 export async function getAuthOptions(): Promise<NextAuthOptions> {
+  const now = Date.now();
+  if (cachedAuthOptions && cachedAuthOptions.expiresAt > now) return cachedAuthOptions.value;
   const ssoConfigs = await getSsoConfigMap();
   const providers = [] as NextAuthOptions['providers'];
   const baseAdapter = BASE_PRISMA_ADAPTER ?? (BASE_PRISMA_ADAPTER = PrismaAdapter(prisma));
@@ -244,9 +260,11 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
     providers.push(buildCredentialsProvider());
   }
 
-  console.log('[AUTH] Final providers list:', providers.map(p => p.id));
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[AUTH] Final providers list:', providers.map(p => p.id));
+  }
 
-  return {
+  const opts: NextAuthOptions = {
     adapter,
     secret: process.env.NEXTAUTH_SECRET,
     session: { strategy: 'jwt', maxAge: getSessionMaxAgeSeconds(), updateAge: 60 },
@@ -406,6 +424,8 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
     },
     pages: { signIn: '/auth/signin' }
   };
+  cachedAuthOptions = { value: opts, expiresAt: Date.now() + AUTH_OPTIONS_CACHE_TTL_MS };
+  return opts;
 }
 
 export async function getServerAuthSession() {

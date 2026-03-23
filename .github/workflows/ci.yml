@@ -99,6 +99,19 @@ jobs:
             -e SSO_MASTER_KEY=Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E= \
             techhub-tests sh -lc "CI=true npm test -- --run"
 
+      - name: Run unit tests with coverage (host)
+        run: npx vitest run --coverage
+        env:
+          SSO_MASTER_KEY: Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
       - name: Build Next.js
         run: npm run build
 
@@ -153,6 +166,7 @@ jobs:
     env:
       DATABASE_URL: postgres://techhub:techhub@localhost:5432/techhub
       REDIS_URL: redis://localhost:6379
+      RATE_LIMIT_STORE: redis
       SSO_MASTER_KEY: Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
       NEXTAUTH_SECRET: placeholder-secret-for-ci-testing-purpose-only
       NEXTAUTH_URL: http://localhost:3000

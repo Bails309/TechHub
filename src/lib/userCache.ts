@@ -8,20 +8,15 @@ type UserMeta = { roles: string[]; mustChangePassword: boolean; securityStamp?: 
 const TTL_SECONDS = Number(process.env.USER_META_CACHE_TTL_SEC ?? 300);
 
 async function fetchFromDb(userId: string): Promise<UserMeta | null> {
-  // @ts-ignore - stale prisma types in IDE
-  const rec = await prisma.user.findUnique({
+  const rec = await (prisma.user as any).findUnique({
     where: { id: userId },
-    // @ts-ignore - stale prisma types in IDE
     select: { roles: { include: { role: true } }, mustChangePassword: true, updatedAt: true, securityStamp: true, image: true }
   });
   if (!rec) return null;
   return {
-    // @ts-ignore - stale prisma types in IDE
     roles: rec.roles.map((r: any) => r.role.name),
     mustChangePassword: !!rec.mustChangePassword,
-    // @ts-ignore - stale prisma types in IDE
     updatedAt: rec.updatedAt ? new Date(rec.updatedAt as any).getTime() : undefined,
-    // @ts-ignore - stale prisma types in IDE
     securityStamp: rec.securityStamp ? new Date(rec.securityStamp as any).getTime() : undefined,
     image: rec.image
   };

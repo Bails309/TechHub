@@ -1117,6 +1117,11 @@ export async function deleteUser(formData: FormData): Promise<AdminActionState> 
   const userId = String(formData.get('userId') ?? '').trim();
   if (!userId) return { status: 'error', message: 'Missing userId' };
 
+  // Prevent deleting your own account from the admin dashboard (check early)
+  if (userId === sessionCheck.user.id) {
+    return { status: 'error', message: 'self-delete' };
+  }
+
   const confirmEmail = String(formData.get('confirmEmail') ?? '').trim().toLowerCase();
 
   // Validate confirmation matches target user's email
@@ -1128,11 +1133,6 @@ export async function deleteUser(formData: FormData): Promise<AdminActionState> 
   }
 
   await assertRateLimit(`delete-user:${sessionCheck.user.id}`);
-
-  // Prevent deleting your own account from the admin dashboard
-  if (userId === sessionCheck.user.id) {
-    return { status: 'error', message: 'self-delete' };
-  }
 
   const adminRole = await prisma.role.findUnique({ where: { name: 'admin' } });
   if (adminRole) {
@@ -1304,8 +1304,16 @@ export async function deleteRole(formData: FormData): Promise<AdminActionState> 
   }
 
   try {
-    await prisma.role.delete({ where: { id: roleId } });
+    // Use a transaction to prevent TOCTOU race between the count check and delete
+    await prisma.$transaction(async (tx) => {
+      const assignedCount = await tx.userRole.count({ where: { roleId } });
+      if (assignedCount > 0) throw new Error('role_still_assigned');
+      await tx.role.delete({ where: { id: roleId } });
+    });
   } catch (err) {
+    if ((err as Error).message === 'role_still_assigned') {
+      return { status: 'error', message: 'Role is assigned; remove assignments before deleting' };
+    }
     return { status: 'error', message: err instanceof Error ? err.message : 'Failed to delete role' };
   }
 

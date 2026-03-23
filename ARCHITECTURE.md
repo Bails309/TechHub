@@ -1,5 +1,7 @@
 # TechHub Architecture
 
+> **Version 1.0.0** — See [CHANGELOG.md](CHANGELOG.md) for release history.
+
 TechHub is a high-performance, secure application portal designed for enterprise environments. It follows a **Standalone Container** architecture, consolidating its request pipeline, security enforcement, and data orchestration into a single, scalable unit.
 
 ## 1. System Overview
@@ -73,3 +75,14 @@ graph TD
 | **Zod** | End-to-end schema validation. |
 | **Lucide React** | Consistent, high-quality iconography. |
 | **ipaddr.js** | Precise IP/CIDR validation for proxy trust logic. |
+
+## 5. Testing & CI/CD
+
+TechHub maintains comprehensive automated testing across multiple layers:
+
+- **Unit & Integration Tests** (Vitest): 46 test files covering authentication, cryptography, middleware, server actions, API routes, and core library functions. Tests mock external services (Redis, Prisma) to run without infrastructure dependencies.
+- **End-to-End Tests** (Playwright): 4 test suites covering admin flows, app interactions, authentication, and personal apps across Chromium, Firefox, and WebKit.
+- **CI Pipeline** (GitHub Actions): Automated lint, test, build, and Docker image verification on every push and PR. Includes CodeQL security scanning and dependency review.
+- **Coverage Reporting**: `@vitest/coverage-v8` generates text, JSON summary, and LCOV reports for `src/lib/**/*.ts`.
+
+See [TESTING.md](TESTING.md) for the complete test inventory and CI workflow details.

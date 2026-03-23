@@ -25,12 +25,23 @@ function parseKey(raw: string, label: string) {
 // encrypt/decrypt operation. Parsing is relatively expensive and unnecessary
 // to repeat for each call.
 let cachedKeyRing: KeyRing | null = null;
+let cachedKeyRingHash: string | null = null;
+
+/** Invalidate the cached key ring so the next call re-parses from env. */
+export function invalidateKeyRingCache() {
+  cachedKeyRing = null;
+  cachedKeyRingHash = null;
+}
+
 function loadKeyRing(): KeyRing {
-  if (cachedKeyRing) return cachedKeyRing;
   const raw = process.env[KEY_ENV];
   if (!raw) {
     throw new Error(`${KEY_ENV} is not set`);
   }
+  // Detect env var changes so key rotation takes effect without restart
+  const rawHash = crypto.createHash('sha256').update(raw).digest('hex');
+  if (cachedKeyRing && cachedKeyRingHash === rawHash) return cachedKeyRing;
+  cachedKeyRingHash = rawHash;
 
   // Try parsing as JSON first (object or array)
   try {

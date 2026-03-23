@@ -1,6 +1,6 @@
 {
   "name": "techhub",
-  "version": "0.1.0",
+  "version": "1.0.1",
   "private": true,
   "scripts": {
     "dev": "npm run prisma:push && next dev",
@@ -65,6 +65,7 @@
     "tailwindcss": "^3.4.10",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4",
-    "vitest": "^1.6.1"
+    "vitest": "^1.6.1",
+    "@vitest/coverage-v8": "^1.6.1"
   }
 }

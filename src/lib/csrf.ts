@@ -175,7 +175,11 @@ export async function getSessionIdFromCookie(): Promise<string> {
     const dummyReq = {
       headers: hdrsObj,
       cookies: Object.fromEntries(
-        hdrs.get('cookie')?.split(';').map(c => c.trim().split('=')) || []
+        hdrs.get('cookie')?.split(';').map(c => {
+          const idx = c.indexOf('=');
+          if (idx < 0) return [c.trim(), ''];
+          return [c.slice(0, idx).trim(), c.slice(idx + 1).trim()];
+        }) || []
       )
     };
 
@@ -335,4 +339,23 @@ export async function validateActionCsrf(formData?: FormData): Promise<boolean> 
   }
 
   return false;
+}
+
+/**
+ * Server action CSRF enforcement wrapper. Use this to guarantee CSRF
+ * validation is never accidentally skipped in new server actions.
+ *
+ * Usage:
+ *   export async function myAction(formData: FormData) {
+ *     return withCsrf(formData, async () => { ... });
+ *   }
+ */
+export async function withCsrf<T>(
+  formData: FormData,
+  fn: () => Promise<T>
+): Promise<T | { status: 'error'; message: string }> {
+  if (!(await validateCsrf(formData))) {
+    return { status: 'error', message: 'Invalid CSRF token' };
+  }
+  return fn();
 }

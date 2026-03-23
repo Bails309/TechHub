@@ -6,6 +6,7 @@ import { validateCsrf } from '@/lib/csrf';
 import { revalidatePath } from 'next/cache';
 import { writeAuditLog } from '@/lib/audit';
 import { saveIcon, deleteIcon } from '@/lib/storage';
+import { assertRateLimit } from '@/lib/rateLimit';
 
 const MAX_PERSONAL_APPS = 25;
 const MAX_NAME_LENGTH = 100;
@@ -31,6 +32,8 @@ export async function createPersonalApp(_prevState: any, formData: FormData): Pr
     if (!session?.user?.id) {
         return { status: 'error', message: 'Not signed in' };
     }
+
+    await assertRateLimit(`personal-app:${session.user.id}`);
 
     const name = String(formData.get('name') ?? '').trim();
     const url = String(formData.get('url') ?? '').trim();
@@ -98,6 +101,8 @@ export async function updatePersonalApp(_prevState: any, formData: FormData): Pr
     if (!session?.user?.id) {
         return { status: 'error', message: 'Not signed in' };
     }
+
+    await assertRateLimit(`personal-app:${session.user.id}`);
 
     const appId = String(formData.get('appId') ?? '');
     if (!appId) {
@@ -174,6 +179,8 @@ export async function deletePersonalApp(_prevState: any, formData: FormData): Pr
     if (!session?.user?.id) {
         return { status: 'error', message: 'Not signed in' };
     }
+
+    await assertRateLimit(`personal-app:${session.user.id}`);
 
     const appId = String(formData.get('appId') ?? '');
     if (!appId) {

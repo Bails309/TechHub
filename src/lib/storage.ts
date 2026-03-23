@@ -17,6 +17,18 @@ import ipaddr from 'ipaddr.js';
 
 const STORAGE_PROVIDER = process.env.STORAGE_PROVIDER || 'local';
 
+/** Detect image type from magic bytes. Returns extension info or null for unrecognised content. */
+function detectImageType(buffer: Buffer): { ext: string; isSvg: boolean } | null {
+  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+  if (isPng) return { ext: '.png', isSvg: false };
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  if (isJpeg) return { ext: '.jpg', isSvg: false };
+  const contentStart = buffer.slice(0, 250).toString('utf-8').trim().toLowerCase();
+  const isSvg = /^(?:<\?xml[^>]*\?>\s*)?(?:<!doctype\s+svg[^>]*>\s*)?<svg/i.test(contentStart);
+  if (isSvg) return { ext: '.svg', isSvg: true };
+  return null;
+}
+
 async function resolveStorageProvider() {
   // Prefer database configuration as the source of truth. Fall back to
   // the environment variable only when nothing is explicitly enabled.
@@ -48,12 +60,8 @@ type AzureConfig = {
 // Local storage implementation
 async function saveLocal(file: File) {
   const buffer = Buffer.from(await file.arrayBuffer());
-  const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
-  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
-  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  const contentStart = buffer.slice(0, 250).toString('utf-8').trim().toLowerCase();
-  const isSvg = /^(?:<\?xml[^>]*\?>\s*)?(?:<!doctype\s+svg[^>]*>\s*)?<svg/i.test(contentStart);
-  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : (isSvg ? '.svg' : '.bin'));
+  const detected = detectImageType(buffer);
+  const extension = detected?.ext ?? '.bin';
   const filename = `${randomUUID()}${extension}`;
   const uploadDir = path.join(process.cwd(), 'uploads');
   await mkdir(uploadDir, { recursive: true });
@@ -170,12 +178,8 @@ async function saveS3(file: File) {
   const bucket = config?.bucket || process.env.S3_BUCKET;
   if (!bucket) throw new Error('S3_BUCKET not configured');
   const buffer = Buffer.from(await file.arrayBuffer());
-  const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
-  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
-  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  const contentStart = buffer.slice(0, 250).toString('utf-8').trim().toLowerCase();
-  const isSvg = /^(?:<\?xml[^>]*\?>\s*)?(?:<!doctype\s+svg[^>]*>\s*)?<svg/i.test(contentStart);
-  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : (isSvg ? '.svg' : '.bin'));
+  const detected = detectImageType(buffer);
+  const extension = detected?.ext ?? '.bin';
   const key = `uploads/${randomUUID()}${extension}`;
   const s3 = await getS3Client(config ?? undefined);
   await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: file.type }));
@@ -201,13 +205,12 @@ async function deleteS3(iconPath?: string) {
   // if URL, extract path after bucket
   try {
     const url = new URL(iconPath, 'https://example.com');
-    // URL path may be /uploads/.. or full URL
-    // Use the URL pathname as the S3 key when iconPath is a URL.
-    // This supports custom domains or CDNs in front of the bucket.
     key = url.pathname.replace(/^\//, '');
   } catch {
     // not a URL
   }
+  // Guard: only delete keys under the uploads/ prefix
+  if (!key.startsWith('uploads/')) return;
   const s3 = await getS3Client(config ?? undefined);
   await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })).catch(() => null);
 }
@@ -341,12 +344,9 @@ async function resolveAzureConfig(): Promise<AzureConfig | null> {
 
 async function saveAzure(file: File) {
   const buffer = Buffer.from(await file.arrayBuffer());
-  const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
-  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
-  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  const contentStart = buffer.slice(0, 250).toString('utf-8').trim().toLowerCase();
-  const isSvg = /^(?:<\?xml[^>]*\?>\s*)?(?:<!doctype\s+svg[^>]*>\s*)?<svg/i.test(contentStart);
-  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : (isSvg ? '.svg' : '.bin'));
+  const detected = detectImageType(buffer);
+  const isSvg = detected?.isSvg ?? false;
+  const extension = detected?.ext ?? '.bin';
   const key = `uploads/${randomUUID()}${extension}`;
   const config = await resolveAzureConfig();
   const containerClient = await getAzureContainerClient(config ?? undefined);
@@ -455,11 +455,11 @@ function sanitizeSvg(svgContent: string): string {
       lowerCaseAttributeNames: false,
     },
     allowVulnerableTags: true, // Allow <style> tag which is needed for many SVGs
-    allowedSchemes: ['http', 'https', 'data'],
+    allowedSchemes: ['http', 'https'],
     allowedSchemesByTag: {
       image: ['http', 'https', 'data'],
-      use: ['http', 'https', 'data'],
-      '*': ['http', 'https', 'data']
+      use: ['http', 'https'],
+      '*': ['http', 'https']
     },
     transformTags: {
       '*': (tagName: string, attribs: any) => {
@@ -467,8 +467,13 @@ function sanitizeSvg(svgContent: string): string {
         ['href', 'xlink:href'].forEach(attr => {
           if (attribs[attr]) {
             const val = attribs[attr].trim().toLowerCase();
-            if (val.startsWith('javascript:') || val.startsWith('vbscript:') || val.startsWith('data:text/html')) {
+            if (val.startsWith('javascript:') || val.startsWith('vbscript:')) {
               delete attribs[attr];
+            } else if (val.startsWith('data:')) {
+              // Only allow data: URIs for raster image types (block svg+xml, text/html, etc.)
+              if (!/^data:image\/(png|jpeg|jpg|gif|webp);base64,/.test(val)) {
+                delete attribs[attr];
+              }
             }
           }
         });
@@ -498,16 +503,13 @@ export async function saveIcon(file: File) {
   // SVG: starts with '<?xml' or '<svg'
   // During unit tests we use tiny fake buffers; skip strict magic-byte checks in tests.
   const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || Boolean(process.env.JEST_WORKER_ID);
-  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
-  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const detected = detectImageType(buffer);
 
-  // Check for SVG
-  const contentStart = buffer.slice(0, 250).toString('utf-8').trim().toLowerCase();
-  const isSvg = /^(?:<\?xml[^>]*\?>\s*)?(?:<!doctype\s+svg[^>]*>\s*)?<svg/i.test(contentStart);
-
-  if (!isTest && !isPng && !isJpeg && !isSvg) {
+  if (!isTest && !detected) {
     throw new Error('SECURITY: Invalid image content. The file does not appear to be a valid PNG, JPEG, or SVG.');
   }
+
+  const isSvg = detected?.isSvg ?? false;
 
   // Sanitize SVG if detected
   if (isSvg) {
@@ -517,10 +519,9 @@ export async function saveIcon(file: File) {
 
   const provider = await resolveStorageProvider();
 
-  // Pass the already read buffer to the providers to avoid re-reading
   // Determine the extension solely from the magic-byte validation to avoid
   // trusting the original file name (prevents stored XSS via .html etc.).
-  const extension = isPng ? '.png' : (isJpeg ? '.jpg' : (isSvg ? '.svg' : '.bin'));
+  const extension = detected?.ext ?? '.bin';
   const filename = `${randomUUID()}${extension}`;
 
   if (provider === 's3') return saveS3WithBuffer(buffer, filename, isSvg ? 'image/svg+xml' : file.type);

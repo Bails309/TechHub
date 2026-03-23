@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('@/lib/auth', () => ({ getServerAuthSession: async () => ({ user: { id: 'admin-1', roles: ['admin'] } }) }));
 vi.mock('@/lib/csrf', () => ({ validateCsrf: async () => true }));
 vi.mock('@/lib/storage', () => ({ saveIcon: async () => null, deleteIcon: async () => {} }));
+vi.mock('@/lib/rateLimit', () => ({ assertRateLimit: async () => {} }));
 vi.mock('@/lib/crypto', async () => ({ ...(await vi.importActual('../src/lib/crypto')) }));
 
 describe('linkSsoAccount transactionality', () => {

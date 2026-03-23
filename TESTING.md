@@ -1,6 +1,8 @@
 # Testing
 
-This project uses [Vitest](https://vitest.dev) for unit and integration tests.
+This project uses [Vitest](https://vitest.dev) for unit and integration tests and [Playwright](https://playwright.dev) for end-to-end tests.
+
+**Current coverage:** 46 unit/integration test files, 254 tests, 4 E2E suites.
 
 ## Quick Commands
 
@@ -23,22 +25,91 @@ docker-compose run --rm app sh -c "npx vitest run --reporter verbose"
 
 ## Test Files
 
+### Authentication & Session
 | File | Description |
 |------|-------------|
 | `test/auth.jwt_coherence.test.ts` | JWT coherence and token validity checks |
 | `test/auth.session.test.ts` | Session handling tests |
-| `test/change-password.test.ts` | `changePassword` server action — mocked Prisma, concurrency and history checks |
-| `test/createApp-orphan.test.ts` | App creation and orphan record handling |
+| `test/auth.sessionLifetime.test.ts` | Session absolute/idle timeout enforcement |
+| `test/authConfig.test.ts` | `getSessionMaxAgeSeconds` and `getSessionIdleTimeoutMs` with env var parsing and defaults |
 | `test/credentials.authorize.test.ts` | Credentials provider authorization logic |
 | `test/credentials.rateLimit.test.ts` | Rate limiting on credential attempts |
-| `test/csrf.test.ts` | CSRF token validation |
-| `test/getClientIp.test.ts` | `getClientIp` and `getRateLimitKey` behavior (proxy/no-proxy scenarios) |
-| `test/linkSsoAccount.test.ts` | SSO account linking logic |
-| `test/middleware.revocation.test.ts` | Middleware session revocation (integration) |
-| `test/middleware.revocation.unit.test.ts` | Middleware session revocation (unit) |
-| `test/rateLimit.test.ts` | Rate limiter (memory + mocked Redis) ensuring limit enforcement |
+| `test/linkSsoAccount.test.ts` | SSO account linking transactionality |
 | `test/sso.decrypt.test.ts` | SSO secret decryption |
+
+### Security & CSRF
+| File | Description |
+|------|-------------|
+| `test/csrf.test.ts` | CSRF token validation |
+| `test/csrf.replay.test.ts` | CSRF replay attack prevention |
+| `test/csrf.signin-render.test.ts` | CSRF token rendering on sign-in flows |
+| `test/validateActionCsrf.test.ts` | Server action CSRF validation |
+| `test/security.multi_fix.test.ts` | Multi-vector security fix verification |
+| `test/ssrf.dns_rebinding.test.ts` | DNS rebinding / TOCTOU protection |
+| `test/ssrf.smoke.test.ts` | SSRF basic smoke tests |
+
+### Middleware
+| File | Description |
+|------|-------------|
+| `test/middleware.headers.test.ts` | Security headers (CSP, HSTS, X-Frame) |
+| `test/middleware.revocation.test.ts` | Session revocation (integration) |
+| `test/middleware.revocation.unit.test.ts` | Session revocation (unit) |
+| `test/middleware.password_change.test.ts` | Must-change-password enforcement |
+| `test/middleware.activity.loop.test.ts` | Activity tracking loop prevention |
+| `test/middleware.activity.unit.test.ts` | Activity tracking unit tests |
+
+### Cryptography & Secrets
+| File | Description |
+|------|-------------|
+| `test/crypto.test.ts` | Multi-key rotation, key ring parsing (legacy, CSV, JSON) |
+| `test/crypto.envelope.test.ts` | Envelope encryption (V3), V2 default, key rotation, `getSecretKeyId`, `encryptSecretWithKeyId` |
+
+### Core Libraries
+| File | Description |
+|------|-------------|
+| `test/password.test.ts` | Password complexity validation, hashing, and verification |
+| `test/passwordPolicy.test.ts` | `getPasswordPolicy` — DB result, null/error fallback, field mapping |
+| `test/userCache.test.ts` | `getUserMeta` memCache hit, TTL expiry, DB fallback, cache clearing |
+| `test/ip.normalizeIp.test.ts` | IP normalization, private range detection, header reading |
+| `test/getClientIp.test.ts` | `getClientIp` and `getRateLimitKey` (proxy/no-proxy) |
+| `test/rateLimit.test.ts` | Rate limiter (memory + mocked Redis) |
+| `test/sanitizeIconUrl.test.ts` | Icon URL sanitization |
+| `test/siteConfig.test.ts` | `chooseLogo` for dark/light/fallback themes |
+| `test/svgProcessor.test.ts` | `getRGB`, `isVibrant`, `isNearBlack`, `parseCssBlocks`, `styleToAttrMap` |
+| `test/svg_hardening.test.ts` | SVG upload sanitization and XSS prevention |
+| `test/storageConfig.test.ts` | Storage provider mapping and secret decryption |
 | `test/storage.test.ts` | Local storage adapter (file save/delete) |
+| `test/audit.unit.test.ts` | Audit log writing |
+
+### Health & System
+| File | Description |
+|------|-------------|
+| `test/health.unit.test.ts` | Individual health check functions |
+| `test/health.system.test.ts` | `getSystemHealth` aggregation, DB/Redis/storage/schema checks |
+
+### Server Actions
+| File | Description |
+|------|-------------|
+| `test/change-password.test.ts` | `changePassword` server action — mocked Prisma, concurrency and history |
+| `test/admin.forcePasswordReset.test.ts` | Admin force password reset action |
+| `test/admin.security_wiring.test.ts` | Admin security wiring verification |
+| `test/createApp-orphan.test.ts` | App creation and orphan record handling |
+| `test/category.actions.test.ts` | Category CRUD — CSRF, auth, validation, DB errors |
+| `test/favoriteApps.actions.test.ts` | Toggle favorites, `getFavoriteApps` — CSRF, auth, error paths |
+
+### API Routes
+| File | Description |
+|------|-------------|
+| `test/api.launch.test.ts` | App launch API route |
+| `test/api.cronCleanup.test.ts` | Cron cleanup — bearer auth, execution, error handling |
+
+### E2E Tests (Playwright)
+| File | Description |
+|------|-------------|
+| `test/e2e/admin.spec.ts` | Admin management flows |
+| `test/e2e/app.spec.ts` | App interaction flows |
+| `test/e2e/auth.spec.ts` | Authentication flows |
+| `test/e2e/personal-apps.spec.ts` | Personal apps CRUD |
 
 ## Test Setup Notes
 
@@ -67,7 +138,22 @@ UNSAFE_TEST_AUTH=true npm test
 
 ## CI Workflows
 
-Two GitHub Actions workflows run tests automatically:
+Three GitHub Actions workflows run tests and security checks automatically:
 
-- [`.github/workflows/ci.yml`](/.github/workflows/ci.yml) — Full CI: lint, test (inside Docker builder stage), Next.js build, and Docker image smoke test. Starts Postgres and Redis service containers.
-- [`.github/workflows/test.yml`](/.github/workflows/test.yml) — Lightweight test runner: installs deps via `npm ci`, pushes schema, seeds DB, and runs `npm test`. Starts a Postgres service container.
+- [`.github/workflows/ci.yml`](/.github/workflows/ci.yml) — Full CI: lint, test (inside Docker builder stage), Next.js build, Docker image smoke test, and E2E tests. Starts Postgres and Redis service containers. Includes unit test coverage reporting via `@vitest/coverage-v8` with artifact upload.
+- [`.github/workflows/security.yml`](/.github/workflows/security.yml) — Security scanning: CodeQL static analysis on push/PR/weekly schedule (JavaScript/TypeScript), dependency review on PRs with high-severity failure threshold.
+
+### Coverage
+
+Unit test coverage is generated using `@vitest/coverage-v8` and reported in three formats:
+- **text** — Console summary during CI runs.
+- **json-summary** — Machine-readable summary for dashboards.
+- **lcov** — Compatible with most coverage visualization tools.
+
+Coverage configuration is in `vitest.config.ts` and targets `src/lib/**/*.ts`.
+
+### Dependency Management
+
+[`.github/dependabot.yml`](/.github/dependabot.yml) keeps dependencies current:
+- Weekly npm updates grouped by dev/production dependencies (ignoring major bumps).
+- Weekly GitHub Actions version updates.
