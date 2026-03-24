@@ -16,7 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`proxy.ts`** — `isSessionUpdate` now requires `request.method !== 'GET'` for the `/api/auth/session` path, distinguishing user-initiated session updates (POST) from automatic refetches (GET).
 
 ### Tests
-- Updated `proxy.gap.test.ts` — Split the activity-cookie session-update test into two: one confirming `POST /api/auth/session` sets the activity cookie, one confirming `GET /api/auth/session` does not. Total tests: 727.
+- Updated `proxy.gap.test.ts` — Split the activity-cookie session-update test into two: one confirming `POST /api/auth/session` sets the activity cookie, one confirming `GET /api/auth/session` does not.
+- **New `sessionGuard.regression.test.ts`** — 16 regression tests protecting against the idle-timeout and absolute-timeout bugs:
+  - **SessionGuard source analysis (7 tests):** Verifies the `useEffect` dependency array is `[status, markActivity]` only (not `update`/`idleTimeoutMs`/`warningMs`), `markActivity` has an empty dep array, `updateRef.current` is used instead of a direct `update` closure, timeout values are read from refs inside interval callbacks, and `idleSignOut(updateRef.current)` is called (not `idleSignOut(update)`).
+  - **Absolute timeout (5 tests):** Boundary-exact revocation at max age, no revocation 1 second before boundary, default 8-hour max age when env unset, revocation past 8 hours, and absolute timeout fires regardless of recent user activity.
+  - **Proxy idle enforcement (4 tests):** Fresh activity cookie does not trigger timeout, stale cookie triggers redirect, `GET /api/auth/session` does not write activity cookie, `POST /api/auth/session` does write activity cookie.
+- Total: 84 test files, 743 tests.
 
 ### Security
 - **CodeQL: Missing regex anchors** — E2E test URL assertions in `app.spec.ts` used unanchored patterns (`/^https?:\/\/[^/]*status\.example\.com/`) that could match unintended subdomains. Replaced with properly anchored regexes (`/^https?:\/\/(.*\.)?status\.example\.com(\/|$)/`) at lines 50 and 93.
