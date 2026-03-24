@@ -5,6 +5,36 @@ All notable changes to TechHub are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-03-24
+
+### Fixed
+- **CodeQL unused-variable alerts** — Resolved ~60 "Unused variable, import, function or class" alerts across 23 source and test files, removing dead imports (`path`, `cookies`, `lookup`, `randomUUID`, `createHttpHeaders`, `isPublicIp`, `useMemo`, `useNonce`, `LayoutGrid`, `Home`, `ShieldCheck`, `X`, `beforeEach`, `NextResponse`, `IORedis`, `RedisOptions`, etc.), dead functions (`saveLocal`, `saveS3`, `saveAzure`, `parseAzureConnectionString` in `storage.ts`), dead constants (`STORAGE_PROVIDER`, `allowMissingRemoteIp`, `baseUrl`), and unused destructured variables.
+- **TypeScript compilation errors** — Fixed `NODE_ENV` read-only assignment in test files, `NextResponse` custom property access in proxy tests, and `UserMeta` type mismatches in userCache tests. `npx tsc --noEmit` now passes cleanly.
+- **Prisma binary target** — Added `binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]` to `schema.prisma` generator, fixing `PrismaClientInitializationError` on Windows and ensuring Docker compatibility. Test suite now exits with code 0.
+- **Dead access query in users page** — Removed unused `usersForAccess` Prisma query and associated pagination variables (`accessSkip`, `accessTotalPages`, `prevAccessPage`, `nextAccessPage`, `showAccessPaneInline`) from the admin users page, eliminating a wasted DB round-trip.
+
+### Changed
+- **CodeQL v4** — Upgraded all `github/codeql-action/*` references from `@v3` to `@v4` in `security.yml`.
+- **GitHub Actions** — Bumped action versions across CI and security workflows:
+  - `actions/checkout` v4 → v6
+  - `actions/setup-node` v4 → v6
+  - `actions/upload-artifact` v4 → v7
+  - `docker/setup-buildx-action` v3 → v4
+
+### Updated Dependencies
+| Package | From | To |
+|---|---|---|
+| `lucide-react` | 0.453.0 | 0.577.0 |
+| `@aws-sdk/client-s3` | 3.1001.0 | 3.1015.0 |
+| `ioredis` | 5.10.0 | 5.10.1 |
+| `sanitize-html` | 2.17.1 | 2.17.2 |
+| `esbuild` | 0.27.3 | 0.27.4 |
+| `eslint` | 9.39.3 | 9.39.4 |
+| `@types/ioredis-mock` | 8.2.6 | 8.2.7 |
+| `@types/sanitize-html` | 2.16.0 | 2.16.1 |
+
+---
+
 ## [2.2.1] - 2026-03-24
 
 ### Security
