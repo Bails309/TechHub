@@ -362,7 +362,7 @@ describe('Proxy idle-timeout server-side regressions', () => {
       cookies: { 'techhub-activity': Date.now().toString() },
     });
 
-    const result = await mod.proxy(req);
+    const result: any = await mod.proxy(req);
     // Should NOT redirect — cookie is fresh
     expect(result._redirectUrl).toBeUndefined();
     expect(result._status).toBeUndefined();
@@ -379,7 +379,7 @@ describe('Proxy idle-timeout server-side regressions', () => {
       cookies: { 'techhub-activity': stale },
     });
 
-    const result = await mod.proxy(req);
+    const result: any = await mod.proxy(req);
     if (result._redirectUrl) {
       expect(result._redirectUrl.pathname).toBe('/auth/signin');
     }
