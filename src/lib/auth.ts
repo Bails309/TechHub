@@ -7,6 +7,7 @@ import Keycloak from 'next-auth/providers/keycloak';
 import { PrismaAdapter } from '@next-auth/prisma-adapter';
 import type { Adapter, AdapterAccount } from 'next-auth/adapters';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { prisma } from './prisma';
 import { verifyPassword } from './password';
 import { assertRateLimit } from './rateLimit';
@@ -15,7 +16,7 @@ import { getUserMeta } from './userCache';
 import { getSsoConfigMap } from './sso';
 import { writeAuditLog } from './audit';
 import { getSharedRedisClient } from './redis';
-import { trackSession, untrackSession, countActiveSessions } from './sessionTracker';
+import { trackSession, untrackSession, refreshSession, clearAllSessions } from './sessionTracker';
 import {
   getClientIp,
   isPrivateOrLocal,
@@ -288,10 +289,37 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
       },
       async jwt({ token, user, account, trigger, session }: any) {
         const now = Date.now();
+        // Ensure every token has a unique JTI (required for session tracking + blacklist)
+        if (!token.jti) token.jti = randomUUID();
+
+        // Stable session identifier for the concurrent-session tracker.
+        // NextAuth v4's encode() calls .setJti(uuid()) internally, which
+        // overwrites token.jti with a NEW UUID on every encode cycle.
+        // That means token.jti changes on every request, making it useless
+        // as a sorted-set member.  token.sessionId is a custom field that
+        // the encoder won't touch, so it stays constant for the entire
+        // session lifetime.
+        if (!token.sessionId) token.sessionId = randomUUID();
+
         if (trigger === 'update') {
           if (typeof session?.user?.mustChangePassword === 'boolean') token.mustChangePassword = session.user.mustChangePassword;
           if (session?.user?.image !== undefined) token.image = session.user.image;
           if (session?.logoutReason) token.logoutReason = session.logoutReason;
+
+          // "Clear other sessions" — wipe all Redis entries and re-register only this one
+          if (session?.clearSessions && token.sub && token.sessionId) {
+            try {
+              await clearAllSessions(String(token.sub));
+              const expiresAtMs = (Number(token.exp ?? 0) * 1000) || (now + getSessionMaxAgeSeconds() * 1000);
+              await trackSession(String(token.sub), String(token.sessionId), expiresAtMs);
+              token.concurrentSessions = 0;
+              if (process.env.NODE_ENV === 'production') {
+                console.log('[AUTH] clearSessions: sub=%s — cleared and re-registered sessionId=%s', token.sub, token.sessionId);
+              }
+            } catch (err) {
+              console.warn('[AUTH] clearSessions failed for sub=%s', token.sub, err);
+            }
+          }
         }
 
         if (user?.id) token.id = user.id;
@@ -301,11 +329,19 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         if (user?.roles) token.roles = user.roles;
 
         // Track new session in Redis on initial sign-in (when user object is present)
-        if (user?.id && token.jti) {
+        if (user?.id && token.sessionId) {
           const expiresAtMs = (Number(token.exp ?? 0) * 1000) || (now + getSessionMaxAgeSeconds() * 1000);
           const hdrs = await headers().catch(() => null);
           const loginIp = hdrs ? getClientIp(hdrs as any) : null;
-          trackSession(user.id, String(token.jti), expiresAtMs, loginIp, account?.provider).catch(() => null);
+          try {
+            const activeCount = await trackSession(user.id, String(token.sessionId), expiresAtMs, loginIp, account?.provider);
+            token.concurrentSessions = activeCount > 1 ? activeCount : 0;
+            if (process.env.NODE_ENV === 'production') {
+              console.log('[AUTH] trackSession: userId=%s sessionId=%s activeCount=%d concurrentSessions=%d', user.id, token.sessionId, activeCount, token.concurrentSessions);
+            }
+          } catch (err) {
+            console.warn('[AUTH] trackSession failed for userId=%s', user.id, err);
+          }
         }
 
         // --- 1. Periodic Consistency Checks (DB/Cache) ---
@@ -349,17 +385,32 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                 token.securityStamp = dbStamp || undefined;
                 token.userUpdatedAt = meta.updatedAt;
                 token.lastCheckedAt = now;
-
-                // Concurrent-session detection: count active sessions for this user
-                try {
-                  const activeCount = await countActiveSessions(String(token.sub));
-                  token.concurrentSessions = activeCount > 1 ? activeCount : 0;
-                } catch {
-                  // Non-critical — leave previous value
-                }
               }
             } catch (err) {
               console.error('[AUTH] Error during consistency check:', err);
+            }
+          }
+
+          // Concurrent-session heartbeat: runs frequently but not on every
+          // single request.  60s throttle balances responsiveness with Redis load.
+          // Uses token.sessionId (stable) instead of token.jti (rotated by encode).
+          const SESSION_REFRESH_INTERVAL_MS = 60_000; // 1 minute
+          const lastSessionRefresh = Number(token.lastSessionRefreshAt ?? 0);
+          if (!token.revoked && token.sessionId && !user?.id && (now - lastSessionRefresh > SESSION_REFRESH_INTERVAL_MS)) {
+            try {
+              const activeCount = await refreshSession(String(token.sub), String(token.sessionId));
+              // activeCount >= 1 means Redis responded (at least this session exists).
+              // 0 means Redis was unavailable — preserve the existing value so a
+              // transient Redis blip doesn't hide the concurrent-session banner.
+              if (activeCount >= 1) {
+                token.concurrentSessions = activeCount > 1 ? activeCount : 0;
+              }
+              token.lastSessionRefreshAt = now;
+              if (process.env.NODE_ENV === 'production') {
+                console.log('[AUTH] refreshSession: sub=%s sessionId=%s activeCount=%d concurrentSessions=%d', token.sub, token.sessionId, activeCount, token.concurrentSessions ?? 0);
+              }
+            } catch {
+              // Non-critical — leave previous value
             }
           }
 
@@ -382,10 +433,16 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
               }
             }
             // Remove revoked session from the concurrent-session tracker
-            if (token.sub) {
-              untrackSession(String(token.sub), String(token.jti)).catch(() => null);
+            if (token.sub && token.sessionId) {
+              untrackSession(String(token.sub), String(token.sessionId)).catch(() => null);
             }
           }
+        }
+
+        // Diagnostic: always log the session-tracking state leaving the JWT callback
+        if (token.sub && (token.concurrentSessions || user?.id)) {
+          console.log('[AUTH] jwt-done: sub=%s sessionId=%s concurrentSessions=%d hasUser=%s trigger=%s',
+            token.sub, token.sessionId, token.concurrentSessions ?? 0, !!user?.id, trigger ?? 'none');
         }
 
         return token;
@@ -416,6 +473,13 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         session.idleTimeoutMs = getSessionIdleTimeoutMs();
         if (token.concurrentSessions) session.concurrentSessions = token.concurrentSessions;
         if (token.revoked) session.revoked = true;
+
+        // Diagnostic: log what the client will receive
+        if (session.concurrentSessions || token.concurrentSessions) {
+          console.log('[AUTH] session-response: sub=%s concurrentSessions=%d (token had %d)',
+            token.sub, session.concurrentSessions ?? 0, token.concurrentSessions ?? 0);
+        }
+
         return session;
       }
     },
@@ -424,6 +488,18 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         await writeAuditLog({ category: 'auth', action: 'login_success', actorId: user?.id ?? null, provider: account?.provider ?? null, details: { email: user?.email ?? null } });
       },
       async signOut({ token }: any) {
+        console.log('[AUTH] signOut event fired: sub=%s sessionId=%s logoutReason=%s revoked=%s', token?.sub, token?.sessionId, token?.logoutReason, token?.revoked);
+        // Always remove from concurrent-session tracker regardless of
+        // signOut reason (explicit logout, idle timeout, revocation).
+        // Uses token.sessionId (stable) instead of token.jti (rotated by NextAuth encode).
+        if (token?.sessionId && token?.sub) {
+          await untrackSession(String(token.sub), String(token.sessionId)).catch((err: unknown) => {
+            console.warn('[AUTH] untrackSession failed on signOut sessionId=%s', token.sessionId, err);
+          });
+        } else {
+          console.warn('[AUTH] signOut: missing sessionId=%s or sub=%s — cannot untrack', token?.sessionId, token?.sub);
+        }
+
         const reason = token?.logoutReason;
         if (reason === 'idle_timeout' || reason === 'absolute_timeout') {
           await writeAuditLog({ category: 'auth', action: 'session_terminated', targetId: token?.sub ?? null, details: { reason } });
@@ -441,10 +517,6 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             if (ttl > 0) {
               await client.set(`auth:blacklist:${token.jti}`, '1', 'EX', ttl).catch(() => null);
             }
-          }
-          // Remove from concurrent-session tracker
-          if (token.sub) {
-            untrackSession(String(token.sub), String(token.jti)).catch(() => null);
           }
         }
 

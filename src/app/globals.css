@@ -462,3 +462,126 @@ html[data-theme='light'] .tab-inactive:hover {
   /* gray-900 */
   background-color: rgba(0, 0, 0, 0.04);
 }
+
+/* --- Concurrent Session Banner --- */
+.concurrent-banner {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 1.5rem;
+  z-index: 9998;
+  max-width: 420px;
+  padding: 0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--page-fg);
+}
+/* On desktop, position past the sidebar so the banner is clearly visible */
+@media (min-width: 1024px) {
+  .concurrent-banner {
+    left: 17.5rem;
+  }
+}
+
+/* Animation applied only via JS class to prevent replay on re-render */
+.concurrent-banner-animated {
+  animation: concurrentBannerSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.concurrent-banner-accent {
+  width: 4px;
+  flex-shrink: 0;
+  background: var(--capita-cyan, #00ffff);
+}
+
+html[data-theme='light'] .concurrent-banner-accent {
+  background: var(--capita-teal, #10d6a6);
+}
+
+.concurrent-banner-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  margin-left: 0.75rem;
+  color: var(--capita-cyan, #00ffff);
+}
+
+html[data-theme='light'] .concurrent-banner-icon {
+  color: var(--capita-teal, #10d6a6);
+}
+
+.concurrent-banner-content {
+  flex: 1;
+  min-width: 0;
+  padding: 0.85rem 0 0.85rem 0.5rem;
+}
+
+.concurrent-banner-title {
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+
+.concurrent-banner-body {
+  line-height: 1.45;
+  opacity: 0.85;
+}
+
+.concurrent-banner-dismiss {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin: 0.6rem 0.6rem 0 0;
+  padding: 0.25rem 0.45rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--page-fg);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.concurrent-banner-dismiss:hover {
+  opacity: 1;
+  background: var(--select-hover-bg, rgba(0, 255, 255, 0.18));
+}
+
+.concurrent-banner-clear {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--capita-cyan, #00ffff);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  opacity: 0.9;
+  transition: opacity 0.15s;
+}
+
+html[data-theme='light'] .concurrent-banner-clear {
+  color: var(--capita-teal, #10d6a6);
+}
+
+.concurrent-banner-clear:hover {
+  opacity: 1;
+}
+
+.concurrent-banner-clear:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+@keyframes concurrentBannerSlideIn {
+  from { transform: translateY(100%) scale(0.97); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}

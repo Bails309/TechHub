@@ -1,6 +1,6 @@
 # TechHub Architecture
 
-> **Version 2.2.3** — See [CHANGELOG.md](CHANGELOG.md) for release history.
+> **Version 2.2.6** — See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 TechHub is a high-performance, secure application portal designed for enterprise environments. It follows a **Standalone Container** architecture, consolidating its request pipeline, security enforcement, and data orchestration into a single, scalable unit.
 
@@ -42,6 +42,7 @@ graph TD
 
 ### Logic & Security Layer (`src/lib`)
 - **`auth.ts`**: The core authentication engine using Next-Auth. Handles credential validation, SSO provider mapping, JWT consistency checks, and concurrent session tracking.
+- **`sessionTracker.ts`**: Redis sorted-set based concurrent session tracker with a 10-minute rolling heartbeat window. Tracks, refreshes, and prunes sessions automatically.
 - **`security/`**: A suite of specialized utilities:
   - `csrf.ts`: HMAC-signed token validation.
   - `ssrf.ts`: Resolve-time DNS validation with **Pinned IP Clients** to prevent TOCTOU/DNS Rebinding attacks.
@@ -56,7 +57,7 @@ graph TD
 2. **Provider Redirect**: Handled via Next-Auth (Azure AD, Keycloak, or Credentials).
 3. **JWT Issue**: On success, a JWT is issued with an **Absolute Lifetime** (8 hours).
 4. **Session Guard**: Every subsequent request is checked against a **Redis-backed Idle Timer** (20 minutes).
-5. **Concurrent Session Detection**: Active sessions are tracked per user in Redis sorted sets. When another active session is detected, a `concurrent_login_detected` audit event is logged and the user receives an in-app notification banner.
+5. **Concurrent Session Detection**: Active sessions are tracked per user in Redis sorted sets with a **10-minute rolling heartbeat**. Each active browser tab refreshes its entry during periodic token checks (~5 min). Closed tabs stop refreshing and their entries auto-expire, keeping the count accurate. When another active session is detected, a `concurrent_login_detected` audit event is logged and the user receives a themed, dismissible notification banner. The banner offers a **"Clear other sessions"** action that wipes all Redis session entries and re-registers only the current session, effectively signing out all other devices. Banner dismiss state is persisted via module-level variables backed by `sessionStorage`, surviving component remounts and page reloads within the same tab.
 6. **Revocation**: Critical security events (password changes) rotate the user's `securityStamp`. The `jwt` callback detects this mismatch and revokes all active sessions across devices in real-time.
 
 ### Request Flow

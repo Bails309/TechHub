@@ -5,6 +5,18 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
+let appVersion: string | undefined;
+function getAppVersion(): string {
+    if (appVersion) return appVersion;
+    try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
+        appVersion = pkg.version ?? 'unknown';
+    } catch {
+        appVersion = 'unknown';
+    }
+    return appVersion!;
+}
+
 export interface HealthStatus {
     status: 'ok' | 'error' | 'warning';
     latency?: number;
@@ -166,19 +178,63 @@ export async function checkSchemaHealth(): Promise<HealthStatus> {
     }
 }
 
+export async function checkSessionTrackingHealth(): Promise<HealthStatus> {
+    const start = Date.now();
+    try {
+        const client = await getSharedRedisClient();
+        if (!client) {
+            return {
+                status: 'error',
+                message: 'Redis unavailable — session tracking disabled'
+            };
+        }
+
+        // Probe sorted-set operations with a disposable test key
+        const testKey = 'health:session_probe';
+        const testMember = 'probe';
+        const score = Date.now() + 30_000;
+        await client.zadd(testKey, String(score), testMember);
+        const count = await client.zcard(testKey);
+        await client.del(testKey);
+
+        if (count < 1) {
+            return {
+                status: 'error',
+                message: 'Sorted-set ZADD/ZCARD returned unexpected count',
+                latency: Date.now() - start
+            };
+        }
+
+        return {
+            status: 'ok',
+            latency: Date.now() - start,
+            message: 'Sorted-set operations functional'
+        };
+    } catch (e) {
+        return {
+            status: 'error',
+            latency: Date.now() - start,
+            message: e instanceof Error ? e.message : String(e)
+        };
+    }
+}
+
 export async function getSystemHealth() {
-    const [db, redis, storage, schema] = await Promise.all([
+    const [db, redis, storage, schema, sessionTracking] = await Promise.all([
         checkDatabaseHealth(),
         checkRedisHealth(),
         checkStorageHealth(),
-        checkSchemaHealth()
+        checkSchemaHealth(),
+        checkSessionTrackingHealth()
     ]);
 
     return {
+        version: getAppVersion(),
         db,
         redis,
         storage,
         schema,
+        sessionTracking,
         timestamp: new Date().toISOString(),
         server: {
             uptime: Math.floor(process.uptime()),

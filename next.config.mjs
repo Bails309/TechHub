@@ -4,6 +4,7 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   output: 'standalone',
+  serverExternalPackages: ['ioredis', 'bcryptjs'],
   async headers() {
     const securityHeaders = [
       { key: "X-Frame-Options", value: "DENY" },

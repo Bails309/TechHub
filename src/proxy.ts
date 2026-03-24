@@ -431,7 +431,11 @@ export async function proxy(request: NextRequest) {
 
   const fetchDest = request.headers.get('sec-fetch-dest') ?? '';
   const isNavigationRequest = request.method === 'GET' && (fetchDest === 'document' || accept.includes('text/html'));
-  const isSessionUpdate = pathname === '/api/auth/session' || request.headers.has('next-action');
+  // Only count EXPLICIT user-initiated session updates as activity — NOT
+  // the automatic GET refetches that SessionProvider sends every 5 minutes.
+  // update() sends POST; auto-refetch sends GET.  Without this distinction
+  // the server-side idle timer resets on every refetch and can never expire.
+  const isSessionUpdate = (pathname === '/api/auth/session' && request.method !== 'GET') || request.headers.has('next-action');
 
   // If authenticated and session is still valid, update activity cookie on navigations
   // or explicit activity signals (session updates / server actions).

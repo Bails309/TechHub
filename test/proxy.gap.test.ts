@@ -411,21 +411,38 @@ describe('proxy.ts – proxy() function gap coverage', () => {
     expect(cookies.some((c: string) => c.includes('techhub-activity='))).toBe(true);
   });
 
-  it('updates activity cookie on session update path', async () => {
+  it('updates activity cookie on session update path (POST only)', async () => {
     mockGetToken.mockResolvedValue({
       sub: 'user-1',
       iat: Math.floor(Date.now() / 1000)
     });
 
-    const req = buildRequest({
+    // POST = user-initiated update() — should set the activity cookie
+    const postReq = buildRequest({
+      method: 'POST',
+      pathname: '/api/auth/session',
+      cookies: { 'techhub-activity': Date.now().toString() }
+    });
+    const postResult = await mod.proxy(postReq);
+    const postCookies = getAllSetCookies(postResult.headers);
+    expect(postCookies.some((c: string) => c.includes('techhub-activity='))).toBe(true);
+  });
+
+  it('does NOT update activity cookie on automatic session refetch (GET)', async () => {
+    mockGetToken.mockResolvedValue({
+      sub: 'user-1',
+      iat: Math.floor(Date.now() / 1000)
+    });
+
+    // GET = SessionProvider auto-refetch — should NOT reset idle timer
+    const getReq = buildRequest({
       method: 'GET',
       pathname: '/api/auth/session',
       cookies: { 'techhub-activity': Date.now().toString() }
     });
-
-    const result = await mod.proxy(req);
-    const cookies = getAllSetCookies(result.headers);
-    expect(cookies.some((c: string) => c.includes('techhub-activity='))).toBe(true);
+    const getResult = await mod.proxy(getReq);
+    const getCookies = getAllSetCookies(getResult.headers);
+    expect(getCookies.some((c: string) => c.includes('techhub-activity='))).toBe(false);
   });
 
   it('handles CSRF from form body on POST', async () => {

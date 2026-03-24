@@ -16,8 +16,8 @@ export default function Providers({
 }) {
   return (
     <SessionProvider
-      refetchInterval={0}
-      refetchOnWindowFocus={false}
+      refetchInterval={300}
+      refetchOnWindowFocus={true}
     >
       <CsrfProvider token={csrfToken}>
         <NonceProvider nonce={nonce}>

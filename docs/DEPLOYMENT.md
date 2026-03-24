@@ -131,6 +131,21 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ### 2. NextAuth Secret (`NEXTAUTH_SECRET`)
 Used for signing session cookies. Generate a random 32-character string (plain text or base64).
 
+### 3. Build-Time Environment Variables (Docker)
+
+The Dockerfile handles two environment variables specially at build time:
+
+| Variable | Build-time value | Why |
+|---|---|---|
+| `DATABASE_URL` | `postgresql://placeholder:placeholder@localhost:5432/placeholder` | Next.js metadata generation requires valid URL syntax, but no real DB connection. |
+| `NEXTAUTH_URL` | `""` (empty string) | NextAuth bakes this into the bundle at build. Leaving it empty ensures the runtime `process.env.NEXTAUTH_URL` is used instead, making the image deployment-agnostic. |
+
+> **Important:** Never set `NEXTAUTH_URL` during `docker build`. If you do, the value is baked into the static HTML and overrides whatever you set at runtime. The Dockerfile already handles this correctly.
+
+### 4. Standalone Mode External Packages
+
+The `next.config.mjs` includes `serverExternalPackages: ['ioredis', 'bcryptjs']`. This ensures these packages (which use dynamic `require()` calls that Next.js trace cannot follow) are fully copied into the standalone output. Without this, the Docker image will fail at runtime with `MODULE_NOT_FOUND`.
+
 ---
 
 ## 🛠️ Post-Deployment Checklist

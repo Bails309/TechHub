@@ -54,10 +54,19 @@ export default function SessionGuard() {
     const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const signingOutRef = useRef(false);
 
-    // Read timeout config from session (set by the server in the session callback)
+    // Stable refs for values that change on every session refetch.
+    // This prevents the main useEffect from re-running (and resetting the
+    // idle timer) every time SessionProvider auto-refetches.
+    const updateRef = useRef(update);
+    updateRef.current = update;
+
     const s = session as any;
     const idleTimeoutMs = s?.idleTimeoutMs ?? FALLBACK_IDLE_MS;
     const warningMs = s?.warningMs ?? FALLBACK_WARNING_MS;
+    const idleTimeoutRef = useRef(idleTimeoutMs);
+    idleTimeoutRef.current = idleTimeoutMs;
+    const warningRef = useRef(warningMs);
+    warningRef.current = warningMs;
 
     // React to server-side session revocation
     useEffect(() => {
@@ -66,7 +75,8 @@ export default function SessionGuard() {
         }
     }, [s?.revoked]);
 
-    // Debounced activity tracker
+    // Debounced activity tracker — reads update via ref so the callback
+    // identity is stable and won't cause the effect to re-run.
     const markActivity = useCallback(() => {
         if (activityDebounceActive || signingOutRef.current) return;
         activityDebounceActive = true;
@@ -74,7 +84,7 @@ export default function SessionGuard() {
         lastActivityRef.current = now;
 
         // Notify the server of activity to reset its idle timer.
-        update({ interacted: now });
+        updateRef.current({ interacted: now });
 
         // If warning is showing and user interacts, dismiss it
         setShowWarning(false);
@@ -86,12 +96,12 @@ export default function SessionGuard() {
         setTimeout(() => {
             activityDebounceActive = false;
         }, ACTIVITY_DEBOUNCE_MS);
-    }, [update]);
+    }, []); // stable — no deps, reads everything via refs
 
     useEffect(() => {
         if (status !== 'authenticated') return;
 
-        // Initialize last activity to now
+        // Initialize last activity to now (only on first mount / status change)
         lastActivityRef.current = Date.now();
 
         const activityEvents = ['mousedown', 'keydown', 'touchstart', 'click'];
@@ -100,36 +110,40 @@ export default function SessionGuard() {
         });
 
         // Periodic check: has the user been idle too long?
+        // Reads timeout values from refs so the interval always uses the
+        // latest server-provided config without the effect re-running.
         checkIntervalRef.current = setInterval(() => {
             if (signingOutRef.current) return;
             const idle = Date.now() - lastActivityRef.current;
-            const warningThreshold = idleTimeoutMs - warningMs;
+            const curTimeout = idleTimeoutRef.current;
+            const curWarning = warningRef.current;
+            const warningThreshold = curTimeout - curWarning;
 
-            if (idle >= idleTimeoutMs) {
+            if (idle >= curTimeout) {
                 // Time's up — persist reason then sign out.
                 // Clear ALL intervals first to guarantee no duplicate calls.
                 signingOutRef.current = true;
                 if (checkIntervalRef.current) { clearInterval(checkIntervalRef.current); checkIntervalRef.current = null; }
                 if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); countdownIntervalRef.current = null; }
-                idleSignOut(update);
+                idleSignOut(updateRef.current);
                 return;
             }
 
             if (idle >= warningThreshold && !countdownIntervalRef.current) {
                 // Show the warning with countdown
-                const remaining = idleTimeoutMs - idle;
+                const remaining = curTimeout - idle;
                 setCountdown(Math.ceil(remaining / 1000));
                 setShowWarning(true);
 
                 countdownIntervalRef.current = setInterval(() => {
                     if (signingOutRef.current) return;
                     const currentIdle = Date.now() - lastActivityRef.current;
-                    const left = idleTimeoutMs - currentIdle;
+                    const left = idleTimeoutRef.current - currentIdle;
                     if (left <= 0) {
                         signingOutRef.current = true;
                         if (checkIntervalRef.current) { clearInterval(checkIntervalRef.current); checkIntervalRef.current = null; }
                         if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); countdownIntervalRef.current = null; }
-                        idleSignOut(update);
+                        idleSignOut(updateRef.current);
                     } else {
                         setCountdown(Math.ceil(left / 1000));
                     }
@@ -144,7 +158,7 @@ export default function SessionGuard() {
             if (checkIntervalRef.current) clearInterval(checkIntervalRef.current);
             if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
         };
-    }, [status, markActivity, idleTimeoutMs, warningMs, update]);
+    }, [status, markActivity]); // stable deps only — timeout values read via refs
 
     if (status !== 'authenticated' || !showWarning) return null;
 

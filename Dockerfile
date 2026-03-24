@@ -18,7 +18,9 @@ RUN npm run prisma:generate
 # Increase Node heap for builds to avoid worker crashes (SIGBUS/OOM)
 ENV NODE_OPTIONS=--max-old-space-size=4096
 # Next.js static generation requires a DATABASE_URL even during build time for metadata generation
-RUN DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" npm run build
+# NEXTAUTH_URL must NOT be set at build time — NextAuth will bake in whatever value it sees,
+# overriding the runtime environment variable.  We explicitly unset it here.
+RUN DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" NEXTAUTH_URL="" npm run build
 
 # Compile the seed script to JS so we don't need ts-node/devDependencies in production
 # We bundle bcryptjs because it's a small JS-only library, but keep @prisma/client external

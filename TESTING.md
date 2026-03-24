@@ -2,7 +2,7 @@
 
 This project uses [Vitest](https://vitest.dev) for unit and integration tests and [Playwright](https://playwright.dev) for end-to-end tests.
 
-**Current coverage:** 76 unit/integration test files, 641 tests, 4 E2E suites. Enforced thresholds: 90% statements, 90% lines, 75% branches, 88% functions.
+**Current coverage:** 78 unit/integration test files, 682 tests, 4 E2E suites. Enforced thresholds: 90% statements, 90% lines, 75% branches, 88% functions.
 
 ## Quick Commands
 
@@ -33,8 +33,9 @@ docker-compose run --rm app sh -c "npx vitest run --reporter verbose"
 | `test/auth.sessionLifetime.test.ts` | Session absolute/idle timeout enforcement |
 | `test/auth-config.test.ts` | `getSessionMaxAgeSeconds` and `getSessionIdleTimeoutMs` with env var parsing and defaults |
 | `test/authConfig.test.ts` | Auth config additional tests |
-| `test/auth.gap.test.ts` | Auth gap coverage — providers, callbacks, credentials authorize, JTI blacklisting, session dedup, concurrent session tracking |
-| `test/sessionTracker.test.ts` | Concurrent session tracker — Redis sorted set tracking, audit logging, error resilience |
+| `test/auth.gap.test.ts` | Auth gap coverage — providers, callbacks, credentials authorize, JTI auto-generation, blacklisting, session dedup, concurrent session tracking, refreshSession heartbeat |
+| `test/sessionTracker.test.ts` | Concurrent session tracker — Redis sorted set tracking, heartbeat refresh, audit logging, error resilience |
+| `test/concurrentSessionBanner.test.ts` | Banner rendering logic — visibility conditions, dismiss/reset behaviour, device label formatting |
 | `test/credentials.authorize.test.ts` | Credentials provider authorization logic |
 | `test/credentials.rateLimit.test.ts` | Rate limiting on credential attempts |
 | `test/linkSsoAccount.test.ts` | SSO account linking transactionality |

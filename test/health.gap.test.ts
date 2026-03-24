@@ -100,10 +100,12 @@ describe('health.ts – gap coverage', () => {
       mockPrisma.systemState.findUnique.mockResolvedValue(null);
 
       const result = await getSystemHealth();
+      expect(result).toHaveProperty('version');
       expect(result).toHaveProperty('db');
       expect(result).toHaveProperty('redis');
       expect(result).toHaveProperty('storage');
       expect(result).toHaveProperty('schema');
+      expect(result).toHaveProperty('sessionTracking');
     });
   });
 });
