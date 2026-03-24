@@ -1,6 +1,6 @@
 # TechHub Architecture
 
-> **Version 2.2.5** — See [CHANGELOG.md](CHANGELOG.md) for release history.
+> **Version 2.2.6** — See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 TechHub is a high-performance, secure application portal designed for enterprise environments. It follows a **Standalone Container** architecture, consolidating its request pipeline, security enforcement, and data orchestration into a single, scalable unit.
 

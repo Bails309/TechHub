@@ -47,7 +47,7 @@ test.describe('App Interaction Flow', () => {
         }
 
         // Verify the final page URL pattern
-        await expect(newPage).toHaveURL(/^https?:\/\/[^/]*status\.example\.com/, { timeout: 20000 });
+        await expect(newPage).toHaveURL(/^https?:\/\/(.*\.)?status\.example\.com(\/|$)/, { timeout: 20000 });
         await expect(newPage.locator('h1')).toHaveText('Mock External Page', { timeout: 10000 });
     });
 
@@ -90,7 +90,7 @@ test.describe('App Interaction Flow', () => {
         }
 
         // Verify final redirection
-        await expect(newPage).toHaveURL(/^https?:\/\/[^/]*github\.com/, { timeout: 20000 });
+        await expect(newPage).toHaveURL(/^https?:\/\/(.*\.)?github\.com(\/|$)/, { timeout: 20000 });
         await expect(newPage.locator('h1')).toHaveText('Mock GitHub Page', { timeout: 10000 });
     });
 });

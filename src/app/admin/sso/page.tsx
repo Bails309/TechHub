@@ -1,6 +1,6 @@
 import { prisma } from '../../../lib/prisma';
 import { randomUUID } from 'crypto';
-import { decryptSecret, getSecretKeyState, hasSecretKey } from '../../../lib/crypto';
+import { decryptSecret, getSecretKeyState } from '../../../lib/crypto';
 import SsoConfigForm from '../../../components/SsoConfigForm';
 import LinkSsoAccountForm from '../../../components/LinkSsoAccountForm';
 import { linkSsoAccount } from '../actions';

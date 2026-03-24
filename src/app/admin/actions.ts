@@ -54,7 +54,7 @@ function assertPostgres() {
   }
 }
 import { assertUrlNotPrivate } from '../../lib/ssrf';
-import { getStorageConfigMapWithDeps, StorageProviderId } from '@/lib/storageConfig';
+import { getStorageConfigMapWithDeps } from '@/lib/storageConfig';
 import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 import {

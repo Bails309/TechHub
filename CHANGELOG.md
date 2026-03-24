@@ -5,6 +5,25 @@ All notable changes to TechHub are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.6] - 2026-03-24
+
+### Fixed
+- **Idle timeout never firing (client-side)** — The `useEffect` that runs the idle-check polling in `SessionGuard` depended on `[status, markActivity, idleTimeoutMs, warningMs, update]`. NextAuth's `update` function and the session-derived timeout values receive new identities on every SessionProvider auto-refetch (every 5 minutes). Each dependency change re-ran the effect, which executed `lastActivityRef.current = Date.now()`, silently resetting the idle clock. The 20-minute timer could therefore never reach the 18-minute warning threshold or the 20-minute sign-out threshold. Fixed by storing `update`, `idleTimeoutMs`, and `warningMs` in stable `useRef` containers and removing them from the effect's dependency array. `markActivity` is now a stable callback (empty deps) that reads `update` via ref. The effect depends only on `[status, markActivity]`, both of which are stable across refetches.
+- **Idle timeout never firing (server-side)** — `proxy.ts` treated all requests to `/api/auth/session` as user activity (`isSessionUpdate = pathname === '/api/auth/session'`), including `GET` requests from SessionProvider's automatic 5-minute refetch. This reset the `techhub-activity` cookie every 5 minutes even when the user was completely idle, preventing the server-side idle enforcement from ever triggering. Fixed by filtering to `request.method !== 'GET'`, so only user-initiated `update()` calls (`POST`) reset the activity cookie.
+
+### Changed
+- **`SessionGuard.tsx`** — Rewrote idle-timer effect to use `useRef` for `update`, `idleTimeoutMs`, and `warningMs`. `markActivity` callback is now stable (reads `update` via `updateRef.current`). Effect dependency array reduced to `[status, markActivity]`. Interval callbacks read timeout config from refs (`idleTimeoutRef.current`, `warningRef.current`) to always use the latest server-provided values without causing effect re-runs.
+- **`proxy.ts`** — `isSessionUpdate` now requires `request.method !== 'GET'` for the `/api/auth/session` path, distinguishing user-initiated session updates (POST) from automatic refetches (GET).
+
+### Tests
+- Updated `proxy.gap.test.ts` — Split the activity-cookie session-update test into two: one confirming `POST /api/auth/session` sets the activity cookie, one confirming `GET /api/auth/session` does not. Total tests: 727.
+
+### Security
+- **CodeQL: Missing regex anchors** — E2E test URL assertions in `app.spec.ts` used unanchored patterns (`/^https?:\/\/[^/]*status\.example\.com/`) that could match unintended subdomains. Replaced with properly anchored regexes (`/^https?:\/\/(.*\.)?status\.example\.com(\/|$)/`) at lines 50 and 93.
+- **CodeQL: Unused imports** — Removed unused `afterEach` from `sessionTracker.test.ts`, unused `beforeEach` from `pinnedClient.gap.test.ts`, unused `StorageProviderId` from `admin/actions.ts`, and unused `hasSecretKey` from `admin/sso/page.tsx`.
+
+---
+
 ## [2.2.5] - 2026-03-24
 
 ### Fixed

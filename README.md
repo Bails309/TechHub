@@ -4,7 +4,7 @@
 
 ![TechHub Hero Carousel](docs/images/dashboard_dark.png)
 
-[![Version](https://img.shields.io/badge/Version-2.2.5-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.2.6-green)](CHANGELOG.md)
 [![Next.js](https://img.shields.io/badge/Framework-Next.js_16-black?logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/Language-TypeScript_5.9-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Runtime-Node.js_24-339933?logo=node.js)](https://nodejs.org/)
