@@ -34,10 +34,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Node.js 20
+      - name: Use Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Restore npm cache
         uses: actions/cache@v4
@@ -99,6 +99,19 @@ jobs:
             -e SSO_MASTER_KEY=Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E= \
             techhub-tests sh -lc "CI=true npm test -- --run"
 
+      - name: Run unit tests with coverage (host)
+        run: npx vitest run --coverage
+        env:
+          SSO_MASTER_KEY: Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
       - name: Build Next.js
         run: npm run build
 
@@ -146,6 +159,7 @@ jobs:
         run: |
           docker rm -f techhub-ci || true
           docker rm -f ci-postgres || true
+          docker rm -f ci-redis || true
 
   e2e-tests:
     runs-on: ubuntu-latest
@@ -153,6 +167,7 @@ jobs:
     env:
       DATABASE_URL: postgres://techhub:techhub@localhost:5432/techhub
       REDIS_URL: redis://localhost:6379
+      RATE_LIMIT_STORE: redis
       SSO_MASTER_KEY: Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
       NEXTAUTH_SECRET: placeholder-secret-for-ci-testing-purpose-only
       NEXTAUTH_URL: http://localhost:3000
@@ -163,7 +178,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies

@@ -1,7 +1,6 @@
 import { prisma } from './prisma';
 import { PHASE_PRODUCTION_BUILD } from 'next/constants';
 import { decryptSecret } from './crypto';
-import { unstable_cache } from 'next/cache';
 
 export type StorageProviderId = 'local' | 's3' | 'azure';
 
@@ -12,11 +11,27 @@ export interface StorageConfigEntry {
   secret: string | null;
 }
 
-const loadStorageConfigs = unstable_cache(
-  () => prisma.storageConfig.findMany(),
-  ['storage-config'],
-  { tags: ['storage-config'] }
-);
+// Simple TTL cache replacing unstable_cache (removed in Next.js 16)
+let _cachedStorageConfigs: Awaited<ReturnType<typeof prisma.storageConfig.findMany>> | null = null;
+let _storageConfigCacheTime = 0;
+const STORAGE_CONFIG_CACHE_TTL_MS = 60_000;
+
+async function loadStorageConfigs() {
+  const now = Date.now();
+  if (_cachedStorageConfigs && now - _storageConfigCacheTime < STORAGE_CONFIG_CACHE_TTL_MS) {
+    return _cachedStorageConfigs;
+  }
+  const rows = await prisma.storageConfig.findMany();
+  _cachedStorageConfigs = rows;
+  _storageConfigCacheTime = now;
+  return rows;
+}
+
+/** Invalidate the in-memory storage config cache (e.g. after admin changes). */
+export function invalidateStorageConfigCache() {
+  _cachedStorageConfigs = null;
+  _storageConfigCacheTime = 0;
+}
 
 export async function getStorageConfigMap() {
   return getStorageConfigMapWithDeps(loadStorageConfigs, decryptSecret);

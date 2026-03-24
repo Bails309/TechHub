@@ -1,10 +1,12 @@
 import { lookup } from 'dns/promises';
 import ipaddr from 'ipaddr.js';
 
+const BLOCKED_RANGES = ['private', 'loopback', 'linkLocal', 'uniqueLocal', 'reserved', 'broadcast', 'multicast', 'unspecified'];
+
 export function isPublicIp(address: string) {
   try {
     const parsed = ipaddr.process(address);
-    return parsed.range() === 'unicast';
+    return !BLOCKED_RANGES.includes(parsed.range());
   } catch {
     return false;
   }

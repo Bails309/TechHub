@@ -4,8 +4,10 @@
 
 ![TechHub Hero Carousel](docs/images/dashboard_dark.png)
 
-[![Next.js](https://img.shields.io/badge/Framework-Next.js-black?logo=next.js)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/Language-TypeScript-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Version](https://img.shields.io/badge/Version-2.2.1-green)](CHANGELOG.md)
+[![Next.js](https://img.shields.io/badge/Framework-Next.js_16-black?logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/Language-TypeScript_5.5-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Runtime-Node.js_24-339933?logo=node.js)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/Deployment-Standalone_Container-blue?logo=docker)](https://www.docker.com/)
 
 ---
@@ -44,6 +46,8 @@ For in-depth technical guides, security reviews, and operational procedures, ref
 
 - **[Architecture & Design](ARCHITECTURE.md)**: Deep dive into the system design, data lifecycle, and standalone container architecture.
 - **[Security & Hardening](SECURITY.md)**: Comprehensive guide on CSRF/SSRF prevention, nonce-based CSP, and session security.
+- **[Testing](TESTING.md)**: Test strategy, coverage details, and CI/CD workflow documentation.
+- **[Changelog](CHANGELOG.md)**: Version history and release notes.
 - **[Azure Deployment (ACA)](docs/DEPLOYMENT_AZURE.md)**: Step-by-step instructions for deploying to Azure Container Apps behind a cloud ingress.
 - **[Administrative Operations](docs/ADMIN_OPS.md)**: Manual for user management, password recovery, and system troubleshooting.
 
@@ -58,7 +62,7 @@ TechHub is designed as a **Standalone Container** architecture. It is fully self
 ## 🚀 Quick Start
 
 ### 1. Requirements
-- **Node.js**: 20.x (LTS) or later
+- **Node.js**: 24.x or later
 - **PostgreSQL**: 13+ or later
 - **Redis**: 6.2+ or later
 - **Docker**: Desktop 4.x+ or Compose v2+
@@ -116,6 +120,7 @@ We welcome contributions! Please follow our modern dev workflow:
 1. Ensure `npm run lint` passes.
 2. Follow the design system outlined in `globals.css`.
 3. Test your changes with `npm test`.
+4. Update `CHANGELOG.md` with your changes under an `[Unreleased]` section.
 
 ---
 

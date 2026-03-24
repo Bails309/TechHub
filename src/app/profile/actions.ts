@@ -6,6 +6,7 @@ import { validateCsrf } from '@/lib/csrf';
 import { invalidateUserMeta } from '@/lib/userCache';
 import { writeAuditLog } from '@/lib/audit';
 import { saveIcon, deleteIcon } from '@/lib/storage';
+import { assertRateLimit } from '@/lib/rateLimit';
 
 export async function updateProfileImage(formData: FormData): Promise<{ status: 'success' | 'error'; message: string; image?: string }> {
     if (!(await validateCsrf(formData))) {
@@ -16,6 +17,8 @@ export async function updateProfileImage(formData: FormData): Promise<{ status: 
     if (!session?.user?.id) {
         return { status: 'error' as const, message: 'Not signed in' };
     }
+
+    await assertRateLimit(`profile-image:${session.user.id}`);
 
     const imageFile = formData.get('image') as File | null;
     if (!imageFile || imageFile.size === 0) {

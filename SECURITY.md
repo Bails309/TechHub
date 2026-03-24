@@ -15,7 +15,7 @@ TechHub implements a "Defense-in-Depth" strategy, ensuring that multiple securit
 ## 2. Infrastructure Security
 
 ### Strict Content Security Policy (CSP)
-TechHub enforces a strict, nonce-based CSP via [`src/middleware.ts`](src/middleware.ts). 
+TechHub enforces a strict, nonce-based CSP via [`src/proxy.ts`](src/proxy.ts). 
 - **Dynamic Nonces**: Every request generates a cryptographically secure 128-bit nonce.
 - **No `'unsafe-inline'`**: All scripts and styles must be nonced, effectively neutering XSS vectors.
 - **Strict Headers**: HSTS, `X-Content-Type-Options: nosniff`, and `X-Frame-Options: SAMEORIGIN` are enforced.

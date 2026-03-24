@@ -1,6 +1,57 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* --- Tailwind v4: Custom dark mode variant using data-theme selector --- */
+@variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* --- Tailwind v4: Theme configuration (replaces tailwind.config.ts) --- */
+@theme {
+  /* Font families */
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui;
+  --font-serif: var(--font-serif), ui-serif, Georgia;
+
+  /* Custom color: ink */
+  --color-ink-50: #f5f5f4;
+  --color-ink-100: #e7e5e4;
+  --color-ink-200: #d6d3d1;
+  --color-ink-300: #a8a29e;
+  --color-ink-400: #78716c;
+  --color-ink-500: #57534e;
+  --color-ink-600: #44403c;
+  --color-ink-700: #292524;
+  --color-ink-800: #1c1917;
+  --color-ink-900: #0c0a09;
+
+  /* Custom color: bronze */
+  --color-bronze-50: #fff7ed;
+  --color-bronze-100: #ffedd5;
+  --color-bronze-200: #fed7aa;
+  --color-bronze-300: #fdba74;
+  --color-bronze-400: #fb923c;
+  --color-bronze-500: #f97316;
+  --color-bronze-600: #ea580c;
+  --color-bronze-700: #c2410c;
+  --color-bronze-800: #9a3412;
+  --color-bronze-900: #7c2d12;
+
+  /* Custom color: ocean */
+  --color-ocean-50: #eff6ff;
+  --color-ocean-100: #dbeafe;
+  --color-ocean-200: #bfdbfe;
+  --color-ocean-300: #93c5fd;
+  --color-ocean-400: #60a5fa;
+  --color-ocean-500: #3b82f6;
+  --color-ocean-600: #2563eb;
+  --color-ocean-700: #1d4ed8;
+  --color-ocean-800: #1e40af;
+  --color-ocean-900: #1e3a8a;
+
+  /* Custom box shadow */
+  --shadow-glow: 0 0 0 1px rgba(59,130,246,0.1), 0 30px 60px -20px rgba(37,99,235,0.35);
+
+  /* Custom background images */
+  --background-image-hero-grid: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.08) 1px, transparent 0);
+  --background-image-aurora: linear-gradient(120deg, rgba(30,64,175,0.6), rgba(234,88,12,0.45), rgba(15,23,42,0.9));
+}
 
 @layer components {
 
@@ -163,7 +214,7 @@ main {
 }
 
 .hero-grid {
-  background-image: var(--tw-gradient-stops), theme('backgroundImage.hero-grid');
+  background-image: var(--tw-gradient-stops), var(--background-image-hero-grid);
   background-size: 32px 32px;
   mask-image: radial-gradient(circle at top, rgba(0, 0, 0, 1), transparent 70%);
 }

@@ -26,7 +26,7 @@ describe('middleware activity cookie handling (unit)', () => {
 
     it('updates techhub-activity cookie on valid requests', async () => {
         const { getToken } = await import('next-auth/jwt');
-        const { middleware } = await import('../src/middleware');
+        const { proxy: middleware } = await import('../src/proxy');
 
         (getToken as any).mockResolvedValue({ sub: 'u1' });
 
@@ -43,7 +43,7 @@ describe('middleware activity cookie handling (unit)', () => {
 
     it('redirects and clears cookies when idle timeout is exceeded', async () => {
         const { getToken } = await import('next-auth/jwt');
-        const { middleware } = await import('../src/middleware');
+        const { proxy: middleware } = await import('../src/proxy');
 
         (getToken as any).mockResolvedValue({ sub: 'u1' });
 
