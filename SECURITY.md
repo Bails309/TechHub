@@ -10,7 +10,7 @@ TechHub implements a "Defense-in-Depth" strategy, ensuring that multiple securit
   - **Absolute Timeout (8h)**: Prevents long-lived session hijacking by forcing re-authentication once per shift.
   - **Idle Timeout (20m)**: Automatically terminates sessions after 20 minutes of inactivity.
   - **Session Guard**: A specialized middleware logic that prevents rapid-fire redirection loops and ensures session consistency across administrative state changes.
-  - **Concurrent Session Detection**: Active sessions are tracked per user via Redis sorted sets. When a concurrent login is detected, a `concurrent_login_detected` audit event is logged and the user receives a dismissible notification banner. Sessions are cleaned up on logout, revocation, or expiry.
+  - **Concurrent Session Detection**: Active sessions are tracked per user via Redis sorted sets with a **10-minute rolling heartbeat**. Active browser tabs refresh their entry every ~5 minutes; closed tabs auto-expire. When a concurrent login is detected, a `concurrent_login_detected` audit event is logged and the user receives a dismissible, theme-aware notification banner with a **"Clear other sessions"** action that invalidates all other devices. Banner interactions are isolated from SessionGuard's activity tracking to prevent dismiss-state races. Sessions are cleaned up on logout, revocation, session clearing, or heartbeat expiry.
 - **Real-time Revocation**: Sessions are cryptographically bound to a `securityStamp` on the `User` model. This stamp is rotated during security events (e.g. password changes), ensuring immediate revocation of all active sessions across devices while allowing non-security profile updates to persist.
 
 ## 2. Infrastructure Security

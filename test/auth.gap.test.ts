@@ -50,11 +50,13 @@ vi.mock('../src/lib/audit', () => ({
 // Mock sessionTracker
 const mockTrackSession = vi.fn().mockResolvedValue(1);
 const mockUntrackSession = vi.fn().mockResolvedValue(undefined);
-const mockCountActiveSessions = vi.fn().mockResolvedValue(1);
+const mockRefreshSession = vi.fn().mockResolvedValue(1);
+const mockClearAllSessions = vi.fn().mockResolvedValue(0);
 vi.mock('../src/lib/sessionTracker', () => ({
   trackSession: (...a: any[]) => mockTrackSession(...a),
   untrackSession: (...a: any[]) => mockUntrackSession(...a),
-  countActiveSessions: (...a: any[]) => mockCountActiveSessions(...a),
+  refreshSession: (...a: any[]) => mockRefreshSession(...a),
+  clearAllSessions: (...a: any[]) => mockClearAllSessions(...a),
 }));
 
 // Mock ip
@@ -120,7 +122,8 @@ describe('auth.ts – gap coverage', () => {
     mockWriteAuditLog.mockResolvedValue(undefined);
     mockTrackSession.mockResolvedValue(1);
     mockUntrackSession.mockResolvedValue(undefined);
-    mockCountActiveSessions.mockResolvedValue(1);
+    mockRefreshSession.mockResolvedValue(1);
+    mockClearAllSessions.mockResolvedValue(0);
   });
 
   describe('getRateLimitKey', () => {
@@ -239,6 +242,37 @@ describe('auth.ts – gap coverage', () => {
     });
 
     describe('jwt callback', () => {
+      it('auto-generates a JTI via randomUUID when token has no jti', async () => {
+        const opts = await auth.getAuthOptions();
+        const token = await opts.callbacks!.jwt!({
+          token: { sub: '1', iat: Math.floor(Date.now() / 1000), lastCheckedAt: Date.now() } as any, // no jti
+          user: undefined as any,
+          account: undefined as any,
+          trigger: undefined as any,
+          session: undefined,
+          isNewUser: undefined,
+        });
+        // Must have been assigned a UUID-format string
+        expect(token.jti).toBeDefined();
+        expect(typeof token.jti).toBe('string');
+        expect(token.jti).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+        );
+      });
+
+      it('preserves existing JTI and does not overwrite it', async () => {
+        const opts = await auth.getAuthOptions();
+        const token = await opts.callbacks!.jwt!({
+          token: { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'existing-jti', lastCheckedAt: Date.now() } as any,
+          user: undefined as any,
+          account: undefined as any,
+          trigger: undefined as any,
+          session: undefined,
+          isNewUser: undefined,
+        });
+        expect(token.jti).toBe('existing-jti');
+      });
+
       it('sets user fields on initial token', async () => {
         const opts = await auth.getAuthOptions();
         const token = await opts.callbacks!.jwt!({
@@ -267,6 +301,23 @@ describe('auth.ts – gap coverage', () => {
         expect(token.mustChangePassword).toBe(false);
         expect(token.image).toBe('/new.png');
         expect(token.logoutReason).toBe('idle_timeout');
+      });
+
+      it('handles trigger=update with clearSessions', async () => {
+        mockClearAllSessions.mockResolvedValue(3);
+        mockTrackSession.mockResolvedValue(1);
+        const opts = await auth.getAuthOptions();
+        const token = await opts.callbacks!.jwt!({
+          token: { sub: 'u1', iat: Math.floor(Date.now() / 1000), jti: 'keep-jti', sessionId: 'session-123', exp: Math.floor(Date.now() / 1000) + 3600, lastCheckedAt: Date.now() } as any,
+          user: undefined as any,
+          account: undefined as any,
+          trigger: 'update' as any,
+          session: { clearSessions: true },
+          isNewUser: undefined,
+        });
+        expect(mockClearAllSessions).toHaveBeenCalledWith('u1');
+        expect(mockTrackSession).toHaveBeenCalledWith('u1', 'session-123', expect.any(Number));
+        expect(token.concurrentSessions).toBe(0);
       });
 
       it('revokes token when user is deleted (meta returns null)', async () => {
@@ -504,22 +555,34 @@ describe('auth.ts – gap coverage', () => {
 
       it('logs signOut with idle_timeout reason', async () => {
         const opts = await auth.getAuthOptions();
-        await opts.events!.signOut!({ token: { sub: '1', logoutReason: 'idle_timeout' } as any, session: undefined as any });
+        await opts.events!.signOut!({ token: { sub: '1', jti: 'idle-jti', sessionId: 'sid-idle', logoutReason: 'idle_timeout' } as any, session: undefined as any });
         expect(mockWriteAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: 'session_terminated' }));
+      });
+
+      it('untracks session on idle_timeout signOut', async () => {
+        const opts = await auth.getAuthOptions();
+        await opts.events!.signOut!({ token: { sub: '1', jti: 'idle-jti', sessionId: 'sid-idle', logoutReason: 'idle_timeout' } as any, session: undefined as any });
+        expect(mockUntrackSession).toHaveBeenCalledWith('1', 'sid-idle');
       });
 
       it('logs signOut as regular logout (no reason)', async () => {
         const opts = await auth.getAuthOptions();
-        await opts.events!.signOut!({ token: { sub: '1', jti: 'test-jti', exp: Math.floor(Date.now() / 1000) + 3600 } as any, session: undefined as any });
+        await opts.events!.signOut!({ token: { sub: '1', jti: 'test-jti', sessionId: 'sid-regular', exp: Math.floor(Date.now() / 1000) + 3600 } as any, session: undefined as any });
         expect(mockWriteAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: 'logout' }));
       });
 
       it('skips audit log on signOut when token is already revoked', async () => {
         const opts = await auth.getAuthOptions();
         mockWriteAuditLog.mockClear();
-        await opts.events!.signOut!({ token: { sub: '1', revoked: true } as any, session: undefined as any });
+        await opts.events!.signOut!({ token: { sub: '1', jti: 'revoked-jti', sessionId: 'sid-revoked', revoked: true } as any, session: undefined as any });
         const logoutCalls = mockWriteAuditLog.mock.calls.filter((c: any[]) => c[0]?.action === 'logout');
         expect(logoutCalls).toHaveLength(0);
+      });
+
+      it('untracks session on revoked signOut', async () => {
+        const opts = await auth.getAuthOptions();
+        await opts.events!.signOut!({ token: { sub: '1', jti: 'revoked-jti', sessionId: 'sid-revoked', revoked: true } as any, session: undefined as any });
+        expect(mockUntrackSession).toHaveBeenCalledWith('1', 'sid-revoked');
       });
     });
   });
@@ -580,6 +643,28 @@ describe('auth.ts – gap coverage', () => {
         { headers: new Headers() } as any
       );
       expect(user).toBeNull();
+    });
+
+    it('calls verifyPassword with dummy hash when user not found (timing-safe enumeration fix)', async () => {
+      mockFindUnique.mockResolvedValue(null);
+      const { verifyPassword } = await import('../src/lib/password');
+      vi.mocked(verifyPassword).mockClear();
+
+      const opts = await auth.getAuthOptions();
+      const credProvider = opts.providers.find((p: any) => p.id === 'credentials') as any;
+      await credProvider.authorize(
+        { email: 'nonexistent@test.com', password: 'anypass' },
+        { headers: new Headers() } as any
+      );
+
+      // verifyPassword MUST be called even when user doesn't exist,
+      // with the submitted password and a dummy bcrypt hash.
+      // This prevents timing-based user enumeration.
+      expect(verifyPassword).toHaveBeenCalledTimes(1);
+      expect(verifyPassword).toHaveBeenCalledWith(
+        'anypass',
+        expect.stringMatching(/^\$2[aby]\$12\$/),
+      );
     });
 
     it('returns null when password is invalid', async () => {
@@ -667,10 +752,12 @@ describe('auth.ts – gap coverage', () => {
   });
 
   describe('concurrent session tracking integration', () => {
-    it('calls trackSession on initial sign-in (user present + jti)', async () => {
+    it('calls trackSession on initial sign-in and sets concurrentSessions on token', async () => {
+      mockTrackSession.mockResolvedValue(1); // first session
       const opts = await auth.getAuthOptions();
+      const token = { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'new-jti', sessionId: 'sign-in-sid', exp: Math.floor(Date.now() / 1000) + 3600, lastCheckedAt: Date.now() } as any;
       await opts.callbacks!.jwt!({
-        token: { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'new-jti', exp: Math.floor(Date.now() / 1000) + 3600, lastCheckedAt: Date.now() } as any,
+        token,
         user: { id: 'u1', roles: ['user'], mustChangePassword: false } as any,
         account: { provider: 'credentials' } as any,
         trigger: undefined as any,
@@ -679,11 +766,28 @@ describe('auth.ts – gap coverage', () => {
       });
       expect(mockTrackSession).toHaveBeenCalledWith(
         'u1',
-        'new-jti',
+        'sign-in-sid',
         expect.any(Number),
         expect.anything(), // ip
         'credentials',
       );
+      // Only 1 session → concurrentSessions should be 0
+      expect(token.concurrentSessions).toBe(0);
+    });
+
+    it('sets concurrentSessions on token when trackSession detects multiple sessions at sign-in', async () => {
+      mockTrackSession.mockResolvedValue(3); // 3 active sessions
+      const opts = await auth.getAuthOptions();
+      const token = { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'new-jti-2', exp: Math.floor(Date.now() / 1000) + 3600, lastCheckedAt: Date.now() } as any;
+      await opts.callbacks!.jwt!({
+        token,
+        user: { id: 'u1', roles: ['user'], mustChangePassword: false } as any,
+        account: { provider: 'credentials' } as any,
+        trigger: undefined as any,
+        session: undefined,
+        isNewUser: undefined,
+      });
+      expect(token.concurrentSessions).toBe(3);
     });
 
     it('does NOT call trackSession when no user object (existing session refresh)', async () => {
@@ -699,8 +803,8 @@ describe('auth.ts – gap coverage', () => {
       expect(mockTrackSession).not.toHaveBeenCalled();
     });
 
-    it('calls countActiveSessions during periodic check and sets token.concurrentSessions', async () => {
-      mockCountActiveSessions.mockResolvedValue(3);
+    it('calls refreshSession during periodic check and sets token.concurrentSessions', async () => {
+      mockRefreshSession.mockResolvedValue(3);
       mockGetUserMeta.mockResolvedValue({
         roles: ['user'],
         mustChangePassword: false,
@@ -709,19 +813,19 @@ describe('auth.ts – gap coverage', () => {
       });
       const opts = await auth.getAuthOptions();
       const token = await opts.callbacks!.jwt!({
-        token: { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'check-jti', lastCheckedAt: 0 } as any,
+        token: { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'check-jti', sessionId: 'check-sid', lastCheckedAt: 0 } as any,
         user: undefined as any,
         account: undefined as any,
         trigger: undefined as any,
         session: undefined,
         isNewUser: undefined,
       });
-      expect(mockCountActiveSessions).toHaveBeenCalledWith('1');
+      expect(mockRefreshSession).toHaveBeenCalledWith('1', 'check-sid');
       expect(token.concurrentSessions).toBe(3);
     });
 
     it('sets concurrentSessions to 0 when only one session active', async () => {
-      mockCountActiveSessions.mockResolvedValue(1);
+      mockRefreshSession.mockResolvedValue(1);
       mockGetUserMeta.mockResolvedValue({
         roles: ['user'],
         mustChangePassword: false,
@@ -744,23 +848,23 @@ describe('auth.ts – gap coverage', () => {
       mockGetUserMeta.mockResolvedValue(null);
       const opts = await auth.getAuthOptions();
       await opts.callbacks!.jwt!({
-        token: { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'revoked-jti', lastCheckedAt: 0 } as any,
+        token: { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'revoked-jti', sessionId: 'revoked-sid', lastCheckedAt: 0 } as any,
         user: undefined as any,
         account: undefined as any,
         trigger: undefined as any,
         session: undefined,
         isNewUser: undefined,
       });
-      expect(mockUntrackSession).toHaveBeenCalledWith('1', 'revoked-jti');
+      expect(mockUntrackSession).toHaveBeenCalledWith('1', 'revoked-sid');
     });
 
     it('calls untrackSession on explicit signOut', async () => {
       const opts = await auth.getAuthOptions();
       await opts.events!.signOut!({
-        token: { sub: 'u1', jti: 'logout-session-jti', exp: Math.floor(Date.now() / 1000) + 3600 } as any,
+        token: { sub: 'u1', jti: 'logout-session-jti', sessionId: 'logout-sid', exp: Math.floor(Date.now() / 1000) + 3600 } as any,
         session: undefined as any,
       });
-      expect(mockUntrackSession).toHaveBeenCalledWith('u1', 'logout-session-jti');
+      expect(mockUntrackSession).toHaveBeenCalledWith('u1', 'logout-sid');
     });
 
     it('session callback propagates concurrentSessions from token', async () => {
@@ -799,8 +903,8 @@ describe('auth.ts – gap coverage', () => {
       expect((session as any).concurrentSessions).toBeUndefined();
     });
 
-    it('handles countActiveSessions failure gracefully during periodic check', async () => {
-      mockCountActiveSessions.mockRejectedValue(new Error('Redis crash'));
+    it('handles refreshSession failure gracefully during periodic check', async () => {
+      mockRefreshSession.mockRejectedValue(new Error('Redis crash'));
       mockGetUserMeta.mockResolvedValue({
         roles: ['user'],
         mustChangePassword: false,

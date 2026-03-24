@@ -28,12 +28,21 @@ services:
     env_file:
       - .env
     environment:
+      # --- Docker-internal overrides ---
+      # The .env file points REDIS_URL and DATABASE_URL at localhost for
+      # "npm run dev" outside Docker.  Inside Docker the app must reach
+      # the companion containers via their service names, so we hard-set
+      # them here.  The environment: block takes priority over env_file,
+      # so every OTHER variable in .env (NEXTAUTH_URL, NEXTAUTH_SECRET,
+      # ADMIN_EMAIL, SSO_MASTER_KEY …) still flows through unchanged.
+      #
+      # In production (Azure Container App) docker-compose is not used —
+      # Azure injects REDIS_URL, DATABASE_URL, etc. directly and the
+      # container reads them from process.env at runtime.
       - PORT=3000
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
-      - DATABASE_URL=${DATABASE_URL}
-      - NEXTAUTH_URL=${NEXTAUTH_URL}
-      - NODE_ENV=${NODE_ENV:-production}
-      - PLAYWRIGHT_TESTING=${PLAYWRIGHT_TESTING:-false}
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-techhub}:${POSTGRES_PASSWORD:-techhub}@db:5432/${POSTGRES_DB:-techhub}?schema=public
+      - NODE_ENV=production
     volumes:
       - uploads:/app/uploads
     depends_on:

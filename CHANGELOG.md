@@ -5,6 +5,43 @@ All notable changes to TechHub are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.5] - 2026-03-24
+
+### Fixed
+- **Banner dismiss not persisting** — Clicking the X button on the concurrent session banner would dismiss it momentarily, but the banner would reappear after SessionGuard's activity tracking triggered a session refetch. Root cause: SessionGuard listens for `mousedown`/`click` on `window` and calls `update({ interacted: now })`, which caused a re-render race that reset the banner's visibility state. Fixed by stopping event propagation (`onMouseDown`, `onClick`) on the banner container so SessionGuard never sees banner interactions.
+- **Banner dismiss state lost on remount** — React `useState` dismiss state was lost whenever the component remounted (e.g. session refetch cycle). Replaced with **module-level variables** backed by `sessionStorage` so dismiss state survives both remounts and full page reloads within the same tab. State resets on sign-out (auth status transition) so the banner reappears on re-login.
+- **`\u2715` rendered as literal text** — The Unicode escape `\u2715` was placed as bare JSX text content, which React renders literally. Changed to `{'\u2715'}` (a JS expression) so it correctly displays the ✕ character.
+
+### Changed
+- **`ConcurrentSessionBanner.tsx`** — Rewrote dismiss mechanism: module-level variables (`bannerDismissed`, `bannerDismissedAtCount`) with `sessionStorage` persistence replace React `useState`. Added `stopPropagation` on banner mouse events to prevent SessionGuard interference. Auth status transition effect clears dismiss state on sign-out.
+
+---
+
+## [2.2.4] - 2026-03-24
+
+### Fixed
+- **Stale session count (closed tabs)** — Concurrent session entries previously used the full JWT expiry (up to 30 days) as the Redis sorted-set score, causing closed browser tabs to appear as active sessions indefinitely. Replaced with a **10-minute rolling heartbeat** (`HEARTBEAT_WINDOW_MS`). Active tabs refresh their entry during periodic token checks (~5 min); closed tabs stop refreshing and auto-expire, keeping the count accurate.
+- **JTI not generated on JWT tokens** — NextAuth does not auto-generate a `jti` field. Added `if (!token.jti) token.jti = randomUUID()` at the top of the JWT callback, fixing session tracking, JWT blacklisting, and concurrent session detection which all depend on a unique token identifier.
+- **`ioredis` / `bcryptjs` missing in Docker standalone** — Next.js standalone output trace did not include these packages. Added `serverExternalPackages: ['ioredis', 'bcryptjs']` to `next.config.mjs`. The `bcryptjs` omission was causing all logins to fail with `MODULE_NOT_FOUND`.
+- **`NEXTAUTH_URL` baked into Docker build** — Next.js was baking the build-time `NEXTAUTH_URL` into the bundle, overriding the runtime value. Added explicit `NEXTAUTH_URL=""` to the Dockerfile build command so the image is deployment-agnostic.
+- **Docker env var collision** — Host environment variables (`REDIS_URL`, `DATABASE_URL`, `NODE_ENV`) were polluting `docker-compose` via `${VAR}` expansion, causing the app container to connect to `localhost` instead of Docker service names. Fixed by hardcoding Docker-internal overrides (`redis://redis:6379`, `db:5432`, `NODE_ENV=production`) in the compose `environment:` block.
+- **`trackSession` fire-and-forget** — `trackSession()` was called with `.catch(() => null)` so the active count was never stored on the JWT token. Changed to `await` with result stored as `token.concurrentSessions`.
+- **SessionProvider never refetched** — `refetchInterval={0}` and `refetchOnWindowFocus={false}` meant the client session was never refreshed after initial load. Changed to `refetchInterval={300}` (5 min) and `refetchOnWindowFocus={true}`.
+- **User enumeration via timing** — Login responses for "user not found" returned ~0 ms faster than "wrong password" (~100 ms bcrypt). Added a dummy `bcrypt.compare` against a fixed hash when the user is not found, equalising response times and preventing timing-based user enumeration.
+
+### Added
+- **`refreshSession()` function** in `sessionTracker.ts` — Called during periodic JWT checks to refresh the heartbeat score and return the active session count. Re-registers sessions that may have expired while the tab was idle.
+- **Glassmorphic concurrent session banner** — `ConcurrentSessionBanner` redesigned to use the site's CSS variable system (`--glass-bg`, `--glass-border`, `--page-fg`, `--capita-cyan`/`--capita-teal`). Adapts automatically to dark and light themes with proper `backdrop-filter: blur`, SVG shield icon, and themed dismiss button.
+
+### Changed
+- **`src/lib/auth.ts`** — Imports `refreshSession` instead of `countActiveSessions`. Periodic JWT checks now call `refreshSession()` (which both refreshes the heartbeat and returns the count) instead of a read-only `countActiveSessions()`.
+- **`src/components/Providers.tsx`** — `SessionProvider` now uses `refetchInterval={300}` and `refetchOnWindowFocus={true}`.
+- **`next.config.mjs`** — Added `serverExternalPackages: ['ioredis', 'bcryptjs']`.
+- **`Dockerfile`** — Build command now includes `NEXTAUTH_URL=""` to prevent URL bake-in.
+- **`docker-compose.yml`** — Docker-internal URLs (`REDIS_URL`, `DATABASE_URL`) hardcoded in `environment:` block; `NODE_ENV=production` set explicitly.
+
+---
+
 ## [2.2.3] - 2026-03-24
 
 ### Added

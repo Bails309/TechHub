@@ -188,6 +188,8 @@ describe('Health checks', () => {
       expect(result.redis).toBeDefined();
       expect(result.storage).toBeDefined();
       expect(result.schema).toBeDefined();
+      expect(result.sessionTracking).toBeDefined();
+      expect(result.version).toBeDefined();
       expect(result.timestamp).toBeDefined();
       expect(result.server.nodeVersion).toBe(process.version);
       expect(result.server.platform).toBe(process.platform);

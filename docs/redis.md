@@ -6,6 +6,9 @@ This document describes how TechHub uses Redis, the local `docker-compose` defau
 
 - **Server-side user metadata cache** (roles and `mustChangePassword`). Keeps sessions authoritative without forcing every request to hit the database.
 - **Rate-limiter backend** when `RATE_LIMIT_STORE=redis`.
+- **Concurrent session tracking** via sorted sets with a rolling 10-minute heartbeat (see below).
+- **JWT blacklist** for revoked/logged-out tokens (keys prefixed `auth:blacklist:`).
+- **Session termination deduplication** to prevent duplicate audit entries during revocation.
 
 ### Local Development (Out of the Box)
 
@@ -22,6 +25,25 @@ REDIS_URL=redis://:password@redis.example.com:6379
 - Optionally set `REDIS_PASSWORD` and `REDIS_TLS=true` if your provider requires separate password/TLS flags. The app passes TLS options to `ioredis` when `REDIS_TLS=true`.
 - Set `REDIS_CLUSTER=true` if you are using a clustered Redis endpoint (like Azure Managed Redis with OSSCluster policy). This ensures the client follows `MOVED` redirects correctly.
 - Ensure `RATE_LIMIT_STORE=redis` is set in your production environment.
+
+### Session Heartbeat Tracking
+
+TechHub tracks active user sessions in Redis using sorted sets with a **10-minute rolling heartbeat**:
+
+| Key pattern | Type | Member | Score |
+|---|---|---|---|
+| `sessions:{userId}` | Sorted Set | JWT `jti` (unique token ID) | Expiry timestamp (ms) — `now + 10 min` |
+
+**How it works:**
+
+1. **On login** — `trackSession()` adds the new JTI to the sorted set with a score of `now + HEARTBEAT_WINDOW_MS` (10 min). If other sessions already exist, a `concurrent_login_detected` audit event is logged.
+2. **On periodic refresh** (~5 min) — `refreshSession()` updates the session's score to `now + 10 min`, keeping it alive. Also prunes expired entries and returns the active count.
+3. **On logout / revocation** — `untrackSession()` removes the JTI from the sorted set immediately.
+4. **Closed tabs** — When a browser tab is closed without logout, the heartbeat stops. The entry expires naturally within 10 minutes and is pruned on the next read via `ZREMRANGEBYSCORE`.
+
+The sorted set key has a Redis TTL of `HEARTBEAT_WINDOW_MS + 120s` (12 min), which is extended on every refresh. If all sessions expire without refreshing, the key is automatically cleaned up by Redis.
+
+> **Resilience:** If Redis is unavailable, all session tracking functions degrade silently (return `0` or `void`). Auth continues to work normally — session tracking is non-blocking.
 
 > **Note:** In production the application enforces a centralized rate limiter. If `RATE_LIMIT_STORE` is not set to `redis`, the application will refuse to start (fail fast) to avoid insecure memory-based rate limiting across multiple instances. Use the in-memory store only for single-process local testing.
 
