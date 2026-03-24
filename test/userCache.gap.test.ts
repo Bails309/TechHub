@@ -140,7 +140,7 @@ describe('userCache – gap coverage', () => {
 
   it('clearMemCache clears the memory cache', async () => {
     const { setUserMetaForTest, clearMemCache, getUserMeta } = await import('../src/lib/userCache');
-    setUserMetaForTest('clear-test', { roles: ['admin'], mustChangePassword: false, securityStamp: null, updatedAt: new Date().toISOString(), image: null });
+    setUserMetaForTest('clear-test', { roles: ['admin'], mustChangePassword: false, securityStamp: undefined, updatedAt: Date.now(), image: null });
     const before = await getUserMeta('clear-test');
     expect(before).not.toBeNull();
     clearMemCache();

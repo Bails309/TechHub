@@ -83,7 +83,17 @@ function buildMockResponse() {
   };
 }
 
-const mod = await import('../src/proxy');
+// Type for mock proxy responses with custom test-tracking properties
+type MockProxyResult = {
+  headers: Headers;
+  cookies: { set: (...args: any[]) => void; delete: (...args: any[]) => void };
+  _status?: number;
+  _body?: any;
+  _redirectUrl?: { pathname: string };
+};
+
+const _mod = await import('../src/proxy');
+const mod = { proxy: _mod.proxy as unknown as (req: any) => Promise<MockProxyResult> };
 
 describe('proxy.ts – proxy() function gap coverage', () => {
   let mockResponse: ReturnType<typeof buildMockResponse>;

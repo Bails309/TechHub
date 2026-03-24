@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
 // Must set NODE_ENV before importing userCache so the test-mode code path is used
-process.env.NODE_ENV = 'test';
+(process.env as any).NODE_ENV = 'test';
 
 import userCache, {
   getUserMeta,

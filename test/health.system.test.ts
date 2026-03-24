@@ -90,7 +90,7 @@ describe('Health checks', () => {
       const origUrl = process.env.REDIS_URL;
       const origEnv = process.env.NODE_ENV;
       delete process.env.REDIS_URL;
-      process.env.NODE_ENV = 'test';
+      (process.env as any).NODE_ENV = 'test';
       mockRedisClient.mockResolvedValue(null);
 
       const result = await checkRedisHealth();
@@ -100,7 +100,7 @@ describe('Health checks', () => {
 
       // Restore
       if (origUrl) process.env.REDIS_URL = origUrl;
-      process.env.NODE_ENV = origEnv ?? 'test';
+      (process.env as any).NODE_ENV = origEnv ?? 'test';
     });
 
     it('returns error when Redis client throws', async () => {
