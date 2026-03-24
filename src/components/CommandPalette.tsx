@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { Search, Compass, ChevronRight, CornerDownLeft } from 'lucide-react';
+import { Search, Compass, CornerDownLeft } from 'lucide-react';
 import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 
 interface PaletteApp {

@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useMemo } from "react";
 import { useTheme } from './ThemeProvider';
 import { Upload } from 'lucide-react';
+import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 
 type Props = {
     name: string;
@@ -55,6 +56,7 @@ export default function FaviconUpload({ name, label, current, recommendedSize, m
     const [fileName, setFileName] = useState<string | null>(null);
     const [prevPreview, setPrevPreview] = useState<string | null>(null);
     const [prevFileName, setPrevFileName] = useState<string | null>(null);
+    const safePreview = useMemo(() => sanitizeIconUrl(preview), [preview]);
 
     const onChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -110,8 +112,8 @@ export default function FaviconUpload({ name, label, current, recommendedSize, m
             {label && <label className="text-xs uppercase tracking-[0.2em] text-ink-400">{label}</label>}
             <div className="flex items-center space-x-4">
                 <div className={`w-32 h-12 rounded flex items-center justify-center overflow-hidden flex-shrink-0 ${theme === 'dark' ? 'bg-ink-800/30 border border-white/5' : 'bg-white border'}`}>
-                    {preview ? (
-                        <img src={preview} alt="favicon preview" className="w-8 h-8 object-contain" />
+                    {safePreview ? (
+                        <img src={safePreview} alt="favicon preview" className="w-8 h-8 object-contain" />
                     ) : (
                         <Upload className="h-5 w-5 text-ink-400" />
                     )}

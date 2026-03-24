@@ -1,4 +1,4 @@
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const crypto = require('crypto');
 const path = require('path');
@@ -66,7 +66,7 @@ async function main() {
                         await seedCheck.systemState.create({ data: { id: 'SEEDED', value: 'true' } });
                     } else {
                         console.log('First-time setup detected — running database seed...');
-                        execSync(`node ${seedPath}`, {
+                        execFileSync('node', [seedPath], {
                             stdio: 'inherit',
                             env: { ...process.env }
                         });

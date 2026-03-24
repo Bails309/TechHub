@@ -45,7 +45,7 @@ function sanitizeSvg(svgContent: string): string {
                 ['href', 'xlink:href'].forEach(attr => {
                     if (attribs[attr]) {
                         const val = attribs[attr].trim().toLowerCase();
-                        if (val.startsWith('javascript:') || val.startsWith('vbscript:') || val.startsWith('data:text/html')) {
+                        if (/^(javascript|vbscript|data:text\/html):/i.test(val)) {
                             delete attribs[attr];
                         }
                     }

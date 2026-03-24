@@ -72,7 +72,14 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
             while ((match = styleRegex.exec(rawContent)) !== null) {
                 extractedRules.push(...parseCssBlocks(match[1]));
             }
-            currentContent = currentContent.replace(styleRegex, '');
+            // Loop until stable to prevent incomplete sanitization of nested patterns
+            {
+                let prev;
+                do {
+                    prev = currentContent;
+                    currentContent = currentContent.replace(styleRegex, '');
+                } while (currentContent !== prev);
+            }
 
             // 2. Inline Style Neutralization
             const inlineMap = new Map<string, string>();
@@ -225,7 +232,15 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
             setSvgContent(output);
         } catch (err) {
             console.error('[InlinedSvg V12] Fault:', err);
-            setSvgContent(rawContent.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/\sstyle\s*=\s*(['"])(?:(?!\1)[\s\S]*?)\1/gi, ''));
+            let fallback = rawContent;
+            {
+                let prev;
+                do {
+                    prev = fallback;
+                    fallback = fallback.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+                } while (fallback !== prev);
+            }
+            setSvgContent(fallback.replace(/\sstyle\s*=\s*(['"])(?:(?!\1)[\s\S]*?)\1/gi, ''));
         }
     }, [rawContent, theme, prefix, src]);
 

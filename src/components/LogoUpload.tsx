@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useMemo } from "react";
 import { useTheme } from './ThemeProvider';
 import { Upload, X } from 'lucide-react';
+import { sanitizeIconUrl } from '../lib/sanitizeIconUrl';
 
 type Props = {
   name: string;
@@ -55,6 +56,7 @@ export default function LogoUpload({ name, label, current, recommendedSize, maxW
   const [fileName, setFileName] = useState<string | null>(null);
   const [prevPreview, setPrevPreview] = useState<string | null>(null);
   const [prevFileName, setPrevFileName] = useState<string | null>(null);
+  const safePreview = useMemo(() => sanitizeIconUrl(preview), [preview]);
 
   const onChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -117,7 +119,7 @@ export default function LogoUpload({ name, label, current, recommendedSize, maxW
           : ' bg-white border')
       }
     >
-      {preview ? <img src={preview} alt="preview" className="max-h-12" /> : <span className="text-xs text-ink-400">No logo</span>}
+      {safePreview ? <img src={safePreview} alt="preview" className="max-h-12" /> : <span className="text-xs text-ink-400">No logo</span>}
     </div>
   );
 
