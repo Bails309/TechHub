@@ -8,7 +8,7 @@ TechHub is designed to run as a **Standalone Container**. This guide details how
 
 Before deploying TechHub, ensure your target environment meets these minimum specifications:
 
-- **Compute**: Node.js **20.x (LTS)** or higher.
+- **Compute**: Node.js **24.x** or higher.
 - **Database**: PostgreSQL **13**, **14**, **15**, or **16+**.
 - **Caching**: Redis **6.2** or higher (Redis 7.x recommended for Azure Managed Redis).
 - **Runtime**: Docker Engine **24.x** or higher (if using containerized deployment).
