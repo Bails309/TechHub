@@ -277,6 +277,7 @@ describe('Proxy idle-timeout server-side regressions', () => {
 
   beforeEach(() => {
     vi.resetModules();
+    process.env.NEXTAUTH_SECRET = 'test-secret-for-proxy-regression';
     vi.doMock('next-auth/jwt', () => ({
       getToken: (...a: any[]) => mockGetToken(...a),
     }));
