@@ -84,9 +84,8 @@ describe('SessionGuard idle-timeout regressions (source analysis)', () => {
     const callbackMatch = src.match(/\}, \[\]\);.*stable/);
     expect(callbackMatch).not.toBeNull();
 
-    // The old buggy pattern should NOT exist
-    expect(src).not.toContain('useCallback(() => {\n');
-    // More specifically, ensure there's no `[update]` dep on useCallback
+    // The old buggy pattern (update in deps) should NOT exist
+    // Note: useCallback itself is fine — the fix is using [] deps, not removing useCallback
     expect(src).not.toMatch(/useCallback\([^)]*\), \[update\]/);
   });
 
