@@ -1,6 +1,5 @@
 import http from 'http';
 import https from 'https';
-import ipaddr from 'ipaddr.js';
 
 export type PinnedEndpoint = {
     url: URL;

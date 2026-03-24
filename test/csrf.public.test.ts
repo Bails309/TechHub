@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 // Set NEXTAUTH_SECRET for CSRF operations
 process.env.NEXTAUTH_SECRET = 'test-secret-for-csrf-unit-tests-only';

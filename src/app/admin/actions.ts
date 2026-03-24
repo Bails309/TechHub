@@ -104,12 +104,6 @@ const updateSchema = appSchemaBase
   });
 
 const MAX_ICON_BYTES = 2 * 1024 * 1024;
-const ALLOWED_ICON_EXTENSIONS = new Set([
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.svg'
-]);
 const ALLOWED_ICON_MIME_TYPES = new Set([
   'image/png',
   'image/jpeg',
@@ -168,13 +162,6 @@ async function safeDeleteIcon(iconPath?: string) {
   }
 }
 
-
-function parseAzureConnectionString(raw: string) {
-  const accountMatch = raw.match(/AccountName=([^;]+)/i);
-  const keyMatch = raw.match(/AccountKey=([^;]+)/i);
-  if (!accountMatch || !keyMatch) return null;
-  return { account: accountMatch[1], key: keyMatch[1] };
-}
 
 function extractAzureBlobEndpoint(raw: string): string | null {
   const endpointMatch = raw.match(/BlobEndpoint=([^;]+)/i);

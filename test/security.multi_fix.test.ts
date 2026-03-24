@@ -37,6 +37,7 @@ describe('Multi-Security Fixes', () => {
         it('fails closed when remoteAddr is missing and trustProxy is true (default)', async () => {
             vi.stubEnv('TRUST_PROXY', 'true');
             vi.stubEnv('TRUSTED_PROXIES', '192.168.1.1/32');
+            vi.stubEnv('ALLOW_MISSING_REMOTE_IP', '');
             const { getClientIp } = await import('../src/lib/auth');
 
             const headers = new Headers({ 'x-forwarded-for': '8.8.8.8' });
