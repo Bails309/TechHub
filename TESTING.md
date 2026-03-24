@@ -33,7 +33,8 @@ docker-compose run --rm app sh -c "npx vitest run --reporter verbose"
 | `test/auth.sessionLifetime.test.ts` | Session absolute/idle timeout enforcement |
 | `test/auth-config.test.ts` | `getSessionMaxAgeSeconds` and `getSessionIdleTimeoutMs` with env var parsing and defaults |
 | `test/authConfig.test.ts` | Auth config additional tests |
-| `test/auth.gap.test.ts` | Auth gap coverage — providers, callbacks, credentials authorize, JTI blacklisting, session dedup |
+| `test/auth.gap.test.ts` | Auth gap coverage — providers, callbacks, credentials authorize, JTI blacklisting, session dedup, concurrent session tracking |
+| `test/sessionTracker.test.ts` | Concurrent session tracker — Redis sorted set tracking, audit logging, error resilience |
 | `test/credentials.authorize.test.ts` | Credentials provider authorization logic |
 | `test/credentials.rateLimit.test.ts` | Rate limiting on credential attempts |
 | `test/linkSsoAccount.test.ts` | SSO account linking transactionality |
@@ -86,6 +87,7 @@ docker-compose run --rm app sh -c "npx vitest run --reporter verbose"
 | `test/userCache.gap.test.ts` | User cache gap coverage — Redis read/miss/error, DB fallback, invalidation, clearMemCache |
 | `test/ip.normalizeIp.test.ts` | IP normalization, private range detection, header reading |
 | `test/ip.gap.test.ts` | IP gap coverage — getServerActionIp, bracket IPv6, x-azure-clientip, x-forwarded-for |
+| `test/ip.trustedProxy.test.ts` | Trusted proxy CIDR matching and proxy chain validation |
 | `test/getClientIp.test.ts` | `getClientIp` and `getRateLimitKey` (proxy/no-proxy) |
 | `test/rateLimit.test.ts` | Rate limiter (memory + mocked Redis) |
 | `test/rateLimit.gap.test.ts` | Rate limit gap coverage — Redis limiter init, limiterInitPromise reset |

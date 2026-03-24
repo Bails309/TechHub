@@ -47,6 +47,16 @@ vi.mock('../src/lib/audit', () => ({
   writeAuditLog: (...a: any[]) => mockWriteAuditLog(...a)
 }));
 
+// Mock sessionTracker
+const mockTrackSession = vi.fn().mockResolvedValue(1);
+const mockUntrackSession = vi.fn().mockResolvedValue(undefined);
+const mockCountActiveSessions = vi.fn().mockResolvedValue(1);
+vi.mock('../src/lib/sessionTracker', () => ({
+  trackSession: (...a: any[]) => mockTrackSession(...a),
+  untrackSession: (...a: any[]) => mockUntrackSession(...a),
+  countActiveSessions: (...a: any[]) => mockCountActiveSessions(...a),
+}));
+
 // Mock ip
 const mockGetClientIp = vi.fn().mockReturnValue('127.0.0.1');
 vi.mock('../src/lib/ip', () => ({
@@ -108,6 +118,9 @@ describe('auth.ts – gap coverage', () => {
     mockRedisGet.mockResolvedValue(null);
     mockRedisSet.mockResolvedValue('OK');
     mockWriteAuditLog.mockResolvedValue(undefined);
+    mockTrackSession.mockResolvedValue(1);
+    mockUntrackSession.mockResolvedValue(undefined);
+    mockCountActiveSessions.mockResolvedValue(1);
   });
 
   describe('getRateLimitKey', () => {
@@ -650,6 +663,161 @@ describe('auth.ts – gap coverage', () => {
         'EX',
         expect.any(Number)
       );
+    });
+  });
+
+  describe('concurrent session tracking integration', () => {
+    it('calls trackSession on initial sign-in (user present + jti)', async () => {
+      const opts = await auth.getAuthOptions();
+      await opts.callbacks!.jwt!({
+        token: { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'new-jti', exp: Math.floor(Date.now() / 1000) + 3600, lastCheckedAt: Date.now() } as any,
+        user: { id: 'u1', roles: ['user'], mustChangePassword: false } as any,
+        account: { provider: 'credentials' } as any,
+        trigger: undefined as any,
+        session: undefined,
+        isNewUser: undefined,
+      });
+      expect(mockTrackSession).toHaveBeenCalledWith(
+        'u1',
+        'new-jti',
+        expect.any(Number),
+        expect.anything(), // ip
+        'credentials',
+      );
+    });
+
+    it('does NOT call trackSession when no user object (existing session refresh)', async () => {
+      const opts = await auth.getAuthOptions();
+      await opts.callbacks!.jwt!({
+        token: { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'existing-jti', lastCheckedAt: Date.now() } as any,
+        user: undefined as any,
+        account: undefined as any,
+        trigger: undefined as any,
+        session: undefined,
+        isNewUser: undefined,
+      });
+      expect(mockTrackSession).not.toHaveBeenCalled();
+    });
+
+    it('calls countActiveSessions during periodic check and sets token.concurrentSessions', async () => {
+      mockCountActiveSessions.mockResolvedValue(3);
+      mockGetUserMeta.mockResolvedValue({
+        roles: ['user'],
+        mustChangePassword: false,
+        securityStamp: null,
+        updatedAt: new Date().toISOString(),
+      });
+      const opts = await auth.getAuthOptions();
+      const token = await opts.callbacks!.jwt!({
+        token: { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'check-jti', lastCheckedAt: 0 } as any,
+        user: undefined as any,
+        account: undefined as any,
+        trigger: undefined as any,
+        session: undefined,
+        isNewUser: undefined,
+      });
+      expect(mockCountActiveSessions).toHaveBeenCalledWith('1');
+      expect(token.concurrentSessions).toBe(3);
+    });
+
+    it('sets concurrentSessions to 0 when only one session active', async () => {
+      mockCountActiveSessions.mockResolvedValue(1);
+      mockGetUserMeta.mockResolvedValue({
+        roles: ['user'],
+        mustChangePassword: false,
+        securityStamp: null,
+        updatedAt: new Date().toISOString(),
+      });
+      const opts = await auth.getAuthOptions();
+      const token = await opts.callbacks!.jwt!({
+        token: { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'solo-jti', lastCheckedAt: 0 } as any,
+        user: undefined as any,
+        account: undefined as any,
+        trigger: undefined as any,
+        session: undefined,
+        isNewUser: undefined,
+      });
+      expect(token.concurrentSessions).toBe(0);
+    });
+
+    it('calls untrackSession when token is revoked (user deleted)', async () => {
+      mockGetUserMeta.mockResolvedValue(null);
+      const opts = await auth.getAuthOptions();
+      await opts.callbacks!.jwt!({
+        token: { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'revoked-jti', lastCheckedAt: 0 } as any,
+        user: undefined as any,
+        account: undefined as any,
+        trigger: undefined as any,
+        session: undefined,
+        isNewUser: undefined,
+      });
+      expect(mockUntrackSession).toHaveBeenCalledWith('1', 'revoked-jti');
+    });
+
+    it('calls untrackSession on explicit signOut', async () => {
+      const opts = await auth.getAuthOptions();
+      await opts.events!.signOut!({
+        token: { sub: 'u1', jti: 'logout-session-jti', exp: Math.floor(Date.now() / 1000) + 3600 } as any,
+        session: undefined as any,
+      });
+      expect(mockUntrackSession).toHaveBeenCalledWith('u1', 'logout-session-jti');
+    });
+
+    it('session callback propagates concurrentSessions from token', async () => {
+      mockGetUserMeta.mockResolvedValue({
+        roles: ['user'],
+        mustChangePassword: false,
+        image: null,
+        updatedAt: new Date().toISOString(),
+      });
+      const opts = await auth.getAuthOptions();
+      const session = await opts.callbacks!.session!({
+        session: { user: { id: '1' } } as any,
+        token: { sub: '1', concurrentSessions: 3 } as any,
+        user: undefined as any,
+        newSession: undefined,
+        trigger: undefined as any,
+      });
+      expect((session as any).concurrentSessions).toBe(3);
+    });
+
+    it('session callback omits concurrentSessions when 0', async () => {
+      mockGetUserMeta.mockResolvedValue({
+        roles: ['user'],
+        mustChangePassword: false,
+        image: null,
+        updatedAt: new Date().toISOString(),
+      });
+      const opts = await auth.getAuthOptions();
+      const session = await opts.callbacks!.session!({
+        session: { user: { id: '1' } } as any,
+        token: { sub: '1', concurrentSessions: 0 } as any,
+        user: undefined as any,
+        newSession: undefined,
+        trigger: undefined as any,
+      });
+      expect((session as any).concurrentSessions).toBeUndefined();
+    });
+
+    it('handles countActiveSessions failure gracefully during periodic check', async () => {
+      mockCountActiveSessions.mockRejectedValue(new Error('Redis crash'));
+      mockGetUserMeta.mockResolvedValue({
+        roles: ['user'],
+        mustChangePassword: false,
+        securityStamp: null,
+        updatedAt: new Date().toISOString(),
+      });
+      const opts = await auth.getAuthOptions();
+      const token = await opts.callbacks!.jwt!({
+        token: { sub: '1', iat: Math.floor(Date.now() / 1000), jti: 'fail-count-jti', lastCheckedAt: 0 } as any,
+        user: undefined as any,
+        account: undefined as any,
+        trigger: undefined as any,
+        session: undefined,
+        isNewUser: undefined,
+      });
+      // Should not crash; token still returned with roles updated
+      expect(token.roles).toEqual(['user']);
     });
   });
 

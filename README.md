@@ -4,9 +4,9 @@
 
 ![TechHub Hero Carousel](docs/images/dashboard_dark.png)
 
-[![Version](https://img.shields.io/badge/Version-2.2.1-green)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.2.3-green)](CHANGELOG.md)
 [![Next.js](https://img.shields.io/badge/Framework-Next.js_16-black?logo=next.js)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/Language-TypeScript_5.5-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/Language-TypeScript_5.9-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Runtime-Node.js_24-339933?logo=node.js)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/Deployment-Standalone_Container-blue?logo=docker)](https://www.docker.com/)
 
@@ -35,8 +35,6 @@
   - **Audit Logging**: Comprehensive trails for every administrative action.
 - **☁️ Flexible Storage**: Support for Local, AWS S3, and Azure Blob storage.
 - **🛠️ Admin Empowerment**: Easily manage apps, categories, users, and global site configurations (including custom logos). See the [Admin Guide](docs/ADMIN_GUIDE.md) for detailed configuration options.
-
----
 
 ---
 

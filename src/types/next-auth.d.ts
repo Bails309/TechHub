@@ -8,6 +8,7 @@ declare module 'next-auth' {
     revoked?: boolean;
     interacted?: boolean;
     logoutReason?: string;
+    concurrentSessions?: number;
     user: {
       id: string;
       roles: string[];
@@ -39,5 +40,6 @@ declare module 'next-auth/jwt' {
     lastActivity?: number;
     lastCheckedAt?: number;
     securityStamp?: number;
+    concurrentSessions?: number;
   }
 }

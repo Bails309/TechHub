@@ -8,6 +8,7 @@ import SideNav from '../components/SideNav';
 import PageHeader from '../components/PageHeader';
 import Providers from '../components/Providers';
 import SessionGuard from '../components/SessionGuard';
+import ConcurrentSessionBanner from '../components/ConcurrentSessionBanner';
 import ScrollToTop from '../components/ScrollToTop';
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -79,6 +80,7 @@ export default async function RootLayout({
             </div>
           </div>
           <SessionGuard />
+          <ConcurrentSessionBanner />
         </Providers>
       </body>
     </html>

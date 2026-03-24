@@ -5,13 +5,37 @@ All notable changes to TechHub are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3] - 2026-03-24
+
+### Added
+- **Concurrent session detection** — Active sessions are now tracked per user in Redis sorted sets (`sessions:{userId}`). When a user logs in from a second device/browser, a `concurrent_login_detected` audit event is written with IP, provider, and active session count.
+- **Concurrent session notification banner** — New `ConcurrentSessionBanner` client component displays a dismissible blue banner (bottom-left) when the server detects >1 active session for the current user. Banner includes device count and a prompt to change password if the activity is unrecognised.
+- **Session lifecycle tracking** — Sessions are registered on login (JWT callback), removed on logout (signOut event), and cleaned up automatically on revocation (security stamp mismatch, absolute timeout, user deletion). Expired entries are pruned on every read via `ZREMRANGEBYSCORE`.
+- **New test file** `test/sessionTracker.test.ts` — 16 tests covering `trackSession`, `untrackSession`, `countActiveSessions`, audit logging, Redis unavailability, error resilience, TTL edge cases, key prefixing, and high concurrent counts.
+- **9 integration tests** in `test/auth.gap.test.ts` — JWT callback tracks session on sign-in, skips tracking on refresh, counts concurrent sessions during periodic check, sets `concurrentSessions` on token, untracks on revocation/logout, propagates flag in session callback, handles count failures gracefully.
+
+### Changed
+- **`src/lib/auth.ts`** — Imports `trackSession`, `untrackSession`, `countActiveSessions` from new `sessionTracker.ts`. JWT callback registers sessions on initial sign-in, counts active sessions during periodic consistency checks, and untracks on revocation. Session callback exposes `concurrentSessions` to the client.
+- **`src/types/next-auth.d.ts`** — Added `concurrentSessions?: number` to both `Session` and `JWT` interfaces.
+- **`src/app/layout.tsx`** — Renders `<ConcurrentSessionBanner />` alongside `<SessionGuard />`.
+
+---
+
 ## [2.2.2] - 2026-03-24
 
 ### Fixed
-- **CodeQL unused-variable alerts** — Resolved ~60 "Unused variable, import, function or class" alerts across 23 source and test files, removing dead imports (`path`, `cookies`, `lookup`, `randomUUID`, `createHttpHeaders`, `isPublicIp`, `useMemo`, `useNonce`, `LayoutGrid`, `Home`, `ShieldCheck`, `X`, `beforeEach`, `NextResponse`, `IORedis`, `RedisOptions`, etc.), dead functions (`saveLocal`, `saveS3`, `saveAzure`, `parseAzureConnectionString` in `storage.ts`), dead constants (`STORAGE_PROVIDER`, `allowMissingRemoteIp`, `baseUrl`), and unused destructured variables.
+- **CodeQL HIGH security alerts** — Resolved 10 HIGH-severity findings:
+  - *Incomplete multi-character sanitization* (`InlinedSvg.tsx`): `<style>` tag removal now loops until stable, preventing bypass via nested patterns like `<sty<style>le>`.
+  - *DOM text reinterpreted as HTML* (`LogoUpload.tsx`, `FaviconUpload.tsx`): Blob preview URLs are now sanitized through `sanitizeIconUrl()` before rendering.
+  - *Incomplete URL scheme check* (`svg_hardening.test.ts`): Replaced `startsWith('javascript:')` with an anchored regex covering `javascript:`, `vbscript:`, and `data:text/html:` schemes.
+  - *Missing regular expression anchor* (`app.spec.ts`): E2E URL assertions now use `^https?://` anchored regexes.
+  - *Shell command built from environment values* (`auto-migrate.js`): Replaced `execSync` template literal with `execFileSync('node', [seedPath])` to prevent command injection.
+- **CodeQL unused-variable alerts** — Resolved ~70 "Unused variable, import, function or class" alerts across 27 source and test files, removing dead imports (`path`, `cookies`, `lookup`, `randomUUID`, `createHttpHeaders`, `isPublicIp`, `useMemo`, `useNonce`, `useEffect`, `LayoutGrid`, `Home`, `ShieldCheck`, `X`, `ChevronRight`, `beforeEach`, `afterEach`, `NextResponse`, `IORedis`, `RedisOptions`, `ipaddr`, `vi`, etc.), dead functions (`saveLocal`, `saveS3`, `saveAzure`, `parseAzureConnectionString` in `storage.ts` and `actions.ts`), dead constants (`STORAGE_PROVIDER`, `allowMissingRemoteIp`, `baseUrl`, `ALLOWED_ICON_EXTENSIONS`), and unused destructured variables (`client`, `checkDatabaseHealth`).
 - **TypeScript compilation errors** — Fixed `NODE_ENV` read-only assignment in test files, `NextResponse` custom property access in proxy tests, and `UserMeta` type mismatches in userCache tests. `npx tsc --noEmit` now passes cleanly.
 - **Prisma binary target** — Added `binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]` to `schema.prisma` generator, fixing `PrismaClientInitializationError` on Windows and ensuring Docker compatibility. Test suite now exits with code 0.
 - **Dead access query in users page** — Removed unused `usersForAccess` Prisma query and associated pagination variables (`accessSkip`, `accessTotalPages`, `prevAccessPage`, `nextAccessPage`, `showAccessPaneInline`) from the admin users page, eliminating a wasted DB round-trip.
+- **Environment-sensitive test failure** — Added explicit `vi.stubEnv('ALLOW_MISSING_REMOTE_IP', '')` to `security.multi_fix.test.ts` so the IP spoofing fail-closed test passes regardless of host environment variables.
+- **Documentation refresh** — Updated version references (`2.2.1` → `2.2.2`) in README badge and ARCHITECTURE.md, corrected Node.js requirement (`20.x` → `24.x`) in DEPLOYMENT.md, removed duplicate separator in README, added missing `ip.trustedProxy.test.ts` to TESTING.md inventory, and expanded CHANGELOG to document all CodeQL security fixes.
 
 ### Changed
 - **CodeQL v4** — Upgraded all `github/codeql-action/*` references from `@v3` to `@v4` in `security.yml`.

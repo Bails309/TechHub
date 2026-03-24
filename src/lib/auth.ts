@@ -15,6 +15,7 @@ import { getUserMeta } from './userCache';
 import { getSsoConfigMap } from './sso';
 import { writeAuditLog } from './audit';
 import { getSharedRedisClient } from './redis';
+import { trackSession, untrackSession, countActiveSessions } from './sessionTracker';
 import {
   getClientIp,
   isPrivateOrLocal,
@@ -169,6 +170,10 @@ function buildCredentialsProvider() {
       });
 
       if (!user?.passwordHash) {
+        // Perform a dummy bcrypt compare to prevent timing-based user enumeration.
+        // Without this, an attacker could distinguish "user not found" (~0ms)
+        // from "wrong password" (~100ms bcrypt) by measuring response time.
+        await verifyPassword(parsed.data.password, '$2a$12$000000000000000000000uGWDMwHSaLiDkMtIaguvW5pMyMqOZITW');
         writeAuditLog({
           category: 'auth',
           action: 'login_failure',
@@ -295,6 +300,14 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         if (user?.image) token.image = user.image;
         if (user?.roles) token.roles = user.roles;
 
+        // Track new session in Redis on initial sign-in (when user object is present)
+        if (user?.id && token.jti) {
+          const expiresAtMs = (Number(token.exp ?? 0) * 1000) || (now + getSessionMaxAgeSeconds() * 1000);
+          const hdrs = await headers().catch(() => null);
+          const loginIp = hdrs ? getClientIp(hdrs as any) : null;
+          trackSession(user.id, String(token.jti), expiresAtMs, loginIp, account?.provider).catch(() => null);
+        }
+
         // --- 1. Periodic Consistency Checks (DB/Cache) ---
         const JWT_CHECK_INTERVAL_MS = Number(process.env.JWT_CHECK_INTERVAL_MS ?? 300000);
         const lastChecked = Number(token.lastCheckedAt ?? 0);
@@ -336,6 +349,14 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
                 token.securityStamp = dbStamp || undefined;
                 token.userUpdatedAt = meta.updatedAt;
                 token.lastCheckedAt = now;
+
+                // Concurrent-session detection: count active sessions for this user
+                try {
+                  const activeCount = await countActiveSessions(String(token.sub));
+                  token.concurrentSessions = activeCount > 1 ? activeCount : 0;
+                } catch {
+                  // Non-critical — leave previous value
+                }
               }
             } catch (err) {
               console.error('[AUTH] Error during consistency check:', err);
@@ -359,6 +380,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
               if (ttl > 0) {
                 await client.set(`auth:blacklist:${token.jti}`, '1', 'EX', ttl).catch(() => null);
               }
+            }
+            // Remove revoked session from the concurrent-session tracker
+            if (token.sub) {
+              untrackSession(String(token.sub), String(token.jti)).catch(() => null);
             }
           }
         }
@@ -389,6 +414,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           }
         }
         session.idleTimeoutMs = getSessionIdleTimeoutMs();
+        if (token.concurrentSessions) session.concurrentSessions = token.concurrentSessions;
         if (token.revoked) session.revoked = true;
         return session;
       }
@@ -415,6 +441,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             if (ttl > 0) {
               await client.set(`auth:blacklist:${token.jti}`, '1', 'EX', ttl).catch(() => null);
             }
+          }
+          // Remove from concurrent-session tracker
+          if (token.sub) {
+            untrackSession(String(token.sub), String(token.jti)).catch(() => null);
           }
         }
 

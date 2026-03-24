@@ -1,6 +1,6 @@
 # TechHub Architecture
 
-> **Version 2.2.1** — See [CHANGELOG.md](CHANGELOG.md) for release history.
+> **Version 2.2.3** — See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 TechHub is a high-performance, secure application portal designed for enterprise environments. It follows a **Standalone Container** architecture, consolidating its request pipeline, security enforcement, and data orchestration into a single, scalable unit.
 
@@ -41,7 +41,7 @@ graph TD
 - **Admin Module**: A dedicated area for managing the catalogue, user roles, SSO configuration, and system health.
 
 ### Logic & Security Layer (`src/lib`)
-- **`auth.ts`**: The core authentication engine using Next-Auth. Handles credential validation, SSO provider mapping, and JWT consistency checks.
+- **`auth.ts`**: The core authentication engine using Next-Auth. Handles credential validation, SSO provider mapping, JWT consistency checks, and concurrent session tracking.
 - **`security/`**: A suite of specialized utilities:
   - `csrf.ts`: HMAC-signed token validation.
   - `ssrf.ts`: Resolve-time DNS validation with **Pinned IP Clients** to prevent TOCTOU/DNS Rebinding attacks.
@@ -56,7 +56,8 @@ graph TD
 2. **Provider Redirect**: Handled via Next-Auth (Azure AD, Keycloak, or Credentials).
 3. **JWT Issue**: On success, a JWT is issued with an **Absolute Lifetime** (8 hours).
 4. **Session Guard**: Every subsequent request is checked against a **Redis-backed Idle Timer** (20 minutes).
-5. **Revocation**: Critical security events (password changes) rotate the user's `securityStamp`. The `jwt` callback detects this mismatch and revokes all active sessions across devices in real-time.
+5. **Concurrent Session Detection**: Active sessions are tracked per user in Redis sorted sets. When another active session is detected, a `concurrent_login_detected` audit event is logged and the user receives an in-app notification banner.
+6. **Revocation**: Critical security events (password changes) rotate the user's `securityStamp`. The `jwt` callback detects this mismatch and revokes all active sessions across devices in real-time.
 
 ### Request Flow
 1. **Proxy**: Headers are set, and the session is validated.
@@ -80,7 +81,7 @@ graph TD
 
 TechHub maintains comprehensive automated testing across multiple layers:
 
-- **Unit & Integration Tests** (Vitest): 76 test files covering 641 tests across authentication, cryptography, proxy pipeline, server actions, API routes, and core library functions. Tests mock external services (Redis, Prisma) to run without infrastructure dependencies.
+- **Unit & Integration Tests** (Vitest): 78 test files covering authentication, cryptography, proxy pipeline, server actions, API routes, and core library functions. Tests mock external services (Redis, Prisma) to run without infrastructure dependencies.
 - **End-to-End Tests** (Playwright): 4 test suites covering admin flows, app interactions, authentication, and personal apps across Chromium, Firefox, and WebKit.
 - **CI Pipeline** (GitHub Actions): Automated lint, test, build, and Docker image verification on every push and PR. Includes CodeQL security scanning and dependency review.
 - **Coverage Reporting**: `@vitest/coverage-v8` generates text, JSON summary, and LCOV reports for `src/lib/**/*.ts` and `src/proxy.ts`. Enforced thresholds: 90% statements, 90% lines, 75% branches, 88% functions.

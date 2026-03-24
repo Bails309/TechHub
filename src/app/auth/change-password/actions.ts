@@ -59,7 +59,9 @@ export async function changePassword(
 
   const user = await prisma.user.findUnique({ where: { id: session.user.id } });
   if (!user?.passwordHash) {
-    return { status: 'error', message: 'Local account not found' };
+    // Dummy bcrypt to prevent timing-based enumeration of local vs SSO accounts
+    await verifyPassword(parsed.data.currentPassword, '$2a$12$000000000000000000000uGWDMwHSaLiDkMtIaguvW5pMyMqOZITW');
+    return { status: 'error', message: 'Current password is incorrect' };
   }
 
   const valid = await verifyPassword(parsed.data.currentPassword, user.passwordHash);
