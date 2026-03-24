@@ -44,7 +44,7 @@ describe('redis.ts – gap coverage', () => {
     mockPing.mockResolvedValue('PONG');
 
     const { getSharedRedisClient } = await import('../src/lib/redis');
-    const client = await getSharedRedisClient();
+    await getSharedRedisClient();
     // Depending on whether redis is actually running, the module may or may not succeed.
     // We just check it doesn't throw.
     expect(true).toBe(true);
