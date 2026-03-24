@@ -105,7 +105,7 @@ jobs:
           SSO_MASTER_KEY: Xq6GDOrUKS+Tr2w/l70bbfy6Rg6LCQE53ddlkSv9G6E=
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-report
@@ -221,7 +221,7 @@ jobs:
           export PLAYWRIGHT_BASE_URL=http://localhost:3000
           npm run test:e2e
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report
