@@ -5,6 +5,22 @@ All notable changes to TechHub are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-03-24
+
+### Security
+- **fast-xml-parser** — Override bumped from 5.3.8 to 5.5.9 to fix entity expansion limit bypass (GHSA-jp2q-39xq-3w4g, GHSA-8gc5-j5rx-235r).
+- **undici** — Bumped from ^6.23.0 to ^6.24.0 to fix WebSocket overflow crash, HTTP request smuggling, unbounded memory consumption, unhandled exception, and CRLF injection (5 CVEs).
+- **effect** — Override added at 3.21.0 to fix AsyncLocalStorage context loss under concurrent load (GHSA-38f7-945m-qr2g), pulled transitively by Prisma.
+- **flatted** — Override added at 3.4.2 to fix unbounded recursion DoS and prototype pollution in `parse()` (GHSA-25h7-pfq9-p65f, GHSA-rf6f-7fwh-wjgh), pulled transitively by ESLint.
+
+### Changed
+- **Dockerfile** — npm updated from 11.10.1 to 11.12.0 across all three stages.
+- **Vitest** — Upgraded from ^1.6.1 to ^2.1.9 (with `@vitest/coverage-v8` ^2.1.9), eliminating deprecated `glob@7`/`inflight` transitive dependencies.
+- **zod** — Bumped from ^3.24.4 to ^3.25.76, resolving peer dependency conflict with `zod-validation-error` from `eslint-plugin-react-hooks`.
+- **test-exclude** — Override added at 8.0.0 to pull `glob@13` instead of deprecated `glob@10`.
+
+---
+
 ## [2.2.0] - 2026-03-24
 
 ### Added
