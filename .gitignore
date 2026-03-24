@@ -2,3 +2,26 @@ node_modules
 
 # Local env file
 .env
+
+# Next.js build output
+.next/
+out/
+
+# Test artifacts
+test-results/
+playwright-report/
+coverage/
+*-output.txt
+*-result.txt
+coverage_*.txt
+pinned*.txt
+
+# Ad-hoc debug / test scripts (root level)
+test_svg_*.js
+
+# TypeScript build info
+tsconfig.tsbuildinfo
+
+# OS files
+Thumbs.db
+.DS_Store

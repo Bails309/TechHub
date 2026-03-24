@@ -24,7 +24,7 @@ vi.mock('../src/lib/redis', () => ({
 async function loadAuthModule() {
   // Ensure module reload so env changes take effect
   vi.resetModules();
-  const { getClientIp, getRateLimitKey } = await import('../src/test-exports');
+  const { getClientIp, getRateLimitKey } = await import('../src/lib/auth');
   return { getClientIp, getRateLimitKey };
 }
 

@@ -40,7 +40,7 @@ describe('Middleware Headers', () => {
         vi.stubEnv('PLAYWRIGHT_TESTING', 'false');
         vi.stubEnv('NEXTAUTH_SECRET', 'test-secret-must-be-32-chars-long-12345');
 
-        const { middleware } = await import('../src/middleware');
+        const { proxy: middleware } = await import('../src/proxy');
         const req: any = {
             method: 'GET',
             headers: new Headers([['accept', 'text/html']]),

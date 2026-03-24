@@ -1,7 +1,6 @@
 import { prisma } from './prisma';
 import { PHASE_PRODUCTION_BUILD } from 'next/constants';
 import { decryptSecret } from './crypto';
-import { unstable_cache } from 'next/cache';
 
 export type SsoProviderId = 'azure-ad' | 'keycloak' | 'credentials';
 

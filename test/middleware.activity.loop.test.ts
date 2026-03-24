@@ -30,7 +30,7 @@ describe('middleware idle timeout loop prevention (unit)', () => {
 
     it('clears cookies but skips redirect when idle timeout occurs on /auth/signin', async () => {
         const { getToken } = await import('next-auth/jwt');
-        const { middleware } = await import('../src/middleware');
+        const { proxy: middleware } = await import('../src/proxy');
 
         (getToken as any).mockResolvedValue({ sub: 'u1' });
 

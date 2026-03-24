@@ -5,6 +5,82 @@ All notable changes to TechHub are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-03-24
+
+### Added
+- **76 unit/integration test files** — Expanded from 46 to 76 test files (641 tests total), covering every module in `src/lib/` and `src/proxy.ts`.
+- **17 gap-coverage test files** — Targeted tests for previously uncovered branches and edge cases:
+  `audit.gap`, `auth.gap`, `crypto.gap`, `csrf.gap`, `health.gap`, `ip.gap`,
+  `pinnedClient.gap`, `proxy.gap`, `rateLimit.gap`, `redis.gap`, `sanitizeIconUrl.gap`,
+  `sso.gap`, `ssrf.gap`, `storage.gap`, `storageConfig.gap`, `svgProcessor.gap`, `userCache.gap`.
+- **Coverage thresholds enforced** — Vitest now enforces minimum coverage: 90% statements, 90% lines, 75% branches, 88% functions.
+
+### Changed
+- **Coverage jump** — Statement coverage raised from 64.63% to 92.42%; branch coverage from 69.98% to 79.98%; function coverage from 69.78% to 90.6%.
+- **`.gitignore` hardened** — Added patterns for temporary output files (`*-output.txt`, `*-result.txt`, `coverage_*.txt`, `pinned*.txt`, `test_svg_*.js`) to prevent workspace clutter.
+
+### Removed
+- **22 stale files cleaned up** — Removed ad-hoc debug scripts (`scripts/azure_test.js`, `scripts/debug-import.js`), database inspection scripts (`test/check-db-*.js`, `test/check-db-sso.ts`), decryption debug scripts (`test/debug-decrypt.js`, `test/test-decryption.js`, `test/test-providers-api.js`), superseded SVG test scripts (`test_svg_*.js`), and temporary coverage/test output files.
+
+---
+
+## [2.1.0] - 2026-03-23
+
+### Changed
+- **Middleware → Proxy** — Renamed `src/middleware.ts` to `src/proxy.ts` and exported function from `middleware()` to `proxy()` per Next.js 16 convention. Updated all test imports accordingly.
+- **Tailwind CSS v4** — Migrated from Tailwind CSS v3 to v4 with CSS-first configuration.
+  - Replaced `@tailwind base/components/utilities` directives with `@import "tailwindcss"` in `globals.css`.
+  - Moved all theme customisations (colors, fonts, shadows, background images) from `tailwind.config.ts` into `@theme { }` block in `globals.css`.
+  - Added `@variant dark` directive for selector-based dark mode (`data-theme="dark"`).
+  - Replaced `theme('backgroundImage.hero-grid')` calls with `var(--background-image-hero-grid)` CSS variables.
+  - Updated `postcss.config.js` to use `@tailwindcss/postcss` plugin.
+
+### Added
+- **`@tailwindcss/postcss`** — New PostCSS plugin for Tailwind CSS v4.
+
+### Removed
+- **`autoprefixer`** — No longer needed (bundled into Tailwind CSS v4).
+- **`tailwind.config.ts`** — Deprecated; all configuration now lives in CSS-first `@theme` directives.
+
+### Updated Dependencies
+| Package | From | To |
+|---|---|---|
+| `tailwindcss` | ^3.4.10 | ^4.0.0 |
+| `@tailwindcss/postcss` | — | (new) |
+| `autoprefixer` | ^10.4.20 | (removed) |
+
+---
+
+## [2.0.0] - 2026-03-23
+
+### Breaking Changes
+- **Node.js 24** — Minimum Node.js version raised from 20 to 24. Dockerfile, CI, and `engines` field updated.
+- **Next.js 16** — Upgraded from Next.js 15 to 16 (Turbopack default). Webpack config removed in favor of native `tsconfig.json` path aliases.
+
+### Changed
+- **Dockerfile** — Base images updated from `node:20-bookworm-slim` to `node:24-bookworm-slim` across all three stages (deps, builder, runner).
+- **CI workflow** — GitHub Actions `setup-node` updated from Node 20 to Node 24.
+- **next.config.mjs** — Removed `webpack()` alias config (now handled natively by Turbopack via `tsconfig.json` paths). Removed deprecated `experimental.serverActions` block. Removed invalid top-level `serverActions` key.
+- **`revalidateTag` API** — Updated `safeRevalidateTag` to pass required second `profile` argument per Next.js 16 API change.
+- **`unstable_cache` removal** — Replaced `unstable_cache` (removed in Next.js 16) with simple TTL-based in-memory caching in `storageConfig.ts`. Added `invalidateStorageConfigCache()` export. Removed unused `unstable_cache` import from `sso.ts`.
+- **Storage config invalidation** — Admin actions that save or test storage now call `invalidateStorageConfigCache()` alongside `safeRevalidateTag`.
+
+### Added
+- **`.nvmrc`** — Added with value `24` for team consistency.
+- **`engines` field** — Added `"node": ">=24.0.0"` to `package.json`.
+
+### Updated Dependencies
+| Package | From | To |
+|---|---|---|
+| `next` | ^15.1.0 | ^16.0.0 |
+| `next-auth` | ^4.24.7 | ^4.24.13 |
+| `@next/eslint-plugin-next` | ^15.5.12 | ^16.0.0 |
+| `eslint-config-next` | ^15.1.0 | ^16.0.0 |
+| `@playwright/test` | ^1.49.1 | ^1.51.1 |
+| `@types/node` | ^20.19.35 | ^24.0.0 |
+
+---
+
 ## [1.0.1] - 2025-06-20
 
 ### Security

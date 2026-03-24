@@ -13,8 +13,14 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json-summary', 'lcov'],
       reportsDirectory: './coverage',
-      include: ['src/lib/**/*.ts'],
+      include: ['src/lib/**/*.ts', 'src/proxy.ts'],
       exclude: ['src/lib/prisma.ts'],
+      thresholds: {
+        lines: 90,
+        branches: 75,
+        functions: 88,
+        statements: 90,
+      },
     },
   },
   resolve: {

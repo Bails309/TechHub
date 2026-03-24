@@ -22,7 +22,7 @@ async function safeRevalidatePath(p: string) {
 async function safeRevalidateTag(tag: string) {
   try {
     const mod = await import('next/cache');
-    if (mod?.revalidateTag) await mod.revalidateTag(tag);
+    if (mod?.revalidateTag) await mod.revalidateTag(tag, 'default');
   } catch {
     // ignore
   }
@@ -36,6 +36,7 @@ import { getServerAuthSession } from '../../lib/auth';
 import { invalidateUserMeta } from '../../lib/userCache';
 import { assertRateLimit } from '../../lib/rateLimit';
 import { decryptSecret, encryptSecret, hasSecretKey } from '../../lib/crypto';
+import { invalidateStorageConfigCache } from '../../lib/storageConfig';
 // SSO rotation removed: previously used rotateSsoSecrets utilities
 import { hashPassword, validatePasswordComplexity } from '../../lib/password';
 import { getPasswordPolicy } from '../../lib/passwordPolicy';
@@ -682,6 +683,7 @@ export async function updateStorageConfig(
       return { status: 'error', message: error instanceof Error ? error.message : 'Connection test failed' };
     }
     await safeRevalidateTag('storage-config');
+    invalidateStorageConfigCache();
     await safeRevalidatePath('/admin');
     return { status: 'success', message: 'Storage test succeeded' };
   }
@@ -785,6 +787,7 @@ export async function updateStorageConfig(
   });
 
   await safeRevalidateTag('storage-config');
+  invalidateStorageConfigCache();
   await safeRevalidatePath('/admin');
   return { status: 'success', message: enabled ? 'Storage settings saved' : 'Storage disabled' };
 }

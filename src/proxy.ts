@@ -185,7 +185,7 @@ async function createPublicCsrfToken(visitorId: string): Promise<string> {
   return nonce + '.' + sigHex;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   // Helper to serialize and append Set-Cookie headers without using
   // the next/headers cookies() API (which is restricted in some runtimes).
   function appendSetCookie(headers: Headers, name: string, value: string, opts: { httpOnly?: boolean; sameSite?: 'lax' | 'strict' | 'none'; secure?: boolean; path?: string; maxAge?: number } = {}) {
@@ -459,4 +459,17 @@ export const config = {
   // Run middleware for API routes as well so server endpoints can be protected
   // when a user must change their password. Static/_next assets remain excluded.
   matcher: ['/((?!_next/static|_next/image|_next/data|favicon\\.ico|theme-init\\.js).*)']
+};
+
+// Export internal utilities for unit testing
+export const _testUtils = {
+  buildCsp,
+  buf2hex,
+  hex2buf,
+  getSecureNonce,
+  timingSafeEqual,
+  createCsrfToken,
+  validateCsrfToken,
+  createPublicCsrfToken,
+  validatePublicCsrfToken,
 };
