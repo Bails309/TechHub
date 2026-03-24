@@ -11,7 +11,7 @@ vi.mock('../src/lib/prisma', () => ({ prisma: mockPrisma }));
 vi.mock('../src/lib/redis', () => ({ getSharedRedisClient: (...a: any[]) => mockGetSharedRedisClient(...a) }));
 vi.mock('../src/lib/storageConfig', () => ({ getStorageConfigMap: (...a: any[]) => mockGetStorageConfigMap(...a) }));
 
-const { checkDatabaseHealth, checkRedisHealth, checkStorageHealth, checkSchemaHealth, getSystemHealth } = await import('../src/lib/health');
+const { checkRedisHealth, checkStorageHealth, checkSchemaHealth, getSystemHealth } = await import('../src/lib/health');
 
 describe('health.ts – gap coverage', () => {
   beforeEach(() => {
