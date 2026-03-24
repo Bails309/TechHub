@@ -1,7 +1,6 @@
 import { prisma } from '../../../lib/prisma';
 import Link from 'next/link';
 import AppSearch from '../../../components/AppSearch';
-import { randomUUID } from 'crypto';
 import DeleteAppForm from '../../../components/DeleteAppForm';
 import EditAppForm from '../../../components/EditAppForm';
 import NewAppForm from '../../../components/NewAppForm';

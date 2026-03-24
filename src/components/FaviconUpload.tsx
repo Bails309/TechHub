@@ -2,7 +2,7 @@
 
 import React, { useRef, useState, useEffect } from "react";
 import { useTheme } from './ThemeProvider';
-import { Upload, X } from 'lucide-react';
+import { Upload } from 'lucide-react';
 
 type Props = {
     name: string;

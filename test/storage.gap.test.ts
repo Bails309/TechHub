@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import path from 'path';
 
 // Mock storageConfig to control which provider is active
 const mockGetStorageConfigMap = vi.fn();

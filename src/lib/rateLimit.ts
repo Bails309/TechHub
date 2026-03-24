@@ -1,5 +1,4 @@
 import { RateLimiterMemory, RateLimiterRedis } from 'rate-limiter-flexible';
-import IORedis, { RedisOptions } from 'ioredis';
 
 import { getSharedRedisClient } from './redis';
 

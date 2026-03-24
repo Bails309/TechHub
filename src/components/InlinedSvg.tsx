@@ -2,7 +2,6 @@
 // Version: antigravity-ultimate-v5
 
 import { useEffect, useState, useId } from 'react';
-import { useNonce } from './NonceProvider';
 import { useTheme } from './ThemeProvider';
 import {
     parseCssBlocks,
@@ -23,7 +22,6 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
     const [svgContent, setSvgContent] = useState<string | null>(null);
     const [error, setError] = useState(false);
     const { theme } = useTheme();
-    const nonce = useNonce();
     const instanceId = useId().replace(/:/g, '');
     const prefix = `svg-${instanceId}-`;
 

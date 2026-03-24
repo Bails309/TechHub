@@ -40,7 +40,7 @@ describe('rateLimit – gap coverage', () => {
     vi.stubEnv('NODE_ENV', 'test');
     vi.stubEnv('RATE_LIMIT_STORE', 'redis');
     // Provide a mock redis client with consume-compatible interface
-    const mockConsume = vi.fn().mockResolvedValue({ remainingPoints: 9 });
+    vi.fn().mockResolvedValue({ remainingPoints: 9 });
     const redis = await import('../src/lib/redis');
     vi.mocked(redis.getSharedRedisClient).mockResolvedValue({
       get: vi.fn(),

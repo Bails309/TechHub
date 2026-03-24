@@ -1,7 +1,6 @@
 'use server';
 
 import { z } from 'zod';
-import path from 'path';
 import { saveIcon as storageSaveIcon, deleteIcon as storageDeleteIcon, cleanupOrphanedIcons } from '../../lib/storage';
 // Importing Next runtime cache helpers at module-load can call into
 // runtime-only APIs (like `headers()`) which are unavailable in the
@@ -30,7 +29,6 @@ async function safeRevalidateTag(tag: string) {
 import { prisma } from '../../lib/prisma';
 import { writeAuditLog } from '../../lib/audit';
 import { validateCsrf } from '../../lib/csrf';
-import { cookies } from 'next/headers';
 import { Prisma } from '@prisma/client';
 import { getServerAuthSession } from '../../lib/auth';
 import { invalidateUserMeta } from '../../lib/userCache';
@@ -40,7 +38,6 @@ import { invalidateStorageConfigCache } from '../../lib/storageConfig';
 // SSO rotation removed: previously used rotateSsoSecrets utilities
 import { hashPassword, validatePasswordComplexity } from '../../lib/password';
 import { getPasswordPolicy } from '../../lib/passwordPolicy';
-import { lookup } from 'dns/promises';
 import https from 'https';
 import http from 'http';
 import ipaddr from 'ipaddr.js';
@@ -56,12 +53,10 @@ function assertPostgres() {
     throw new Error('Unsupported database provider: PostgreSQL is required');
   }
 }
-import { assertUrlNotPrivate, isPublicIp } from '../../lib/ssrf';
+import { assertUrlNotPrivate } from '../../lib/ssrf';
 import { getStorageConfigMapWithDeps, StorageProviderId } from '@/lib/storageConfig';
 import { BlobServiceClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
-// @ts-ignore - stale types in IDE
-import { createHttpHeaders } from '@azure/core-rest-pipeline';
 import {
   PinnedEndpoint,
   createPinnedHttpClient,
