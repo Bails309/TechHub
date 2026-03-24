@@ -1,17 +1,11 @@
 import { prisma } from '../../../lib/prisma';
 import { getPasswordPolicy } from '../../../lib/passwordPolicy';
 import CreateLocalUserForm from '../../../components/CreateLocalUserForm';
-import AdminActionForm from '../../../components/AdminActionForm';
-import DeleteUserForm from '../../../components/DeleteUserForm';
 import UsersList from '../../../components/UsersList';
-import ForcePasswordResetForm from '../../../components/ForcePasswordResetForm';
-import RoleMultiSelect from '../../../components/RoleMultiSelect';
 import UserSearch from '../../../components/UserSearch';
 import Link from 'next/link';
 import {
-    updateUserRoles,
     createLocalUser,
-    deleteUser,
 } from '../actions';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +26,6 @@ export default async function UsersPage({
 
     const requestedAccessPage = Number(resolvedParams?.accessPage ?? '1');
     const accessPage = Number.isFinite(requestedAccessPage) && requestedAccessPage > 0 ? requestedAccessPage : 1;
-    const accessSkip = (accessPage - 1) * pageSize;
     const errorMessage =
         resolvedParams?.error === 'confirm-admin'
             ? 'Confirm the admin grant checkbox before saving admin role changes.'
@@ -51,18 +44,12 @@ export default async function UsersPage({
         ]
     } : {};
 
-    const [usersForList, usersForAccess, rolesList, totalUsers, filteredUsersCount, passwordPolicy] = await Promise.all([
+    const [usersForList, rolesList, totalUsers, filteredUsersCount, passwordPolicy] = await Promise.all([
         prisma.user.findMany({
             where,
             include: { roles: { include: { role: true } }, accounts: true },
             orderBy: { email: 'asc' },
             skip: usersSkip,
-            take: pageSize,
-        }),
-        prisma.user.findMany({
-            include: { roles: { include: { role: true } } },
-            orderBy: { email: 'asc' },
-            skip: accessSkip,
             take: pageSize,
         }),
         prisma.role.findMany({ orderBy: { name: 'asc' } }),
@@ -74,12 +61,6 @@ export default async function UsersPage({
     const userTotalPages = Math.max(1, Math.ceil(filteredUsersCount / pageSize));
     const prevUserPage = userPage > 1 ? userPage - 1 : null;
     const nextUserPage = userPage < userTotalPages ? userPage + 1 : null;
-
-    const accessTotalPages = Math.max(1, Math.ceil(totalUsers / pageSize));
-    const prevAccessPage = accessPage > 1 ? accessPage - 1 : null;
-    const nextAccessPage = accessPage < accessTotalPages ? accessPage + 1 : null;
-
-    const showAccessPaneInline = totalUsers <= 5;
 
     return (
         <div className="px-6 md:px-12 py-12 space-y-8">

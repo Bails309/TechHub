@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 describe('rate limiter (memory)', () => {
   it('allows up to configured points and then rejects', async () => {

@@ -1,7 +1,6 @@
 import http from 'http';
 import https from 'https';
 import ipaddr from 'ipaddr.js';
-import { createDefaultHttpClient, createHttpHeaders } from '@azure/core-rest-pipeline';
 
 export type PinnedEndpoint = {
     url: URL;

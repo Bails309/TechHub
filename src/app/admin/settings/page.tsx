@@ -1,5 +1,5 @@
 import { prisma } from '../../../lib/prisma';
-import { decryptSecret, getSecretKeyState, hasSecretKey } from '../../../lib/crypto';
+import { decryptSecret, getSecretKeyState } from '../../../lib/crypto';
 import StorageConfigForm from '../../../components/StorageConfigForm';
 import AdminActionForm from '../../../components/AdminActionForm';
 import LogoUpload from '../../../components/LogoUpload';

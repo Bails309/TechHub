@@ -1,7 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
 
 const mockPrisma = {
   $queryRaw: vi.fn(),

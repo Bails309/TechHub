@@ -57,7 +57,6 @@ const credentialsEnabledEnv = process.env.ENABLE_CREDENTIALS !== 'false';
 // See: https://next-auth.js.org/configuration/providers/oauth#allowdangerousemailaccountlinking
 const allowEmailLinking = false;
 const rateLimitFallbackAllowProxy = process.env.RATE_LIMIT_FALLBACK_ALLOW_PROXY === 'true';
-const allowMissingRemoteIp = process.env.ALLOW_MISSING_REMOTE_IP === 'true';
 
 // Session lifetimes are now defined in auth-config.ts to be Edge-compatible
 export { getSessionMaxAgeSeconds, getSessionIdleTimeoutMs };

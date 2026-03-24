@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, ShieldCheck, LogIn, Menu, X, LayoutDashboard, Settings, User as UserIcon } from 'lucide-react';
+import { LogIn, Menu, X, LayoutDashboard, Settings, User as UserIcon } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import { useState } from 'react';
 import ThemeToggle from './ThemeToggle';
@@ -14,7 +14,6 @@ export default function SideNav({ logo, logoLight, logoDark }: { logo?: string; 
     const user = session?.user;
     const roles = user?.roles ?? [];
     const isAuthenticated = Boolean(user);
-    const isLocalUser = user?.authProvider === 'credentials';
     const { theme } = useTheme();
     const pathname = usePathname();
     const [isMobileOpen, setIsMobileOpen] = useState(false);

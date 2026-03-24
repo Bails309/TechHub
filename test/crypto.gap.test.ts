@@ -95,7 +95,7 @@ describe('crypto.ts – gap coverage', () => {
 
   it('decryptSecret fallback loop tries all keys', async () => {
     vi.stubEnv('SSO_MASTER_KEY', VALID_KEY);
-    const { encryptSecret, decryptSecret, invalidateKeyRingCache } = await import('../src/lib/crypto');
+    const { encryptSecret, decryptSecret } = await import('../src/lib/crypto');
     // Encrypt with current key
     const enc = encryptSecret('fallback-loop-test');
     // Tamper with keyId portion to force preferred-key miss and loop fallback

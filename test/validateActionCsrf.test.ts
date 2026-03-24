@@ -80,7 +80,7 @@ describe('validateActionCsrf', () => {
     });
 
     it('rejects if token does not match cookie', async () => {
-        const validToken = generateToken('nonce1', 'user1');
+        generateToken('nonce1', 'user1');
         mockHeaders.mockResolvedValue(new Headers({ 'x-csrf-token': 'wrong-token' }));
         mockGetToken.mockResolvedValue({ sub: 'user1' });
 

@@ -15,8 +15,6 @@ import {
 } from './pinnedClient';
 import ipaddr from 'ipaddr.js';
 
-const STORAGE_PROVIDER = process.env.STORAGE_PROVIDER || 'local';
-
 /** Detect image type from magic bytes. Returns extension info or null for unrecognised content. */
 function detectImageType(buffer: Buffer): { ext: string; isSvg: boolean } | null {
   const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
@@ -56,18 +54,6 @@ type AzureConfig = {
   endpoint?: string;
   secret?: string;
 };
-
-// Local storage implementation
-async function saveLocal(file: File) {
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const detected = detectImageType(buffer);
-  const extension = detected?.ext ?? '.bin';
-  const filename = `${randomUUID()}${extension}`;
-  const uploadDir = path.join(process.cwd(), 'uploads');
-  await mkdir(uploadDir, { recursive: true });
-  await writeFile(path.join(uploadDir, filename), buffer);
-  return `/uploads/${filename}`;
-}
 
 async function deleteLocal(iconPath?: string) {
   if (!iconPath) return;
@@ -171,27 +157,6 @@ async function resolveS3Config(): Promise<S3Config | null> {
     secret: entry.secret ?? undefined,
     forcePathStyle: typeof cfg.forcePathStyle === 'boolean' ? cfg.forcePathStyle : undefined
   };
-}
-
-async function saveS3(file: File) {
-  const config = await resolveS3Config();
-  const bucket = config?.bucket || process.env.S3_BUCKET;
-  if (!bucket) throw new Error('S3_BUCKET not configured');
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const detected = detectImageType(buffer);
-  const extension = detected?.ext ?? '.bin';
-  const key = `uploads/${randomUUID()}${extension}`;
-  const s3 = await getS3Client(config ?? undefined);
-  await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: file.type }));
-  const region = config?.region || process.env.S3_REGION;
-  const endpoint = config?.endpoint || process.env.S3_ENDPOINT;
-  const baseUrl = endpoint
-    ? endpoint.replace(/\/$/, '')
-    : region
-      ? `https://${bucket}.s3.${region}.amazonaws.com`
-      : `https://${bucket}.s3.amazonaws.com`;
-  // Return canonical same-origin path for DB storage (e.g. /uploads/<key>)
-  return `/${key}`;
 }
 
 async function deleteS3(iconPath?: string) {
@@ -316,13 +281,6 @@ async function getAzureContainerClient(config?: AzureConfig) {
   return serviceClient.getContainerClient(container);
 }
 
-function parseAzureConnectionString(raw: string) {
-  const accountMatch = raw.match(/AccountName=([^;]+)/i);
-  const keyMatch = raw.match(/AccountKey=([^;]+)/i);
-  if (!accountMatch || !keyMatch) return null;
-  return { account: accountMatch[1], key: keyMatch[1] };
-}
-
 async function resolveAzureConfig(): Promise<AzureConfig | null> {
   const map = await getStorageConfigMap();
   const entry = map.get('azure');
@@ -340,22 +298,6 @@ async function resolveAzureConfig(): Promise<AzureConfig | null> {
     };
   }
   return null;
-}
-
-async function saveAzure(file: File) {
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const detected = detectImageType(buffer);
-  const isSvg = detected?.isSvg ?? false;
-  const extension = detected?.ext ?? '.bin';
-  const key = `uploads/${randomUUID()}${extension}`;
-  const config = await resolveAzureConfig();
-  const containerClient = await getAzureContainerClient(config ?? undefined);
-  const blobClient = containerClient.getBlockBlobClient(key);
-  await blobClient.uploadData(buffer, {
-    blobHTTPHeaders: { blobContentType: isSvg ? 'image/svg+xml' : (file.type || 'application/octet-stream') },
-  });
-  // Return canonical same-origin path to be stored in DB (e.g. /uploads/<key>)
-  return `/${key}`;
 }
 
 async function deleteAzure(iconPath?: string) {
@@ -550,13 +492,6 @@ async function saveS3WithBuffer(buffer: Buffer, keySuffix: string, contentType: 
     ContentType: contentType,
     ContentDisposition: contentType === 'image/svg+xml' ? 'inline' : undefined
   }));
-  const region = config?.region || process.env.S3_REGION;
-  const endpoint = config?.endpoint || process.env.S3_ENDPOINT;
-  const baseUrl = endpoint
-    ? endpoint.replace(/\/$/, '')
-    : region
-      ? `https://${bucket}.s3.${region}.amazonaws.com`
-      : `https://${bucket}.s3.amazonaws.com`;
   // Persist canonical path for consistency with local storage (e.g. /uploads/<key>)
   return `/${key}`;
 }

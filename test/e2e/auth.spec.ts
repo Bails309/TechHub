@@ -11,7 +11,7 @@ test.describe('Authentication Smoke Test', () => {
         // Verify Keycloak button is present (addressing the recent bug)
         // Note: In local development, Keycloak might not be enabled in the DB, 
         // but in CI we seed the DB to ensure it appears.
-        const keycloakBtn = page.getByRole('button', { name: /Sign in with Keycloak/i });
+        const _keycloakBtn = page.getByRole('button', { name: /Sign in with Keycloak/i });
 
         // We expect it to be visible if the database has it enabled
         // For a smoke test, we verify that the UI components render correctly

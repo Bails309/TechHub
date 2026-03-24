@@ -1,6 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import Link from 'next/link';
-import { AppWindow, Users, KeyRound, Settings, LayoutGrid } from 'lucide-react';
+import { AppWindow, Users, KeyRound, Settings } from 'lucide-react';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { getAppLaunchStats, getUserActivityStats } from './actions';
 import ClientDate from '../../components/ClientDate';

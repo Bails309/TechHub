@@ -1,4 +1,4 @@
-import Redis, { RedisOptions } from 'ioredis';
+import Redis from 'ioredis';
 import { prisma } from './prisma';
 
 import { getSharedRedisClient, _setSharedRedisClientForTest } from './redis';

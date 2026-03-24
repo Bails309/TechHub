@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import http from 'http';
-import { Readable } from 'stream';
+import { Readable } from 'node:stream';
 
 vi.mock('@azure/core-rest-pipeline', () => ({
   createDefaultHttpClient: vi.fn(),

@@ -523,7 +523,7 @@ describe('auth.ts – gap coverage', () => {
     it('calls getServerSession in non-test mode', async () => {
       vi.stubEnv('UNSAFE_TEST_AUTH', '');
       mockGetServerSession.mockResolvedValue({ user: { id: '1' } });
-      const session = await auth.getServerAuthSession();
+      const _session = await auth.getServerAuthSession();
       expect(mockGetServerSession).toHaveBeenCalled();
     });
   });

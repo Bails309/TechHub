@@ -17,8 +17,8 @@ describe('middleware mandatory password change enforcement', () => {
         const exactPaths = ['/auth/signin', '/auth/change-password'];
         const apiDirectories = ['/api/auth'];
 
-        const isExactAllowed = exactPaths.includes(pathname);
-        const isApiAllowed = apiDirectories.some((dir) => pathname === dir || pathname.startsWith(dir + '/'));
+        const _isExactAllowed = exactPaths.includes(pathname);
+        const _isApiAllowed = apiDirectories.some((dir) => pathname === dir || pathname.startsWith(dir + '/'));
 
         const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
 
