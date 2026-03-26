@@ -130,6 +130,36 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
             const currentTheme = (theme || 'dark').toLowerCase();
             const touchedElements = new Set<Element>();
 
+            // Extract all CSS Custom Properties so we can resolve them instead of injecting style="..." attributes.
+            const cssVariables = new Map<string, string>();
+            ['all', currentTheme].forEach(mode => {
+                extractedRules.filter(r => r.themeMode === mode).forEach(rule => {
+                    rule.declarations.forEach((d: string) => {
+                        const cIdx = d.indexOf(':');
+                        if (cIdx === -1) return;
+                        const originalProp = d.substring(0, cIdx).trim();
+                        const val = d.substring(cIdx + 1).trim();
+                        if (originalProp.startsWith('--')) {
+                            cssVariables.set(originalProp, val);
+                        }
+                    });
+                });
+            });
+
+            // Helper to recursively substitute var(--foo) with the mapped values
+            const resolveVar = (value: string | null): string | null => {
+                if (!value) return value;
+                let resolved = value;
+                let prev;
+                do {
+                    prev = resolved;
+                    resolved = resolved.replace(/var\((--[^,)]+)(?:,\s*([^)]+))?\)/gi, (match, varName, fallback) => {
+                        return cssVariables.get(varName) || fallback || match;
+                    });
+                } while (resolved !== prev && resolved.includes('var('));
+                return resolved;
+            };
+
             // 5. Force root inheritance
             svg.removeAttribute('color');
 
@@ -139,9 +169,13 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
                 if (sval) {
                     sval.split(';').forEach(p => {
                         const [k, v] = p.split(':').map(x => x?.trim());
-                        if (k && v && styleToAttrMap[k.toLowerCase()]) {
-                            el.setAttribute(styleToAttrMap[k.toLowerCase()], v);
-                            if (['fill', 'stroke', 'color'].includes(k.toLowerCase())) touchedElements.add(el);
+                        if (k && v) {
+                            const kL = k.toLowerCase();
+                            const resolvedVal = resolveVar(v) || v;
+                            if (styleToAttrMap[kL]) {
+                                el.setAttribute(styleToAttrMap[kL], resolvedVal);
+                                if (['fill', 'stroke', 'color'].includes(kL)) touchedElements.add(el);
+                            }
                         }
                     });
                 }
@@ -158,8 +192,9 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
                             rule.declarations.forEach((d: string) => {
                                 const cIdx = d.indexOf(':');
                                 if (cIdx === -1) return;
-                                const prop = d.substring(0, cIdx).trim().toLowerCase();
-                                const val = d.substring(cIdx + 1).trim();
+                                const originalProp = d.substring(0, cIdx).trim();
+                                const prop = originalProp.toLowerCase();
+                                const val = resolveVar(d.substring(cIdx + 1).trim()) || d.substring(cIdx + 1).trim();
                                 if (styleToAttrMap[prop]) {
                                     el.setAttribute(styleToAttrMap[prop], val);
                                     if (['fill', 'stroke', 'color'].includes(prop)) touchedElements.add(el);
@@ -173,6 +208,17 @@ export default function InlinedSvg({ src, className, fallback }: InlinedSvgProps
             // 8. Adaptive Inversion Policy
             const isDark = currentTheme === 'dark';
             const allNodes = [svg, ...Array.from(svg.querySelectorAll('*'))];
+
+            // Resolve remaining CSS variables in native attributes (e.g., stop-color)
+            allNodes.forEach(el => {
+                Array.from(el.attributes).forEach(attr => {
+                    if (attr.value.includes('var(')) {
+                        const resolved = resolveVar(attr.value);
+                        if (resolved) el.setAttribute(attr.name, resolved);
+                    }
+                });
+            });
+
             allNodes.forEach(el => {
                 const tag = el.tagName.toLowerCase();
                 if (['path', 'circle', 'rect', 'ellipse', 'polygon', 'polyline', 'text', 'line'].includes(tag)) {

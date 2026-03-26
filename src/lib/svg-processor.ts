@@ -20,6 +20,8 @@ export const styleToAttrMap: Record<string, string> = {
     'opacity': 'opacity', 'display': 'display', 'visibility': 'visibility',
     'stop-color': 'stop-color', 'stop-opacity': 'stop-opacity',
     'fill-opacity': 'fill-opacity', 'stroke-opacity': 'stroke-opacity',
+    'filter': 'filter', 'transform': 'transform',
+    'flood-color': 'flood-color', 'flood-opacity': 'flood-opacity', 'lighting-color': 'lighting-color',
     'color': 'fill' // "color" property in SVG usually indicates the fill color for text/shapes
 };
 
