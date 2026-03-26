@@ -171,7 +171,9 @@ export default function SessionGuard() {
             style={{
                 position: 'fixed',
                 bottom: '1.5rem',
+                left: '1.5rem',
                 right: '1.5rem',
+                margin: '0 auto',
                 zIndex: 9999,
                 maxWidth: '400px',
                 padding: '1rem 1.25rem',
