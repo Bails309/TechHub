@@ -138,4 +138,10 @@ describe('styleToAttrMap', () => {
     it('does not map unknown properties', () => {
         expect(styleToAttrMap['background']).toBeUndefined();
     });
+
+    it('maps new properties like filter and transform', () => {
+        expect(styleToAttrMap['filter']).toBe('filter');
+        expect(styleToAttrMap['transform']).toBe('transform');
+        expect(styleToAttrMap['flood-color']).toBe('flood-color');
+    });
 });

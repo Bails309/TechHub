@@ -57,7 +57,7 @@ export default function AppCard({ app, onReorder, contextIds, isPinned = false, 
       onDragEnd={handleDragEnd}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      className={`glass group relative flex flex-col items-center justify-center gap-2 rounded-2xl p-5 transition-all hover:-translate-y-1 hover:shadow-glow hover:z-10 focus:outline-none focus:ring-2 focus:ring-ocean-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-ink-900 ${isDragging ? 'opacity-50 scale-95' : ''
+      className={`glass group relative flex flex-col items-center justify-center gap-2 rounded-2xl p-4 sm:p-5 w-full min-w-0 transition-all hover:-translate-y-1 hover:shadow-glow hover:z-10 focus:outline-none focus:ring-2 focus:ring-ocean-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-ink-900 ${isDragging ? 'opacity-50 scale-95' : ''
         }`}
       prefetch={false}
       title={app.description ?? app.name}

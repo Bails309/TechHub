@@ -105,7 +105,7 @@ export default async function Home() {
     const displayLatency = averageLatencyValue ?? '< 1s';
 
     return (
-      <div className="px-6 md:px-12 py-12 space-y-12">
+      <div className="px-4 sm:px-6 md:px-12 py-8 md:py-12 space-y-8 md:space-y-12">
         <StatsStrip
           appCount={allApps.length}
           categories={categories.length}

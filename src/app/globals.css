@@ -468,6 +468,8 @@ html[data-theme='light'] .tab-inactive:hover {
   position: fixed;
   bottom: 1.5rem;
   left: 1.5rem;
+  right: 1.5rem;
+  margin: 0 auto;
   z-index: 9998;
   max-width: 420px;
   padding: 0;
@@ -484,6 +486,8 @@ html[data-theme='light'] .tab-inactive:hover {
 @media (min-width: 1024px) {
   .concurrent-banner {
     left: 17.5rem;
+    right: auto;
+    margin: 0;
   }
 }
 
