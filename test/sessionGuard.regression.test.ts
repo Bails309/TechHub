@@ -162,6 +162,15 @@ describe('Absolute session timeout regressions', () => {
     vi.doMock('@next-auth/prisma-adapter', () => ({ PrismaAdapter: () => ({}) }));
     vi.doMock('../src/lib/audit', () => ({ writeAuditLog: vi.fn() }));
     vi.doMock('../src/lib/sso', () => ({ getSsoConfigMap: async () => new Map() }));
+    vi.doMock('../src/lib/redis', () => ({
+      getSharedRedisClient: vi.fn().mockResolvedValue(null),
+    }));
+    vi.doMock('../src/lib/sessionTracker', () => ({
+      trackSession: vi.fn().mockResolvedValue(0),
+      untrackSession: vi.fn().mockResolvedValue(undefined),
+      refreshSession: vi.fn().mockResolvedValue(0),
+      clearAllSessions: vi.fn().mockResolvedValue(undefined),
+    }));
   });
 
   const mockUser = {
