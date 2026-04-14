@@ -20,7 +20,9 @@ vi.mock('../src/lib/pinnedClient', () => ({
 // Mock AWS S3
 const mockS3Send = vi.fn();
 vi.mock('@aws-sdk/client-s3', () => ({
-  S3Client: vi.fn().mockImplementation(() => ({ send: mockS3Send })),
+  S3Client: vi.fn().mockImplementation(function () {
+    return { send: mockS3Send };
+  }),
   PutObjectCommand: vi.fn(),
   DeleteObjectCommand: vi.fn(),
   ListObjectsV2Command: vi.fn(),

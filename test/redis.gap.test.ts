@@ -5,16 +5,20 @@ const mockPing = vi.fn();
 const mockOn = vi.fn();
 const mockDisconnect = vi.fn();
 
-const MockIORedis = vi.fn().mockImplementation(() => ({
-  ping: mockPing,
-  on: mockOn,
-  disconnect: mockDisconnect,
-}));
-(MockIORedis as any).Cluster = vi.fn().mockImplementation(() => ({
-  ping: mockPing,
-  on: mockOn,
-  disconnect: mockDisconnect,
-}));
+const MockIORedis = vi.fn().mockImplementation(function () {
+  return {
+    ping: mockPing,
+    on: mockOn,
+    disconnect: mockDisconnect,
+  };
+});
+(MockIORedis as any).Cluster = vi.fn().mockImplementation(function () {
+  return {
+    ping: mockPing,
+    on: mockOn,
+    disconnect: mockDisconnect,
+  };
+});
 
 vi.mock('ioredis', () => {
   return {

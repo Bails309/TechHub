@@ -45,8 +45,8 @@
     "next-auth": "^4.24.13",
     "prisma": "^6.19.3",
     "rate-limiter-flexible": "^5.0.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
     "sanitize-html": "^2.13.0",
     "tailwind-merge": "^2.6.1",
     "undici": "^6.24.0",
@@ -63,16 +63,16 @@
     "@types/sanitize-html": "^2.13.0",
     "@typescript-eslint/eslint-plugin": "^8.58.0",
     "@typescript-eslint/parser": "^8.58.0",
-    "@vitest/coverage-v8": "^2.1.9",
+    "@vitest/coverage-v8": "^4.1.4",
     "esbuild": "^0.28.0",
     "eslint": "^9.39.3",
     "eslint-config-next": "^16.2.2",
     "ioredis-mock": "^8.13.1",
-    "postcss": "^8.5.8",
-    "prettier": "^3.3.3",
+    "postcss": "^8.5.9",
+    "prettier": "^3.8.2",
     "tailwindcss": "^4.2.2",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4",
-    "vitest": "^2.1.9"
+    "vitest": "^4.1.4"
   }
 }
