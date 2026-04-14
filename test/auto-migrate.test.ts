@@ -24,17 +24,19 @@ const mockCount = vi.fn();
 const mockDisconnect = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@prisma/client', () => ({
-  PrismaClient: vi.fn().mockImplementation(() => ({
-    systemState: {
-      upsert: mockUpsert,
-      findUnique: mockFindUnique,
-      create: mockCreate,
-    },
-    user: {
-      count: mockCount,
-    },
-    $disconnect: mockDisconnect,
-  })),
+  PrismaClient: vi.fn().mockImplementation(function () {
+    return {
+      systemState: {
+        upsert: mockUpsert,
+        findUnique: mockFindUnique,
+        create: mockCreate,
+      },
+      user: {
+        count: mockCount,
+      },
+      $disconnect: mockDisconnect,
+    };
+  }),
 }));
 
 /**

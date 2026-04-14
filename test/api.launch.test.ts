@@ -1,21 +1,27 @@
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('next/server', () => {
-    const MockNextResponse: any = vi.fn().mockImplementation((body, init) => ({
-        body,
-        status: init?.status ?? 200,
-        headers: { set: vi.fn(), get: vi.fn(), append: vi.fn() }
-    }));
-    MockNextResponse.redirect = vi.fn().mockImplementation((url) => ({
-        status: 307,
-        location: String(url),
-        headers: { set: vi.fn(), get: vi.fn(), append: vi.fn() }
-    }));
-    MockNextResponse.json = vi.fn().mockImplementation((body, init) => ({
-        body,
-        status: init?.status ?? 200,
-        headers: { set: vi.fn(), get: vi.fn(), append: vi.fn() }
-    }));
+    const MockNextResponse: any = vi.fn().mockImplementation(function (body, init) {
+        return {
+            body,
+            status: init?.status ?? 200,
+            headers: { set: vi.fn(), get: vi.fn(), append: vi.fn() }
+        };
+    });
+    MockNextResponse.redirect = vi.fn().mockImplementation(function (url) {
+        return {
+            status: 307,
+            location: String(url),
+            headers: { set: vi.fn(), get: vi.fn(), append: vi.fn() }
+        };
+    });
+    MockNextResponse.json = vi.fn().mockImplementation(function (body, init) {
+        return {
+            body,
+            status: init?.status ?? 200,
+            headers: { set: vi.fn(), get: vi.fn(), append: vi.fn() }
+        };
+    });
     return { NextResponse: MockNextResponse, NextRequest: vi.fn() };
 });
 

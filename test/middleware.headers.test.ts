@@ -1,22 +1,28 @@
 import { describe, it, expect, vi } from 'vitest';
 
 const { MockNextResponse } = vi.hoisted(() => {
-    const nextFn = vi.fn().mockImplementation(() => ({
-        status: 200,
-        headers: { set: vi.fn(), get: vi.fn(), append: vi.fn(), has: vi.fn() }
-    }));
-    const redirectFn = vi.fn().mockImplementation((url) => ({
-        type: 'redirect',
-        location: String(url),
-        status: 307,
-        headers: { set: vi.fn(), get: vi.fn(), append: vi.fn(), has: vi.fn() }
-    }));
+    const nextFn = vi.fn().mockImplementation(function () {
+        return {
+            status: 200,
+            headers: { set: vi.fn(), get: vi.fn(), append: vi.fn(), has: vi.fn() }
+        };
+    });
+    const redirectFn = vi.fn().mockImplementation(function (url) {
+        return {
+            type: 'redirect',
+            location: String(url),
+            status: 307,
+            headers: { set: vi.fn(), get: vi.fn(), append: vi.fn(), has: vi.fn() }
+        };
+    });
 
-    const Mock: any = vi.fn().mockImplementation((body, init) => ({
-        body,
-        status: init?.status ?? 200,
-        headers: { set: vi.fn(), get: vi.fn(), append: vi.fn(), has: vi.fn() }
-    }));
+    const Mock: any = vi.fn().mockImplementation(function (body, init) {
+        return {
+            body,
+            status: init?.status ?? 200,
+            headers: { set: vi.fn(), get: vi.fn(), append: vi.fn(), has: vi.fn() }
+        };
+    });
     Mock.next = nextFn;
     Mock.redirect = redirectFn;
 
