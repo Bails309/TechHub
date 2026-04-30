@@ -186,8 +186,7 @@ async function createPublicCsrfToken(visitorId: string): Promise<string> {
 }
 
 export async function proxy(request: NextRequest) {
-  const url = request.nextUrl.clone();
-  const pathname = url.pathname;
+  const pathname = request.nextUrl.pathname;
 
   // 0. High-Speed SSO Redirect (Trailing-slash insensitive)
   if (pathname === '/sso' || pathname === '/sso/') {

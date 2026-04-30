@@ -59,7 +59,7 @@ describe('middleware activity cookie handling (unit)', () => {
         };
 
         // Need to handle potential clone() calls in middleware
-        fakeReq.nextUrl.clone = () => ({ pathname: '/auth/signin' });
+        fakeReq.nextUrl.clone = () => ({ ...fakeReq.nextUrl, pathname: fakeReq.nextUrl.pathname });
 
         const res: any = await middleware(fakeReq as any);
         expect(res.type).toBe('redirect');
