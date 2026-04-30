@@ -28,6 +28,11 @@ const nextConfig = {
   async redirects() {
     return [
       {
+        source: '/sso/',
+        destination: '/auth/sso',
+        permanent: false,
+      },
+      {
         source: '/sso',
         destination: '/auth/sso',
         permanent: false,

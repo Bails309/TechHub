@@ -23,6 +23,7 @@ export default function CommandPalette({ apps, isOpen, onClose }: CommandPalette
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [recentApps, setRecentApps] = useState<PaletteApp[]>([]);
     const inputRef = useRef<HTMLInputElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     // Load recent apps from local storage
     useEffect(() => {
@@ -135,6 +136,19 @@ export default function CommandPalette({ apps, isOpen, onClose }: CommandPalette
         setSelectedIndex(0);
     }, [query]);
 
+    // Auto-scroll selected item into view
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const selectedElement = scrollContainerRef.current?.querySelector(`[data-selected="true"]`);
+        if (selectedElement) {
+            selectedElement.scrollIntoView({
+                block: 'nearest',
+                inline: 'nearest'
+            });
+        }
+    }, [selectedIndex, isOpen]);
+
     const launchApp = (app: PaletteApp) => {
         // Save to recents
         try {
@@ -180,7 +194,7 @@ export default function CommandPalette({ apps, isOpen, onClose }: CommandPalette
                 </div>
 
                 {/* Results List */}
-                <div className="max-h-[60vh] overflow-y-auto p-2">
+                <div ref={scrollContainerRef} className="max-h-[60vh] overflow-y-auto p-2">
                     {filteredApps.length === 0 ? (
                         <div className="p-8 text-center text-ink-400">
                             <Compass className="h-10 w-10 mx-auto mb-3 opacity-20" />
@@ -213,6 +227,7 @@ export default function CommandPalette({ apps, isOpen, onClose }: CommandPalette
                                             </div>
                                         )}
                                         <button
+                                            data-selected={isSelected}
                                             className={`w-full flex items-center px-4 py-3 rounded-xl text-left transition-colors ${isSelected
                                                     ? 'bg-ocean-50 dark:bg-ocean-500/10'
                                                     : 'hover:bg-ink-50 dark:hover:bg-ink-800/50'
