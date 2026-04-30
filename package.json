@@ -24,11 +24,14 @@
   },
   "overrides": {
     "esbuild": "$esbuild",
-    "fast-xml-parser": "5.5.9",
+    "fast-xml-parser": "5.7.0",
     "test-exclude": "8.0.0",
     "effect": "3.21.0",
     "flatted": "3.4.2",
-    "defu": "6.1.6"
+    "defu": "6.1.6",
+    "postcss": "$postcss",
+    "uuid": "14.0.0",
+    "brace-expansion": "5.0.5"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1024.0",
@@ -53,7 +56,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@next/eslint-plugin-next": "^16.2.2",
+    "@next/eslint-plugin-next": "^16.2.4",
     "@playwright/test": "^1.59.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/ioredis-mock": "^8.2.6",
@@ -61,18 +64,18 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/sanitize-html": "^2.13.0",
-    "@typescript-eslint/eslint-plugin": "^8.58.0",
-    "@typescript-eslint/parser": "^8.58.0",
-    "@vitest/coverage-v8": "^4.1.4",
+    "@typescript-eslint/eslint-plugin": "^8.59.0",
+    "@typescript-eslint/parser": "^8.59.0",
+    "@vitest/coverage-v8": "^4.1.5",
     "esbuild": "^0.28.0",
     "eslint": "^9.39.3",
-    "eslint-config-next": "^16.2.2",
+    "eslint-config-next": "^16.2.4",
     "ioredis-mock": "^8.13.1",
-    "postcss": "^8.5.9",
-    "prettier": "^3.8.2",
-    "tailwindcss": "^4.2.2",
+    "postcss": "^8.5.12",
+    "prettier": "^3.8.3",
+    "tailwindcss": "^4.2.4",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.5"
   }
 }

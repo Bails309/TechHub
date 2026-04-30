@@ -24,6 +24,15 @@ const nextConfig = {
         headers: securityHeaders
       }
     ];
+  },
+  async redirects() {
+    return [
+      {
+        source: '/sso',
+        destination: '/auth/sso',
+        permanent: false,
+      },
+    ];
   }
 };
 
