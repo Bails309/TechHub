@@ -43,7 +43,14 @@ TechHub implements a granular Role-Based Access Control system managed via the *
   - **Role-Based**: Visible only to users assigned specific roles.
 - **User Pre-Provisioning**: If `REQUIRE_PREPROVISIONED_USERS="true"`, users must be manually added to the database (or created by an admin) before they can successfully sign in via SSO.
 
-## 4. Troubleshooting & Maintenance
+## 4. High-Speed SSO Entrypoint
+
+To reduce friction for end-users, TechHub provides a shortcut for SSO-only environments:
+- **Shortcut**: `/sso`
+- **Behavior**: Redirects the user directly to the Keycloak authentication flow, bypassing the standard sign-in selection page.
+- **Ideal For**: Enterprise bookmarks, intranet links, and corporate portal integration.
+
+## 5. Troubleshooting & Maintenance
 
 ### Health Dashboard
 Navigate to **Admin > Health** to monitor:

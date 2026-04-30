@@ -2,7 +2,7 @@
 
 This project uses [Vitest](https://vitest.dev) for unit and integration tests and [Playwright](https://playwright.dev) for end-to-end tests.
 
-**Current coverage:** 78 unit/integration test files, 682 tests, 4 E2E suites. Enforced thresholds: 90% statements, 90% lines, 75% branches, 88% functions.
+**Current coverage:** 84 unit/integration test files, 743 tests, 4 E2E suites. Enforced thresholds: 90% statements, 90% lines, 75% branches, 88% functions.
 
 ## Quick Commands
 
