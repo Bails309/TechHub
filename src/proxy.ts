@@ -186,6 +186,16 @@ async function createPublicCsrfToken(visitorId: string): Promise<string> {
 }
 
 export async function proxy(request: NextRequest) {
+  const url = request.nextUrl.clone();
+  const pathname = url.pathname;
+
+  // 0. High-Speed SSO Redirect (Trailing-slash insensitive)
+  if (pathname === '/sso' || pathname === '/sso/') {
+    const ssoUrl = request.nextUrl.clone();
+    ssoUrl.pathname = '/auth/sso';
+    return NextResponse.redirect(ssoUrl);
+  }
+
   // Helper to serialize and append Set-Cookie headers without using
   // the next/headers cookies() API (which is restricted in some runtimes).
   function appendSetCookie(headers: Headers, name: string, value: string, opts: { httpOnly?: boolean; sameSite?: 'lax' | 'strict' | 'none'; secure?: boolean; path?: string; maxAge?: number } = {}) {
@@ -280,7 +290,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  const pathname = request.nextUrl.pathname;
+  // pathname is already defined at the top of the function
 
   // 1. CSRF Enforcement for Mutations (POST, PUT, DELETE)
   if (['POST', 'PUT', 'DELETE'].includes(request.method)) {
@@ -330,6 +340,9 @@ export async function proxy(request: NextRequest) {
   }
   const exactPaths = [
     '/',
+    '/sso',
+    '/sso/',
+    '/auth/sso',
     '/auth/signin',
     '/auth/post-login',
     '/auth/change-password',
