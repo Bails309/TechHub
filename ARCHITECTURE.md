@@ -1,6 +1,6 @@
 # TechHub Architecture
 
-> **Version 2.2.6** — See [CHANGELOG.md](CHANGELOG.md) for release history.
+> **Version 2.3.0** — See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 TechHub is a high-performance, secure application portal designed for enterprise environments. It follows a **Standalone Container** architecture, consolidating its request pipeline, security enforcement, and data orchestration into a single, scalable unit.
 
@@ -53,17 +53,17 @@ graph TD
 ## 3. Data Lifecycle
 
 ### Authentication Flow
-1. **Initiation**: User hits `/auth/signin`.
-2. **Provider Redirect**: Handled via Next-Auth (Azure AD, Keycloak, or Credentials).
+1. **Initiation**: User hits `/auth/signin` or the high-speed `/sso` redirect.
+2. **Provider Redirect**: Handled via Next-Auth (Azure AD, Keycloak, or Credentials). The `/auth/sso` page bypasses selection and triggers the Keycloak flow immediately.
 3. **JWT Issue**: On success, a JWT is issued with an **Absolute Lifetime** (8 hours).
 4. **Session Guard**: Every subsequent request is checked against a **Redis-backed Idle Timer** (20 minutes).
 5. **Concurrent Session Detection**: Active sessions are tracked per user in Redis sorted sets with a **10-minute rolling heartbeat**. Each active browser tab refreshes its entry during periodic token checks (~5 min). Closed tabs stop refreshing and their entries auto-expire, keeping the count accurate. When another active session is detected, a `concurrent_login_detected` audit event is logged and the user receives a themed, dismissible notification banner. The banner offers a **"Clear other sessions"** action that wipes all Redis session entries and re-registers only the current session, effectively signing out all other devices. Banner dismiss state is persisted via module-level variables backed by `sessionStorage`, surviving component remounts and page reloads within the same tab.
 6. **Revocation**: Critical security events (password changes) rotate the user's `securityStamp`. The `jwt` callback detects this mismatch and revokes all active sessions across devices in real-time.
 
 ### Request Flow
-1. **Proxy**: Headers are set, and the session is validated.
+1. **Proxy**: Headers are set, and the session is validated. Redirects (e.g., `/sso` → `/auth/sso`) are processed before application logic.
 2. **Page Load**: Next.js fetches meta-data from Redis (roles, profile pic) to avoid DB overhead.
-3. **App Rendering**: The catalogue is rendered based on the user's specific roles and audience permissions.
+3. **App Rendering**: The catalogue is rendered based on the user's specific roles and audience permissions. The **Command Palette** is pre-populated for zero-latency discovery.
 4. **Feedback**: Audit logs are generated for all state changes (`writeAuditLog`).
 
 ## 4. Key Dependencies

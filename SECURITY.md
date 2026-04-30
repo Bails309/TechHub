@@ -5,6 +5,7 @@ TechHub implements a "Defense-in-Depth" strategy, ensuring that multiple securit
 ## 1. Authentication & Session Management
 
 - **Provider Diversity**: Native support for **Azure Entra ID (SSO)**, **Keycloak**, and **Local Credentials**.
+- **Direct SSO Entrypoint**: Added `/sso` and `/auth/sso` routes for immediate Keycloak authentication, reducing exposure time and friction during the login process.
 - **Must Change Password**: New local users are forced to update their credentials upon first login.
 - **Session Hardening**:
   - **Absolute Timeout (8h)**: Prevents long-lived session hijacking by forcing re-authentication once per shift.
@@ -47,11 +48,15 @@ TechHub implements a custom, high-security CSRF layer in [`src/lib/csrf.ts`](src
 - **Decoupled Access**: Media assets are never served directly from the filesystem. They are streamed via a proxy route ([`src/app/uploads/[...path]/route.ts`](src/app/uploads/%5B...path%5D/route.ts)) which reinforces `nosniff` headers and content-type isolation.
 - **Magic-Byte Validation**: File types are determined by inspecting "Magic Bytes" (MIME sniffing) at the storage layer rather than trusting the user-supplied extension, preventing the upload of dangerous files disguised as images.
 
-## 5. Audit & Compliance
+## 5. Vulnerability Management
+
+- **Automated Scanning**: The codebase is continuously monitored by **GitHub CodeQL** and **Dependabot**.
+- **Proactive Patching**: High-priority vulnerabilities (e.g., GHSA-jp2q-39xq-3w4g, GHSA-8gc5-j5rx-235r) are addressed via immediate package overrides in `package.json`.
+- **Dependency Isolation**: Standalone builds ensure only required production dependencies are included, reducing the attack surface.
+
+## 6. Audit & Compliance
 
 Every security-relevant operation is recorded in the `AuditLog` table:
-
-![Admin Audit Log](docs/images/admin_audit.png)
 
 - **Actor**: Who performed the action (User ID or 'system').
 - **Target**: The resource being modified (User ID, App ID, etc.).

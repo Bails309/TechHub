@@ -5,6 +5,30 @@ All notable changes to TechHub are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-04-30
+
+### Added
+- **Command Palette Refactor** — The palette now displays all available applications immediately upon being opened (empty query), rather than requiring input first. Added "Recently Launched" grouping for better discoverability and alphabetical sorting within categories.
+- **Direct SSO Entrypoint** — Added a direct `/sso` short-link that redirects to `/auth/sso`. This entrypoint automatically triggers the Keycloak `signIn` flow, bypassing the intermediate provider selection screen for a "one-click" authentication experience.
+- **Documentation Overhaul** — Comprehensive update of all architecture, security, and API documentation to reflect the latest state of the platform.
+
+### Fixed
+- **Security Vulnerabilities** — Patched high and moderate-severity vulnerabilities in sub-dependencies:
+    - `uuid` (Missing buffer bounds check) → Overridden to `14.0.0`
+    - `postcss` (XSS via unescaped `</style>`) → Overridden to `$postcss` (8.5.12+)
+    - `fast-xml-parser` (CDATA/Comment Injection) → Overridden to `5.7.0`
+    - `brace-expansion` → Overridden to `5.0.5`
+- **Code Quality** — Conducted a full audit of `src/app/admin/actions.ts` and other core modules to remove unused imports and dead code identified by CodeQL.
+
+### Changed
+- **Dependencies** — Bumped several core dependencies to resolve vulnerabilities and improve performance:
+    - `undici` → `6.25.0`
+    - `@aws-sdk/client-s3` → `3.1039.0`
+    - `@typescript-eslint/eslint-plugin` & `parser` → `8.59.1`
+- **next.config.mjs** — Added server-side redirect logic for the `/sso` path.
+
+---
+
 ## [2.2.6] - 2026-03-24
 
 ### Fixed

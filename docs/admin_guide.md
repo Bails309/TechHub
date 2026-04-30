@@ -27,3 +27,13 @@ TechHub supports four distinct audience levels:
 * **Visibility:** Visible only to **individual users you explicitly select**.
 * **Configuration:** When this option is selected, an autocomplete search field appears, allowing you to search the database by name or email and assign access on a granular, per-user basis.
 * **Use Case:** Best suited for highly restricted tools, temporary project dashboards, or apps that are currently in beta testing with a select group of individuals.
+
+---
+
+## Discoverability & Command Palette
+
+Users can discover applications through two primary methods:
+1. **The Portal Grid**: Applications are displayed in a visually rich grid, organized by category.
+2. **The Command Palette (Ctrl+K)**: A high-speed search interface that allows users to find and launch apps instantly.
+
+As of **Version 2.3.0**, the Command Palette displays all authorized applications immediately upon opening. This ensures that users can browse the entire catalogue without needing to type a search query, improving visibility for less frequently used but important tools.
