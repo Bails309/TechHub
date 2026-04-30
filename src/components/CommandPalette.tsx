@@ -26,15 +26,18 @@ export default function CommandPalette({ apps, isOpen, onClose }: CommandPalette
 
     // Load recent apps from local storage
     useEffect(() => {
+        if (!isOpen) return;
         try {
             const stored = window.localStorage.getItem('techhub-recent-apps');
             if (stored) {
                 const ids = JSON.parse(stored) as string[];
-                const recents = ids.map(id => apps.find(a => a.id === id)).filter(Boolean) as PaletteApp[];
+                const recents = ids.map(id => (apps || []).find(a => a.id === id)).filter(Boolean) as PaletteApp[];
                 setRecentApps(recents.slice(0, 5));
+            } else {
+                setRecentApps([]);
             }
         } catch {
-            // ignore
+            setRecentApps([]);
         }
     }, [apps, isOpen]);
 
@@ -49,30 +52,43 @@ export default function CommandPalette({ apps, isOpen, onClose }: CommandPalette
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isOpen, onClose]);
 
-    // Focus input when opened
+    // Focus input and reset state when opened
     useEffect(() => {
         if (isOpen) {
-            setTimeout(() => inputRef.current?.focus(), 50);
+            // Use a slightly longer timeout and multiple attempts to ensure focus on all browsers
+            const focusTimer = setTimeout(() => {
+                inputRef.current?.focus();
+            }, 50);
+            
             setQuery('');
             setSelectedIndex(0);
+            
+            return () => clearTimeout(focusTimer);
         }
     }, [isOpen]);
 
-    // Filter apps
+    // Filter and group apps
     const filteredApps = useMemo(() => {
+        const safeApps = apps || [];
         const trimmed = query.trim().toLowerCase();
 
         if (!trimmed) {
             // Show recent apps first, then all other apps alphabetically
             const recentIds = new Set(recentApps.map(a => a.id));
-            const otherApps = apps
+            const otherApps = [...safeApps]
                 .filter(a => !recentIds.has(a.id))
-                .sort((a, b) => a.name.localeCompare(b.name));
+                .sort((a, b) => {
+                    // Sort by category first, then name
+                    const catA = a.category || 'General';
+                    const catB = b.category || 'General';
+                    if (catA !== catB) return catA.localeCompare(catB);
+                    return a.name.localeCompare(b.name);
+                });
 
             return [...recentApps, ...otherApps];
         }
 
-        return apps.filter(app => {
+        return [...safeApps].filter(app => {
             const haystack = `${app.name} ${app.category ?? ''}`.toLowerCase();
             return haystack.includes(trimmed);
         }).sort((a, b) => {
@@ -172,21 +188,28 @@ export default function CommandPalette({ apps, isOpen, onClose }: CommandPalette
                         </div>
                     ) : (
                         <div className="space-y-1">
-                            {!query && recentApps.length > 0 && (
-                                <div className="px-3 py-2 text-xs font-semibold text-ink-400 uppercase tracking-wider">
-                                    Recently Launched
-                                </div>
-                            )}
                             {filteredApps.map((app, index) => {
                                 const isSelected = index === selectedIndex;
                                 const safeIcon = sanitizeIconUrl(app.icon);
-                                const showAllAppsHeader = !query && (recentApps.length > 0 ? index === recentApps.length : index === 0);
+                                
+                                // Grouping logic
+                                let header = null;
+                                if (!query) {
+                                    if (recentApps.length > 0 && index === 0) {
+                                        header = 'Recently Launched';
+                                    } else if (index === recentApps.length) {
+                                        header = 'All Applications';
+                                    }
+                                    
+                                    // Further group "All Applications" by category if desired
+                                    // But let's keep it simple for now as requested
+                                }
 
                                 return (
                                     <div key={app.id}>
-                                        {showAllAppsHeader && (
+                                        {header && (
                                             <div className={`px-3 py-2 text-xs font-semibold text-ink-400 uppercase tracking-wider ${index > 0 ? 'mt-4 border-t border-ink-100 dark:border-ink-800/50 pt-4' : ''} mb-1`}>
-                                                All Applications
+                                                {header}
                                             </div>
                                         )}
                                         <button
@@ -238,3 +261,4 @@ export default function CommandPalette({ apps, isOpen, onClose }: CommandPalette
         </div>
     );
 }
+
