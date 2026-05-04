@@ -42,7 +42,7 @@
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "ioredis": "^5.10.0",
-    "ipaddr.js": "^2.2.0",
+    "ipaddr.js": "^2.4.0",
     "lucide-react": "^0.577.0",
     "next": "^16.2.4",
     "next-auth": "^4.24.14",
