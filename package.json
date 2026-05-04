@@ -71,7 +71,7 @@
     "eslint": "^9.39.3",
     "eslint-config-next": "^16.2.4",
     "ioredis-mock": "^8.13.1",
-    "postcss": "^8.5.12",
+    "postcss": "^8.5.13",
     "prettier": "^3.8.3",
     "tailwindcss": "^4.2.4",
     "tsx": "^4.19.0",
