@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { NextRequest } from 'next/server';
 
@@ -210,7 +210,8 @@ export async function getServerCsrfToken(opts?: { setIfMissing?: boolean }): Pro
   const maxAge = 60 * 60;
 
   if (sessionId) {
-    let token = jar.get('XSRF-TOKEN')?.value ?? '';
+    const hdrs = await headers();
+    let token = jar.get('XSRF-TOKEN')?.value ?? hdrs.get('x-xsrf-token') ?? '';
     if ((!token || !validateCsrfToken(token, sessionId)) && setIfMissing) {
       token = createCsrfToken(sessionId);
       jar.set('XSRF-TOKEN', token, {
@@ -228,7 +229,8 @@ export async function getServerCsrfToken(opts?: { setIfMissing?: boolean }): Pro
   if (!visitorId) {
     return '';
   }
-  let token = jar.get('XSRF-TOKEN-PUBLIC')?.value ?? '';
+  const hdrs = await headers();
+  let token = jar.get('XSRF-TOKEN-PUBLIC')?.value ?? hdrs.get('x-xsrf-token-public') ?? '';
   if ((!token || !validatePublicCsrfToken(token, visitorId)) && setIfMissing) {
     token = createPublicCsrfToken(visitorId);
     jar.set('XSRF-TOKEN-PUBLIC', token, {

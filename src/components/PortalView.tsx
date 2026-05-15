@@ -184,6 +184,24 @@ export default function PortalView({ apps, isAuthenticated, initialOrder, pinned
 
     setPinnedAppIds(nextPins);
 
+    // Personal apps use a "personal-" prefixed ID that doesn't exist in the
+    // AppLink table.  Sending it to toggleFavoriteApp would violate the
+    // UserFavoriteApp_appId_fkey foreign-key constraint (P2003).  For
+    // authenticated users we persist the pin via the PersonalApp.pinned column;
+    // for anonymous users we fall back to localStorage.
+    if (appId.startsWith('personal-')) {
+      if (isAuthenticated) {
+        const { togglePersonalAppPin } = await import('../app/profile/personalAppActions');
+        const payload = new FormData();
+        payload.set('appId', appId);
+        payload.set('csrfToken', csrfToken);
+        await togglePersonalAppPin(payload);
+      } else {
+        window.localStorage.setItem('techhub-portal-pins', JSON.stringify(nextPins));
+      }
+      return;
+    }
+
     if (isAuthenticated) {
       const { toggleFavoriteApp } = await import('../app/actions/favoriteApps');
       const payload = new FormData();

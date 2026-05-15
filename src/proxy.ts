@@ -218,12 +218,55 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
 
+  // CSRF token state for the current request
+  let xsrfToken: string | null = null;
+  let xsrfTokenPublic: string | null = null;
+  let newVisitorId: string | null = null;
+
+  // 1. Pre-compute CSRF tokens for GET requests so they can be passed to RSC via headers
+  const isSecure = process.env.NODE_ENV === 'production' || !!process.env.NEXTAUTH_URL?.startsWith('https:');
+  let secureFlag = process.env.NODE_ENV === 'production';
+  try {
+    if (process.env.NEXTAUTH_URL) {
+      secureFlag = new URL(process.env.NEXTAUTH_URL).protocol === 'https:';
+    }
+  } catch { }
+
+  if (request.method === 'GET') {
+    const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET, secureCookie: isSecure });
+    const sessionId = tokenObj?.sub ?? '';
+    let visitorId = request.cookies.get('visitor-id')?.value;
+
+    if (!visitorId) {
+      newVisitorId = getSecureNonce();
+      visitorId = newVisitorId;
+    }
+
+    if (sessionId) {
+      const existing = request.cookies.get('XSRF-TOKEN')?.value;
+      const isValid = existing ? await validateCsrfToken(existing, sessionId) : false;
+      if (!isValid) {
+        xsrfToken = await createCsrfToken(sessionId);
+        requestHeaders.set('x-xsrf-token', xsrfToken);
+      }
+    } else if (visitorId) {
+      const existing = request.cookies.get('XSRF-TOKEN-PUBLIC')?.value;
+      const isValid = existing ? await validatePublicCsrfToken(existing, visitorId) : false;
+      if (!isValid) {
+        xsrfTokenPublic = await createPublicCsrfToken(visitorId);
+        requestHeaders.set('x-xsrf-token-public', xsrfTokenPublic);
+      }
+    }
+  }
+
+  // 2. Create the response with the updated request headers
   const response = NextResponse.next({
     request: {
       headers: requestHeaders
     }
   });
 
+  // 3. Apply security headers and persistent cookies to the response
   const accept = request.headers.get('accept') ?? '';
   if (accept.includes('text/html')) {
     response.headers.set('Content-Security-Policy', buildCsp(nonce));
@@ -234,59 +277,34 @@ export async function proxy(request: NextRequest) {
     response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   }
 
-  // Generate an HMAC-signed CSRF cookie on every GET request.
-  if (request.method === 'GET') {
-    const isSecure = process.env.NODE_ENV === 'production' || !!process.env.NEXTAUTH_URL?.startsWith('https:');
-    const tokenObj = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET, secureCookie: isSecure });
-    const sessionId = tokenObj?.sub ?? '';
-    let secureFlag = process.env.NODE_ENV === 'production';
-    try {
-      if (process.env.NEXTAUTH_URL) {
-        secureFlag = new URL(process.env.NEXTAUTH_URL).protocol === 'https:';
-      }
-    } catch { }
-    const maxAge = 60 * 60; // 1 hour
-
-    let visitorId = request.cookies.get('visitor-id')?.value;
-    if (!visitorId) {
-      visitorId = getSecureNonce(); // reuse nonce generator for random ID
-      appendSetCookie(response.headers, 'visitor-id', visitorId, {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: secureFlag,
-        path: '/',
-        maxAge: 60 * 60 * 24 * 365 // 1 year
-      });
-    }
-
-    if (sessionId) {
-      const existing = request.cookies.get('XSRF-TOKEN')?.value;
-      const isValid = existing ? await validateCsrfToken(existing, sessionId) : false;
-      if (!isValid) {
-        const newToken = await createCsrfToken(sessionId);
-        appendSetCookie(response.headers, 'XSRF-TOKEN', newToken, {
-          httpOnly: false,
-          sameSite: 'lax',
-          secure: secureFlag,
-          path: '/',
-          maxAge
-        });
-      }
-    } else {
-      // Unauthenticated visitor: set XSRF-TOKEN-PUBLIC
-      const existing = request.cookies.get('XSRF-TOKEN-PUBLIC')?.value;
-      const isValid = existing ? await validatePublicCsrfToken(existing, visitorId) : false;
-      if (!isValid) {
-        const newToken = await createPublicCsrfToken(visitorId);
-        appendSetCookie(response.headers, 'XSRF-TOKEN-PUBLIC', newToken, {
-          httpOnly: false,
-          sameSite: 'lax',
-          secure: secureFlag,
-          path: '/',
-          maxAge
-        });
-      }
-    }
+  // 4. Commit CSRF/Visitor cookies to the response
+  const maxAge = 60 * 60; // 1 hour
+  if (newVisitorId) {
+    appendSetCookie(response.headers, 'visitor-id', newVisitorId, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: secureFlag,
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365 // 1 year
+    });
+  }
+  if (xsrfToken) {
+    appendSetCookie(response.headers, 'XSRF-TOKEN', xsrfToken, {
+      httpOnly: false,
+      sameSite: 'lax',
+      secure: secureFlag,
+      path: '/',
+      maxAge
+    });
+  }
+  if (xsrfTokenPublic) {
+    appendSetCookie(response.headers, 'XSRF-TOKEN-PUBLIC', xsrfTokenPublic, {
+      httpOnly: false,
+      sameSite: 'lax',
+      secure: secureFlag,
+      path: '/',
+      maxAge
+    });
   }
 
   // pathname is already defined at the top of the function

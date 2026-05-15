@@ -216,3 +216,39 @@ export async function deletePersonalApp(_prevState: any, formData: FormData): Pr
         return { status: 'error', message: String(err?.message ?? 'Database error') };
     }
 }
+
+export async function togglePersonalAppPin(formData: FormData): Promise<{ success: boolean; pinned?: boolean; error?: string }> {
+    if (!(await validateCsrf(formData))) {
+        return { success: false, error: 'Invalid CSRF token' };
+    }
+
+    const session = await getServerAuthSession();
+    if (!session?.user?.id) {
+        return { success: false, error: 'Not signed in' };
+    }
+
+    // The portal prefixes personal app IDs with "personal-"; strip it.
+    const rawId = String(formData.get('appId') ?? '');
+    const appId = rawId.startsWith('personal-') ? rawId.slice('personal-'.length) : rawId;
+    if (!appId) {
+        return { success: false, error: 'Missing app ID' };
+    }
+
+    const existing = await prisma.personalApp.findUnique({ where: { id: appId } });
+    if (!existing || existing.userId !== session.user.id) {
+        return { success: false, error: 'App not found' };
+    }
+
+    try {
+        const updated = await prisma.personalApp.update({
+            where: { id: appId },
+            data: { pinned: !existing.pinned },
+        });
+
+        revalidatePath('/');
+        return { success: true, pinned: updated.pinned };
+    } catch (err: any) {
+        console.error('Error toggling personal app pin:', err);
+        return { success: false, error: 'Failed to update pin state' };
+    }
+}

@@ -9,6 +9,9 @@ vi.mock('../src/lib/prisma', () => ({
       delete: vi.fn(),
       findMany: vi.fn(),
     },
+    appLink: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 
@@ -36,6 +39,7 @@ const mockFindUnique = prisma.userFavoriteApp.findUnique as ReturnType<typeof vi
 const mockCreate = prisma.userFavoriteApp.create as ReturnType<typeof vi.fn>;
 const mockDeleteFav = prisma.userFavoriteApp.delete as ReturnType<typeof vi.fn>;
 const mockFindMany = prisma.userFavoriteApp.findMany as ReturnType<typeof vi.fn>;
+const mockAppLinkFindUnique = (prisma as any).appLink.findUnique as ReturnType<typeof vi.fn>;
 
 function makeFormData(entries: Record<string, string>): FormData {
   const fd = new FormData();
@@ -48,6 +52,8 @@ describe('Favorite Apps Actions', () => {
     vi.clearAllMocks();
     mockCsrf.mockResolvedValue(true);
     mockSession.mockResolvedValue({ user: { id: 'user-1', roles: ['viewer'] } });
+    // Default: app exists in AppLink table
+    mockAppLinkFindUnique.mockResolvedValue({ id: 'app-1' });
   });
 
   describe('toggleFavoriteApp', () => {
@@ -99,6 +105,17 @@ describe('Favorite Apps Actions', () => {
       const result = await toggleFavoriteApp(fd);
 
       expect(result).toEqual({ success: false, error: 'Missing app id' });
+    });
+
+    it('returns error when appId does not exist in AppLink (e.g. personal app)', async () => {
+      mockAppLinkFindUnique.mockResolvedValue(null);
+      const fd = makeFormData({ appId: 'personal-abc123' });
+
+      const result = await toggleFavoriteApp(fd);
+
+      expect(result).toEqual({ success: false, error: 'App not found' });
+      expect(mockFindUnique).not.toHaveBeenCalled();
+      expect(mockCreate).not.toHaveBeenCalled();
     });
 
     it('returns error when DB operation fails', async () => {

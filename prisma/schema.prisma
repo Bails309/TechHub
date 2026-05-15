@@ -115,6 +115,7 @@ model PersonalApp {
   url         String
   icon        String?
   description String?
+  pinned      Boolean  @default(false)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId      String
   createdAt   DateTime @default(now())
