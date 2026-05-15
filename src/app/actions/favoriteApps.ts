@@ -21,6 +21,15 @@ export async function toggleFavoriteApp(formData: FormData) {
         return { success: false, error: 'Unauthorized' };
     }
 
+    // Verify the target app actually exists in AppLink to avoid FK violations
+    const appExists = await prisma.appLink.findUnique({
+        where: { id: appId },
+        select: { id: true },
+    });
+    if (!appExists) {
+        return { success: false, error: 'App not found' };
+    }
+
     const userId = session.user.id;
 
     try {

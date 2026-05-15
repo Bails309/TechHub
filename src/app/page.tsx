@@ -100,6 +100,12 @@ export default async function Home() {
       isPersonal: true,
     }));
 
+    // Include pinned personal apps alongside AppLink favorites
+    const pinnedPersonalAppIds = personalApps
+      .filter((app: any) => app.pinned)
+      .map((app: any) => `personal-${app.id}`);
+    const allPinnedIds = [...favoriteAppIds, ...pinnedPersonalAppIds];
+
     const allApps = [...personalAppsMapped, ...adminAppsMapped];
     const categories = Array.from(new Set(allApps.map((app: any) => app.category ?? 'General')));
     const displayLatency = averageLatencyValue ?? '< 1s';
@@ -116,7 +122,7 @@ export default async function Home() {
           apps={allApps}
           isAuthenticated={Boolean(session)}
           initialOrder={Array.isArray(appOrder?.order) ? (appOrder?.order as string[]) : []}
-          pinnedApps={favoriteAppIds}
+          pinnedApps={allPinnedIds}
         />
       </div>
     );
